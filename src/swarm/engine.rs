@@ -1,0 +1,1088 @@
+//! The swarm engine: one background thread inside the hiver server.
+//!
+//! It talks to the app exactly like an API client (`agent.list`, `agent.prompt`,
+//! `pane.report_metadata` over the internal request channel), so herdr's state machine
+//! needs no swarm-specific changes. Socket requests (`method: "swarm"`) are answered by
+//! `handle_request` on the connection thread, sharing state behind one mutex.
+
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use serde_json::{json, Value};
+
+use super::bus::{self, Decision, Kind, Message, Presence, Record, Sender};
+use super::model::{Role, Swarm, SwarmAgent};
+use crate::api::schema::{
+    AgentInfo, AgentPromptParams, AgentStatus, EmptyParams, Method, PaneReportMetadataParams,
+    Request,
+};
+use crate::api::ApiRequestSender;
+
+const TICK: Duration = Duration::from_secs(1);
+const RELOAD_EVERY: Duration = Duration::from_secs(5);
+const RATE_WINDOW: Duration = Duration::from_secs(60);
+const RATE_LIMIT: usize = 30;
+const METADATA_SOURCE: &str = "hiver:swarm";
+
+struct Engine {
+    state: Mutex<State>,
+    wake: mpsc::Sender<()>,
+}
+
+static ENGINE: OnceLock<Engine> = OnceLock::new();
+
+#[derive(Debug, Clone)]
+struct Live {
+    name: Option<String>,
+    pane_id: String,
+    status: AgentStatus,
+    since: Instant,
+}
+
+#[derive(Default)]
+struct State {
+    registry_path: PathBuf,
+    swarms: Vec<Swarm>,
+    /// Undelivered messages per `(swarm slug, agent key)`, in send order.
+    queues: HashMap<(String, String), Vec<Message>>,
+    /// Message ids whose master was already told the target is blocked/gone.
+    escalated: HashSet<String>,
+    live_by_name: HashMap<String, Live>,
+    live_by_pane: HashMap<String, Live>,
+    /// Last metadata signature reported per pane, to report only on change.
+    reported: HashMap<String, String>,
+    sent_at: HashMap<String, VecDeque<Instant>>,
+    seq: u64,
+    last_reload: Option<Instant>,
+}
+
+pub(crate) fn start(api_tx: ApiRequestSender) {
+    let (wake, wake_rx) = mpsc::channel();
+    let mut state = State {
+        registry_path: crate::config::config_dir().join("swarms.json"),
+        ..State::default()
+    };
+    state.reload();
+    state.rebuild_queues();
+    if ENGINE
+        .set(Engine {
+            state: Mutex::new(state),
+            wake,
+        })
+        .is_err()
+    {
+        return;
+    }
+    let spawned = std::thread::Builder::new()
+        .name("hiver-swarm".into())
+        .spawn(move || loop {
+            let _ = wake_rx.recv_timeout(TICK);
+            tick(&api_tx);
+        });
+    if let Err(err) = spawned {
+        tracing::warn!(%err, "hiver swarm engine failed to start");
+    }
+}
+
+fn engine() -> Option<&'static Engine> {
+    ENGINE.get()
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// Registry and queues
+// ---------------------------------------------------------------------------
+
+fn read_registry(path: &Path) -> Vec<PathBuf> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|value| value.get("roots").cloned())
+        .and_then(|roots| serde_json::from_value::<Vec<PathBuf>>(roots).ok())
+        .unwrap_or_default()
+}
+
+fn write_registry(path: &Path, roots: &[PathBuf]) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|err| err.to_string())?;
+    }
+    let text =
+        serde_json::to_string_pretty(&json!({ "roots": roots })).map_err(|e| e.to_string())?;
+    std::fs::write(path, text).map_err(|err| format!("cannot write {}: {err}", path.display()))
+}
+
+impl State {
+    fn reload(&mut self) {
+        let mut swarms = Vec::new();
+        for root in read_registry(&self.registry_path) {
+            match Swarm::load(&root) {
+                Ok(swarm) => swarms.push(swarm),
+                Err(err) => tracing::warn!(root = %root.display(), %err, "skipping swarm"),
+            }
+        }
+        self.swarms = swarms;
+        self.last_reload = Some(Instant::now());
+    }
+
+    fn rebuild_queues(&mut self) {
+        self.queues.clear();
+        for swarm in &self.swarms {
+            let (pending, held) = bus::pending_from_log(&bus::read_log(&swarm.bus_path()));
+            self.escalated.extend(held);
+            for msg in pending {
+                if let Some(slug) = msg.swarm.clone() {
+                    self.queues
+                        .entry((slug, msg.to.clone()))
+                        .or_default()
+                        .push(msg);
+                }
+            }
+        }
+    }
+
+    fn swarm(&self, slug: &str) -> Option<&Swarm> {
+        self.swarms.iter().find(|swarm| swarm.slug == slug)
+    }
+
+    fn live(&self, agent: &SwarmAgent) -> Option<&Live> {
+        agent
+            .herdr_name
+            .as_deref()
+            .and_then(|name| self.live_by_name.get(name))
+            .or_else(|| {
+                // Unnamed agents (started by hand) are matched by their recorded pane.
+                agent
+                    .pane_id
+                    .as_deref()
+                    .and_then(|pane| self.live_by_pane.get(pane))
+            })
+    }
+
+    fn presence(&self, agent: &SwarmAgent) -> Presence {
+        let Some(live) = self.live(agent) else {
+            return Presence::Gone;
+        };
+        match live.status {
+            AgentStatus::Idle | AgentStatus::Done => Presence::Idle {
+                idle_ms: live.since.elapsed().as_millis() as u64,
+            },
+            AgentStatus::Blocked => Presence::Blocked,
+            AgentStatus::Working | AgentStatus::Unknown => Presence::Busy,
+        }
+    }
+
+    /// The swarm agent running in `pane_id`, if any.
+    fn agent_in_pane(&self, pane_id: &str) -> Option<(&Swarm, &SwarmAgent)> {
+        let live_name = self
+            .live_by_pane
+            .get(pane_id)
+            .and_then(|live| live.name.clone());
+        self.swarms.iter().find_map(|swarm| {
+            swarm
+                .agents
+                .iter()
+                .find(|agent| {
+                    (live_name.is_some() && agent.herdr_name == live_name)
+                        || agent.pane_id.as_deref() == Some(pane_id)
+                })
+                .map(|agent| (swarm, agent))
+        })
+    }
+
+    fn update_live(&mut self, agents: Vec<AgentInfo>) {
+        let now = Instant::now();
+        let mut by_pane = HashMap::new();
+        for info in agents {
+            let since = self
+                .live_by_pane
+                .get(&info.pane_id)
+                .filter(|old| old.status == info.agent_status && old.name == info.name)
+                .map(|old| old.since)
+                .unwrap_or(now);
+            let status = if info.launch_pending {
+                AgentStatus::Working
+            } else {
+                info.agent_status
+            };
+            by_pane.insert(
+                info.pane_id.clone(),
+                Live {
+                    name: info.name.clone(),
+                    pane_id: info.pane_id,
+                    status,
+                    since,
+                },
+            );
+        }
+        self.live_by_name = by_pane
+            .values()
+            .filter_map(|live| live.name.clone().map(|name| (name, live.clone())))
+            .collect();
+        self.live_by_pane = by_pane;
+    }
+
+    fn next_id(&mut self) -> String {
+        self.seq += 1;
+        format!("m{}-{}", now_ms(), self.seq)
+    }
+
+    /// Logs a message and queues it for delivery (unless it's for the human).
+    fn post(&mut self, msg: Message) -> Result<(), String> {
+        let slug = msg.swarm.clone();
+        let log_swarm = slug
+            .as_deref()
+            .or_else(|| msg.from.split_once('/').map(|(slug, _)| slug))
+            .and_then(|slug| self.swarm(slug))
+            .map(Swarm::bus_path);
+        if let Some(path) = log_swarm {
+            bus::append(&path, &[Record::Msg(msg.clone())]).map_err(|err| err.to_string())?;
+        }
+        // Cross-swarm: keep a copy in the sender's log too.
+        if let Some((from_slug, _)) = msg.from.split_once('/') {
+            if slug.as_deref() != Some(from_slug) {
+                if let Some(swarm) = self.swarm(from_slug) {
+                    let copy = Message {
+                        copy: true,
+                        ..msg.clone()
+                    };
+                    bus::append(&swarm.bus_path(), &[Record::Msg(copy)])
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        if let Some(slug) = slug {
+            if msg.to != bus::HUMAN {
+                self.queues
+                    .entry((slug, msg.to.clone()))
+                    .or_default()
+                    .push(msg);
+            }
+        }
+        Ok(())
+    }
+
+    fn rate_limited(&mut self, sender: &str) -> bool {
+        let now = Instant::now();
+        let times = self.sent_at.entry(sender.to_string()).or_default();
+        while times
+            .front()
+            .is_some_and(|at| now.duration_since(*at) > RATE_WINDOW)
+        {
+            times.pop_front();
+        }
+        if times.len() >= RATE_LIMIT {
+            return true;
+        }
+        times.push_back(now);
+        false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The loop
+// ---------------------------------------------------------------------------
+
+struct Delivery {
+    slug: String,
+    key: String,
+    target: String,
+    text: String,
+    ids: Vec<String>,
+}
+
+fn dispatch(api_tx: &ApiRequestSender, method: Method) -> Result<Value, String> {
+    let request = Request {
+        id: "hiver:swarm".into(),
+        method,
+    };
+    let raw = crate::api::dispatch_internal(request, api_tx, Some(Duration::from_secs(10)));
+    let value: Value = serde_json::from_str(&raw).map_err(|err| err.to_string())?;
+    if let Some(error) = value.get("error") {
+        return Err(error
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("error")
+            .to_string());
+    }
+    Ok(value.get("result").cloned().unwrap_or(Value::Null))
+}
+
+fn tick(api_tx: &ApiRequestSender) {
+    let Some(engine) = engine() else { return };
+    {
+        let Ok(mut state) = engine.state.lock() else {
+            return;
+        };
+        if state
+            .last_reload
+            .is_none_or(|at| at.elapsed() >= RELOAD_EVERY)
+        {
+            state.reload();
+        }
+        // No swarms registered: stay completely idle.
+        if state.swarms.is_empty() {
+            return;
+        }
+    }
+    let agents = dispatch(api_tx, Method::AgentList(EmptyParams::default()))
+        .ok()
+        .and_then(|result| result.get("agents").cloned())
+        .and_then(|agents| serde_json::from_value::<Vec<AgentInfo>>(agents).ok());
+
+    let (deliveries, metadata) = {
+        let Ok(mut state) = engine.state.lock() else {
+            return;
+        };
+        let Some(agents) = agents else { return };
+        state.update_live(agents);
+        let deliveries = plan_deliveries(&mut state);
+        (deliveries, plan_metadata(&mut state))
+    };
+
+    for delivery in deliveries {
+        let prompt = Method::AgentPrompt(AgentPromptParams {
+            target: delivery.target.clone(),
+            text: delivery.text.clone(),
+            wait: None,
+        });
+        match dispatch(api_tx, prompt) {
+            Ok(_) => {
+                let Ok(mut state) = engine.state.lock() else {
+                    return;
+                };
+                confirm_delivery(&mut state, &delivery);
+            }
+            Err(err) => {
+                tracing::warn!(target = %delivery.target, %err, "hiver delivery failed; will retry")
+            }
+        }
+    }
+    for (pane_id, params) in metadata {
+        if dispatch(api_tx, Method::PaneReportMetadata(params)).is_err() {
+            // Pane gone or not ready: forget the signature so it's retried.
+            if let Ok(mut state) = engine.state.lock() {
+                state.reported.remove(&pane_id);
+            }
+        }
+    }
+}
+
+fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
+    let mut deliveries = Vec::new();
+    let mut escalations = Vec::new();
+    for ((slug, key), queue) in &state.queues {
+        if queue.is_empty() {
+            continue;
+        }
+        let Some(swarm) = state.swarm(slug) else {
+            continue;
+        };
+        let Some(agent) = swarm.agent(key) else {
+            continue;
+        };
+        let pending: Vec<&Message> = queue.iter().collect();
+        match bus::decide(state.presence(agent), &pending) {
+            Decision::Hold => {}
+            Decision::Deliver => {
+                let Some(target) = agent
+                    .herdr_name
+                    .clone()
+                    .or_else(|| state.live(agent).map(|live| live.pane_id.clone()))
+                else {
+                    continue;
+                };
+                deliveries.push(Delivery {
+                    slug: slug.clone(),
+                    key: key.clone(),
+                    target,
+                    text: prompt_text(swarm, key, &pending),
+                    ids: queue.iter().map(|msg| msg.id.clone()).collect(),
+                });
+            }
+            Decision::Escalate(reason) => {
+                let fresh: Vec<&Message> = pending
+                    .iter()
+                    .copied()
+                    .filter(|msg| !state.escalated.contains(&msg.id))
+                    .collect();
+                if !fresh.is_empty() {
+                    escalations.push((
+                        swarm.clone(),
+                        agent.clone(),
+                        reason,
+                        fresh.into_iter().cloned().collect::<Vec<_>>(),
+                    ));
+                }
+            }
+        }
+    }
+    for (swarm, agent, reason, msgs) in escalations {
+        escalate(state, &swarm, &agent, reason, &msgs);
+    }
+    deliveries
+}
+
+/// The digest, or a pointer to a file when it's too long to paste.
+fn prompt_text(swarm: &Swarm, key: &str, pending: &[&Message]) -> String {
+    let text = bus::digest(pending);
+    if text.chars().count() <= bus::MAX_PROMPT_CHARS {
+        return text;
+    }
+    let path = swarm.overflow_dir().join(format!("{key}-{}.md", now_ms()));
+    let written =
+        std::fs::create_dir_all(swarm.overflow_dir()).and_then(|_| std::fs::write(&path, &text));
+    match written {
+        Ok(()) => format!(
+            "[hiver · {} messages, too long to paste] read them: cat {}",
+            pending.len(),
+            path.display()
+        ),
+        Err(_) => text.chars().take(bus::MAX_PROMPT_CHARS).collect(),
+    }
+}
+
+fn confirm_delivery(state: &mut State, delivery: &Delivery) {
+    let ts = now_ms();
+    let records: Vec<Record> = delivery
+        .ids
+        .iter()
+        .map(|id| Record::Delivered {
+            id: id.clone(),
+            to: delivery.key.clone(),
+            ts,
+            batch: delivery.ids.len(),
+        })
+        .collect();
+    if let Some(swarm) = state.swarm(&delivery.slug) {
+        if let Err(err) = bus::append(&swarm.bus_path(), &records) {
+            tracing::warn!(%err, "hiver: cannot record delivery");
+        }
+    }
+    if let Some(queue) = state
+        .queues
+        .get_mut(&(delivery.slug.clone(), delivery.key.clone()))
+    {
+        queue.retain(|msg| !delivery.ids.contains(&msg.id));
+    }
+}
+
+/// Tell the master that `agent` can't take its messages; recorded so it happens once.
+fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, msgs: &[Message]) {
+    let ts = now_ms();
+    let held: Vec<Record> = msgs
+        .iter()
+        .map(|msg| Record::Held {
+            id: msg.id.clone(),
+            to: agent.key.clone(),
+            ts,
+            reason: reason.into(),
+        })
+        .collect();
+    let _ = bus::append(&swarm.bus_path(), &held);
+    state
+        .escalated
+        .extend(msgs.iter().map(|msg| msg.id.clone()));
+
+    let Some(master) = swarm.master().filter(|master| master.key != agent.key) else {
+        return;
+    };
+    let senders: Vec<String> = msgs
+        .iter()
+        .map(|msg| msg.from.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    let check = agent
+        .herdr_name
+        .as_deref()
+        .map(|name| format!(" Check it: hiver agent read {name} --source visible"))
+        .unwrap_or_default();
+    let text = format!(
+        "{} is {reason}; {} message(s) from {} are waiting for it.{check}",
+        agent.key,
+        msgs.len(),
+        senders.join(", ")
+    );
+    let notice = Message {
+        id: state.next_id(),
+        ts,
+        from: bus::HIVER.into(),
+        swarm: Some(swarm.slug.clone()),
+        to: master.key.clone(),
+        addressed: master.key.clone(),
+        kind: Kind::Normal,
+        text,
+        reply_to: None,
+        copy: false,
+    };
+    if let Err(err) = state.post(notice) {
+        tracing::warn!(%err, "hiver: cannot notify master");
+    }
+}
+
+fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
+    let mut out = Vec::new();
+    for swarm in &state.swarms {
+        for agent in &swarm.agents {
+            let pane_id = match state.live(agent) {
+                Some(live) => live.pane_id.clone(),
+                None if agent.role == Role::Script => match &agent.pane_id {
+                    Some(pane) => pane.clone(),
+                    None => continue,
+                },
+                None => continue,
+            };
+            let queued = state
+                .queues
+                .get(&(swarm.slug.clone(), agent.key.clone()))
+                .map_or(0, Vec::len);
+            let mut title = format!("{} {} · {}", agent.role.glyph(), agent.key, swarm.slug);
+            if let Some(model) = &agent.model {
+                title.push_str(&format!(" · {model}"));
+            }
+            if queued > 0 {
+                title.push_str(&format!(" · ✉{queued}"));
+            }
+            if state.reported.get(&pane_id) == Some(&title) {
+                continue;
+            }
+            let mut tokens = HashMap::new();
+            tokens.insert("role".to_string(), Some(agent.role.as_str().to_string()));
+            tokens.insert("swarm".to_string(), Some(swarm.slug.clone()));
+            tokens.insert(
+                "queued".to_string(),
+                (queued > 0).then(|| queued.to_string()),
+            );
+            out.push((
+                pane_id.clone(),
+                PaneReportMetadataParams {
+                    pane_id: pane_id.clone(),
+                    source: METADATA_SOURCE.into(),
+                    agent: None,
+                    applies_to_source: None,
+                    title: Some(title.clone()),
+                    display_agent: Some(format!("{} {}", agent.role.glyph(), agent.key)),
+                    state_labels: HashMap::new(),
+                    tokens,
+                    clear_title: false,
+                    clear_display_agent: false,
+                    clear_state_labels: false,
+                    seq: None,
+                    ttl_ms: None,
+                },
+            ));
+        }
+    }
+    for (pane_id, params) in &out {
+        if let Some(title) = &params.title {
+            state.reported.insert(pane_id.clone(), title.clone());
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------------
+// Socket requests
+// ---------------------------------------------------------------------------
+
+pub(crate) fn handle_request(id: &str, params: &super::SwarmParams) -> String {
+    let result = match engine() {
+        None => Err("the swarm engine is not running in this server".to_string()),
+        Some(engine) => {
+            let outcome = match engine.state.lock() {
+                Ok(mut state) => run_op(&mut state, &params.op, &params.args),
+                Err(_) => Err("swarm engine state is poisoned".into()),
+            };
+            let _ = engine.wake.send(());
+            outcome
+        }
+    };
+    let value = match result {
+        Ok(mut result) => {
+            if let Some(object) = result.as_object_mut() {
+                object.insert("type".into(), json!("swarm"));
+            }
+            json!({ "id": id, "result": result })
+        }
+        Err(message) => json!({ "id": id, "error": { "code": "swarm_error", "message": message } }),
+    };
+    value.to_string()
+}
+
+fn arg<'a>(args: &'a Value, name: &str) -> Option<&'a str> {
+    args.get(name)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
+fn run_op(state: &mut State, op: &str, args: &Value) -> Result<Value, String> {
+    match op {
+        "import" => op_import(state, args),
+        "forget" => op_forget(state, args),
+        "list" => Ok(op_list(state)),
+        "master" => op_master(state, args),
+        "msg.send" => op_send(state, args),
+        "msg.inbox" => op_inbox(state, args),
+        "msg.log" => op_log(state, args),
+        other => Err(format!("unknown swarm op {other:?}")),
+    }
+}
+
+fn op_import(state: &mut State, args: &Value) -> Result<Value, String> {
+    let root = arg(args, "root").ok_or("missing root")?;
+    let root = std::fs::canonicalize(root).map_err(|err| format!("{root}: {err}"))?;
+    let swarm = Swarm::load(&root)?;
+    if let Some(other) = state
+        .swarms
+        .iter()
+        .find(|s| s.slug == swarm.slug && s.root != root)
+    {
+        return Err(format!(
+            "swarm {:?} is already registered at {}",
+            swarm.slug,
+            other.root.display()
+        ));
+    }
+    let mut roots = read_registry(&state.registry_path);
+    if !roots.contains(&root) {
+        roots.push(root.clone());
+        write_registry(&state.registry_path, &roots)?;
+    }
+    state.reload();
+    state.rebuild_queues();
+    Ok(json!({ "swarm": swarm_json(state, state.swarm(&swarm.slug).ok_or("import failed")?) }))
+}
+
+fn op_forget(state: &mut State, args: &Value) -> Result<Value, String> {
+    let slug = arg(args, "slug").ok_or("missing slug")?;
+    let root = state
+        .swarm(slug)
+        .map(|swarm| swarm.root.clone())
+        .ok_or(format!("no swarm {slug:?}"))?;
+    let roots: Vec<PathBuf> = read_registry(&state.registry_path)
+        .into_iter()
+        .filter(|r| *r != root)
+        .collect();
+    write_registry(&state.registry_path, &roots)?;
+    state.reload();
+    state.queues.retain(|(queue_slug, _), _| queue_slug != slug);
+    Ok(json!({ "forgotten": slug }))
+}
+
+fn status_str(status: AgentStatus) -> &'static str {
+    match status {
+        AgentStatus::Idle => "idle",
+        AgentStatus::Working => "working",
+        AgentStatus::Blocked => "blocked",
+        AgentStatus::Done => "done",
+        AgentStatus::Unknown => "unknown",
+    }
+}
+
+fn swarm_json(state: &State, swarm: &Swarm) -> Value {
+    let agents: Vec<Value> = swarm
+        .agents
+        .iter()
+        .map(|agent| {
+            let live = state.live(agent);
+            let queued = state.queues.get(&(swarm.slug.clone(), agent.key.clone())).map_or(0, Vec::len);
+            json!({
+                "key": agent.key,
+                "role": agent.role.as_str(),
+                "herdr_name": agent.herdr_name,
+                "model": agent.model,
+                "pane_id": live.map(|l| l.pane_id.clone()).or_else(|| agent.pane_id.clone()),
+                "status": live.map_or(if agent.role == Role::Script { "script" } else { "gone" }, |l| status_str(l.status)),
+                "queued": queued,
+            })
+        })
+        .collect();
+    json!({ "slug": swarm.slug, "root": swarm.root, "agents": agents })
+}
+
+fn op_list(state: &State) -> Value {
+    json!({ "swarms": state.swarms.iter().map(|swarm| swarm_json(state, swarm)).collect::<Vec<_>>() })
+}
+
+/// Who is calling: explicit `from`, else the agent running in `from_pane`, else the human.
+fn identify(state: &State, args: &Value) -> Result<Sender, String> {
+    if let Some(from) = arg(args, "from") {
+        if from == bus::HUMAN {
+            return Ok(Sender::human());
+        }
+        let (slug, key) = from
+            .split_once('/')
+            .ok_or("--from must be <swarm>/<agent> or human")?;
+        let swarm = state.swarm(slug).ok_or(format!("no swarm {slug:?}"))?;
+        let agent = swarm
+            .agent(key)
+            .ok_or(format!("swarm {slug:?} has no agent {key:?}"))?;
+        return Ok(Sender {
+            swarm: Some(slug.into()),
+            key: agent.key.clone(),
+            role: Some(agent.role),
+        });
+    }
+    if let Some((swarm, agent)) = arg(args, "from_pane").and_then(|pane| state.agent_in_pane(pane))
+    {
+        return Ok(Sender {
+            swarm: Some(swarm.slug.clone()),
+            key: agent.key.clone(),
+            role: Some(agent.role),
+        });
+    }
+    Ok(Sender::human())
+}
+
+fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
+    let to = arg(args, "to").ok_or("missing to")?;
+    let text = arg(args, "text").ok_or("missing text")?;
+    let kind = match arg(args, "kind") {
+        Some(kind) => Kind::parse(kind).ok_or(format!("unknown kind {kind:?}"))?,
+        None => Kind::Normal,
+    };
+    let sender = identify(state, args)?;
+    let default_swarm = arg(args, "swarm")
+        .map(str::to_string)
+        .or_else(|| sender.swarm.clone());
+    let recipients = bus::resolve(to, &sender, default_swarm.as_deref(), &state.swarms)?;
+    if state.rate_limited(&sender.label()) {
+        return Err(format!(
+            "{} is sending too fast ({RATE_LIMIT}/min); slow down",
+            sender.label()
+        ));
+    }
+    let ts = now_ms();
+    let mut sent = Vec::new();
+    for (slug, key) in recipients {
+        let msg = Message {
+            id: state.next_id(),
+            ts,
+            from: sender.label(),
+            swarm: slug.clone(),
+            to: key.clone(),
+            addressed: to.to_string(),
+            kind,
+            text: text.to_string(),
+            reply_to: arg(args, "reply_to").map(str::to_string),
+            copy: false,
+        };
+        sent.push(
+            json!({ "id": msg.id, "to": slug.map_or(key.clone(), |s| format!("{s}/{key}")) }),
+        );
+        state.post(msg)?;
+    }
+    Ok(json!({ "from": sender.label(), "sent": sent }))
+}
+
+/// Pulled messages count as delivered, so they aren't typed into the pane later.
+fn op_inbox(state: &mut State, args: &Value) -> Result<Value, String> {
+    let who = match arg(args, "agent") {
+        Some(agent) => {
+            let from = if agent.contains('/') {
+                agent.to_string()
+            } else {
+                let slug = arg(args, "swarm").ok_or("--agent needs --swarm or <swarm>/<agent>")?;
+                format!("{slug}/{agent}")
+            };
+            identify(state, &json!({ "from": from }))?
+        }
+        None => identify(state, args)?,
+    };
+    let Some(slug) = who.swarm.clone() else {
+        return Err("not inside a swarm pane; use --agent <swarm>/<agent>".into());
+    };
+    let swarm = state.swarm(&slug).ok_or("swarm vanished")?.clone();
+    let records = bus::read_log(&swarm.bus_path());
+    let read: HashSet<&str> = records
+        .iter()
+        .filter_map(|r| match r {
+            Record::Read { id, .. } => Some(id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let show_all = args.get("all").and_then(Value::as_bool).unwrap_or(false);
+    let mine: Vec<&Message> = records
+        .iter()
+        .filter_map(|r| match r {
+            Record::Msg(msg)
+                if !msg.copy
+                    && msg.to == who.key
+                    && msg.swarm.as_deref() == Some(slug.as_str()) =>
+            {
+                Some(msg)
+            }
+            _ => None,
+        })
+        .filter(|msg| show_all || !read.contains(msg.id.as_str()))
+        .collect();
+    let mine: Vec<&Message> = mine.into_iter().rev().take(50).rev().collect();
+
+    let ts = now_ms();
+    let queue_key = (slug.clone(), who.key.clone());
+    let queued: HashSet<String> = state
+        .queues
+        .get(&queue_key)
+        .map(|q| q.iter().map(|m| m.id.clone()).collect())
+        .unwrap_or_default();
+    let mut receipts = Vec::new();
+    for msg in &mine {
+        if queued.contains(&msg.id) {
+            receipts.push(Record::Delivered {
+                id: msg.id.clone(),
+                to: who.key.clone(),
+                ts,
+                batch: 0,
+            });
+        }
+        if !read.contains(msg.id.as_str()) {
+            receipts.push(Record::Read {
+                id: msg.id.clone(),
+                to: who.key.clone(),
+                ts,
+            });
+        }
+    }
+    bus::append(&swarm.bus_path(), &receipts).map_err(|err| err.to_string())?;
+    if let Some(queue) = state.queues.get_mut(&queue_key) {
+        queue.retain(|msg| !mine.iter().any(|m| m.id == msg.id));
+    }
+    Ok(json!({ "agent": who.label(), "messages": mine }))
+}
+
+fn op_log(state: &State, args: &Value) -> Result<Value, String> {
+    let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(30) as usize;
+    let swarms: Vec<&Swarm> = match arg(args, "swarm") {
+        Some(slug) => vec![state.swarm(slug).ok_or(format!("no swarm {slug:?}"))?],
+        None => state.swarms.iter().collect(),
+    };
+    let mut records: Vec<(u64, Value)> = Vec::new();
+    for swarm in swarms {
+        for record in bus::read_log(&swarm.bus_path()) {
+            let ts = match &record {
+                Record::Msg(msg) => msg.ts,
+                Record::Delivered { ts, .. }
+                | Record::Read { ts, .. }
+                | Record::Held { ts, .. } => *ts,
+            };
+            let mut value = serde_json::to_value(&record).unwrap_or(Value::Null);
+            if let Some(object) = value.as_object_mut() {
+                object.insert("log".into(), json!(swarm.slug));
+            }
+            records.push((ts, value));
+        }
+    }
+    records.sort_by_key(|(ts, _)| *ts);
+    let skip = records.len().saturating_sub(limit);
+    Ok(json!({ "records": records.into_iter().skip(skip).map(|(_, v)| v).collect::<Vec<_>>() }))
+}
+
+fn op_master(state: &State, args: &Value) -> Result<Value, String> {
+    let slug = match arg(args, "swarm") {
+        Some(slug) => slug.to_string(),
+        None => match arg(args, "from_pane").and_then(|pane| state.agent_in_pane(pane)) {
+            Some((swarm, _)) => swarm.slug.clone(),
+            None if state.swarms.len() == 1 => state.swarms[0].slug.clone(),
+            None => return Err("which swarm? pass a swarm slug".into()),
+        },
+    };
+    let swarm = state.swarm(&slug).ok_or(format!("no swarm {slug:?}"))?;
+    let master = swarm
+        .master()
+        .ok_or(format!("swarm {slug:?} has no master"))?;
+    let pane = state.live(master).map(|live| live.pane_id.clone());
+    Ok(
+        json!({ "swarm": slug, "key": master.key, "herdr_name": master.herdr_name, "pane_id": pane }),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_swarm(slug: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("hiver-engine-{slug}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".swarm")).unwrap();
+        std::fs::write(
+            root.join(".swarm/agents.json"),
+            json!({
+                "slug": slug,
+                "coordinator": format!("{slug}-coordinator"),
+                "agents": {
+                    "scout": {"herdr_name": format!("{slug}-scout"), "pane_id": "w1:p2"},
+                    "critic": {"herdr_name": format!("{slug}-critic")}
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        root
+    }
+
+    fn state_with(roots: &[&Path]) -> State {
+        let registry = std::env::temp_dir().join(format!(
+            "hiver-registry-{}-{}.json",
+            std::process::id(),
+            roots.len()
+        ));
+        write_registry(
+            &registry,
+            &roots.iter().map(|r| r.to_path_buf()).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let mut state = State {
+            registry_path: registry,
+            ..State::default()
+        };
+        state.reload();
+        state.rebuild_queues();
+        state
+    }
+
+    fn info(name: &str, pane: &str, status: AgentStatus) -> AgentInfo {
+        serde_json::from_value(json!({
+            "terminal_id": format!("t-{pane}"), "name": name, "agent_status": status,
+            "workspace_id": "w1", "tab_id": "w1:t1", "pane_id": pane, "focused": false, "revision": 1
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn send_queues_until_idle_then_delivers_one_digest_and_survives_restart() {
+        let root = temp_swarm("eng");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![
+            info("eng-coordinator", "w1:p1", AgentStatus::Idle),
+            info("eng-scout", "w1:p2", AgentStatus::Working),
+        ]);
+        // Coordinator (pane p1) sends two messages to the working scout.
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "scout", "text": "one", "from_pane": "w1:p1"}),
+        )
+        .unwrap();
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "scout", "text": "fyi", "kind": "fyi", "from_pane": "w1:p1"}),
+        )
+        .unwrap();
+        assert!(plan_deliveries(&mut state).is_empty(), "held while working");
+
+        // A restarted engine rebuilds the same queue from bus.jsonl.
+        let mut restarted = state_with(&[&root]);
+        assert_eq!(
+            restarted.queues[&("eng".to_string(), "scout".to_string())].len(),
+            2
+        );
+
+        // Scout goes idle: after the settle time, one digest carries both.
+        restarted.update_live(vec![info("eng-scout", "w1:p2", AgentStatus::Idle)]);
+        restarted.live_by_name.get_mut("eng-scout").unwrap().since -=
+            Duration::from_millis(bus::IDLE_SETTLE_MS);
+        let deliveries = plan_deliveries(&mut restarted);
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].target, "eng-scout");
+        assert!(
+            deliveries[0].text.contains("from coordinator") && deliveries[0].text.contains("FYI"),
+            "{}",
+            deliveries[0].text
+        );
+        confirm_delivery(&mut restarted, &deliveries[0]);
+        assert!(restarted.queues[&("eng".to_string(), "scout".to_string())].is_empty());
+        assert!(
+            state_with(&[&root]).queues.values().all(Vec::is_empty),
+            "delivery is recorded"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn blocked_target_escalates_to_master_once() {
+        let root = temp_swarm("blk");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![
+            info("blk-coordinator", "w1:p1", AgentStatus::Working),
+            info("blk-scout", "w1:p2", AgentStatus::Blocked),
+        ]);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "blk/scout", "text": "go"}),
+        )
+        .unwrap();
+        assert!(plan_deliveries(&mut state).is_empty());
+        let master_queue = &state.queues[&("blk".to_string(), "coordinator".to_string())];
+        assert_eq!(master_queue.len(), 1);
+        assert!(
+            master_queue[0].text.starts_with("scout is blocked"),
+            "{}",
+            master_queue[0].text
+        );
+        plan_deliveries(&mut state);
+        assert_eq!(
+            state.queues[&("blk".to_string(), "coordinator".to_string())].len(),
+            1,
+            "only once"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn inbox_pull_marks_read_and_cancels_pending_delivery() {
+        let root = temp_swarm("inb");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![info("inb-scout", "w1:p2", AgentStatus::Working)]);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "inb/scout", "text": "hello"}),
+        )
+        .unwrap();
+        let inbox = run_op(&mut state, "msg.inbox", &json!({"from_pane": "w1:p2"})).unwrap();
+        assert_eq!(inbox["messages"].as_array().unwrap().len(), 1);
+        assert!(state.queues[&("inb".to_string(), "scout".to_string())].is_empty());
+        let again = run_op(&mut state, "msg.inbox", &json!({"from_pane": "w1:p2"})).unwrap();
+        assert!(
+            again["messages"].as_array().unwrap().is_empty(),
+            "read messages are not shown twice"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn master_to_master_is_logged_in_both_swarms() {
+        let a = temp_swarm("ma");
+        let b = temp_swarm("mb");
+        let mut state = state_with(&[&a, &b]);
+        state.update_live(vec![info("ma-coordinator", "w1:p1", AgentStatus::Idle)]);
+        let sent = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "@masters", "text": "sync", "from_pane": "w1:p1"}),
+        )
+        .unwrap();
+        assert_eq!(sent["sent"][0]["to"], "mb/coordinator");
+        let log = run_op(&mut state, "msg.log", &json!({"swarm": "ma"})).unwrap();
+        assert_eq!(log["records"][0]["copy"], true);
+        let worker = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "mb/scout", "text": "x", "from": "ma/scout"}),
+        );
+        assert!(worker.unwrap_err().contains("ask your master"));
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
+    }
+}

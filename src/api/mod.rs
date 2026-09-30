@@ -88,6 +88,15 @@ pub struct ApiRequestMessage {
 
 pub type ApiRequestSender = mpsc::UnboundedSender<ApiRequestMessage>;
 
+/// hiver: in-process API calls for the swarm engine.
+pub(crate) fn dispatch_internal(
+    request: Request,
+    api_tx: &ApiRequestSender,
+    timeout: Option<std::time::Duration>,
+) -> String {
+    server::dispatch_to_app_with_timeout(request, api_tx, timeout)
+}
+
 pub fn socket_path() -> PathBuf {
     crate::session::active_api_socket_path()
 }

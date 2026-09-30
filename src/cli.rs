@@ -36,6 +36,7 @@ mod server;
 mod server_not_running;
 mod spec;
 mod status;
+mod swarm; // hiver
 mod tab;
 mod target;
 mod workspace;
@@ -125,6 +126,8 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "tab" => tab::run_tab_command(&args[2..])?,
         "notification" => notification::run_notification_command(&args[2..])?,
         "agent" => agent::run_agent_command(&args[2..])?,
+        "swarm" => swarm::run_swarm_command(&args[2..])?, // hiver
+        "msg" => swarm::run_msg_command(&args[2..])?,     // hiver
         "terminal" => run_terminal_command(&args[2..])?,
         "pane" => pane::run_pane_command(&args[2..])?,
         "plugin" => plugin::run_plugin_command(&args[2..])?,

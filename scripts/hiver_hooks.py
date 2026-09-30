@@ -98,3 +98,65 @@ edit("src/update.rs",
      "        return;\n"
      "    }\n")
 print("p0 rename hooks applied")
+
+# ---------------------------------------------------------------------------
+# Swarm engine hooks (src/swarm)
+# ---------------------------------------------------------------------------
+edit("src/main.rs", "mod hiver;\n", "mod hiver;\nmod swarm;\n")
+edit("src/api/schema.rs",
+     '    #[serde(rename = "agent.view.set")]\n    AgentViewSet(AgentViewSetParams),\n',
+     '    // hiver: swarm engine (src/swarm); one variant keeps upstream rebases small.\n'
+     '    #[serde(rename = "swarm")]\n    Swarm(crate::swarm::SwarmParams),\n'
+     '    #[serde(rename = "agent.view.set")]\n    AgentViewSet(AgentViewSetParams),\n')
+edit("src/api/server.rs",
+     '        Method::AgentViewSet(_) => "agent.view.set",\n',
+     '        Method::Swarm(_) => "swarm", // hiver\n        Method::AgentViewSet(_) => "agent.view.set",\n')
+edit("src/api/server.rs",
+     "        method_body => {\n            let (response_write_tx, response_write_rx)",
+     "        // hiver: swarm ops are answered by the swarm engine, not the app state machine.\n"
+     "        Method::Swarm(params) => {\n"
+     "            let response = crate::swarm::handle_request(&request_id, &params);\n"
+     "            let result = write_text_line_allow_disconnect(&mut stream, &response);\n"
+     "            if result.is_ok() {\n"
+     "                crate::logging::api_request_completed(\n"
+     "                    &request_id,\n"
+     "                    method,\n"
+     "                    api_response_outcome(&response),\n"
+     "                    changes_ui,\n"
+     "                );\n"
+     "            }\n"
+     "            result\n"
+     "        }\n"
+     "        method_body => {\n            let (response_write_tx, response_write_rx)")
+edit("src/api/server.rs",
+     "    let running = Arc::new(AtomicBool::new(true));\n    let listener_running = Arc::clone(&running);\n",
+     "    let running = Arc::new(AtomicBool::new(true));\n"
+     "    #[cfg(not(test))]\n"
+     "    crate::swarm::start(api_tx.clone()); // hiver\n"
+     "    let listener_running = Arc::clone(&running);\n")
+edit("src/api/mod.rs",
+     "pub type ApiRequestSender = mpsc::UnboundedSender<ApiRequestMessage>;\n",
+     "pub type ApiRequestSender = mpsc::UnboundedSender<ApiRequestMessage>;\n\n"
+     "/// hiver: in-process API calls for the swarm engine.\n"
+     "pub(crate) fn dispatch_internal(\n"
+     "    request: Request,\n"
+     "    api_tx: &ApiRequestSender,\n"
+     "    timeout: Option<std::time::Duration>,\n"
+     ") -> String {\n"
+     "    server::dispatch_to_app_with_timeout(request, api_tx, timeout)\n"
+     "}\n")
+print("swarm engine hooks applied")
+
+# CLI: hiver swarm … / hiver msg …
+edit("src/cli.rs", '        "agent" => agent::run_agent_command(&args[2..])?,\n',
+     '        "agent" => agent::run_agent_command(&args[2..])?,\n'
+     '        "swarm" => swarm::run_swarm_command(&args[2..])?, // hiver\n'
+     '        "msg" => swarm::run_msg_command(&args[2..])?, // hiver\n')
+p = ROOT / "src/cli.rs"
+s = p.read_text()
+if "\nmod swarm;" not in s:
+    s, n = re.subn(r"^(mod status;\n)", r"\1mod swarm; // hiver\n", s, count=1, flags=re.M)
+    if n != 1:
+        raise SystemExit("src/cli.rs: mod list anchor not found")
+    p.write_text(s)
+print("cli hooks applied")

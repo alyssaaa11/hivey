@@ -117,6 +117,8 @@ fn start_server_inner(
     }
 
     let running = Arc::new(AtomicBool::new(true));
+    #[cfg(not(test))]
+    crate::swarm::start(api_tx.clone()); // hiver
     let listener_running = Arc::clone(&running);
     let thread = std::thread::spawn(move || {
         run_accept_loop(
@@ -453,6 +455,20 @@ fn handle_connection_with_stop(
                 wait_for_output(request_id.clone(), params, &mut stream, api_tx, running)?;
             finish_wait_response(&mut stream, response, &request_id, method, changes_ui)
         }
+        // hiver: swarm ops are answered by the swarm engine, not the app state machine.
+        Method::Swarm(params) => {
+            let response = crate::swarm::handle_request(&request_id, &params);
+            let result = write_text_line_allow_disconnect(&mut stream, &response);
+            if result.is_ok() {
+                crate::logging::api_request_completed(
+                    &request_id,
+                    method,
+                    api_response_outcome(&response),
+                    changes_ui,
+                );
+            }
+            result
+        }
         method_body => {
             let (response_write_tx, response_write_rx) = std::sync::mpsc::channel();
             let response = handle_request(
@@ -605,6 +621,7 @@ pub(crate) fn api_method_name(method: &Method) -> &'static str {
         Method::AgentExplain(_) => "agent.explain",
         Method::AgentSendKeys(_) => "agent.send_keys",
         Method::AgentRename(_) => "agent.rename",
+        Method::Swarm(_) => "swarm", // hiver
         Method::AgentViewSet(_) => "agent.view.set",
         Method::AgentViewClear(_) => "agent.view.clear",
         Method::AgentFocus(_) => "agent.focus",

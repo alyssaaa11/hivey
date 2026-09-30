@@ -4270,6 +4270,20 @@
             }
           ]
         },
+        "SwarmParams": {
+          "properties": {
+            "args": {
+              "default": null
+            },
+            "op": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "type": "object"
+        },
         "TabCreateParams": {
           "properties": {
             "cwd": {
@@ -5329,6 +5343,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/AgentRenameParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "swarm",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/SwarmParams"
             }
           },
           "required": [
