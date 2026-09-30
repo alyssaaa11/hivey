@@ -1,0 +1,396 @@
+//! `hiver swarm relaunch`: bring a swarm's agents (and addons) back after a restart.
+//!
+//! A hiver restart restores the layout, but agents without a resumable session come back as
+//! plain shells, and addon processes don't survive. Relaunch starts each missing agent in its
+//! pane again, continuing its previous Claude conversation when there is one (every agent has
+//! its own folder, so `claude --continue` picks the right conversation), and reopens addons.
+
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use serde_json::{json, Value};
+
+use super::{
+    agent_args, api, import, manifest_path, open_addons, save_manifest, split, start_agent, Addon,
+    Options, DEFAULT_CLAUDE_ARGS,
+};
+
+pub(in crate::cli::swarm) const HELP: &str = "\
+usage: hiver swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons] [--kickoff TEXT]
+         [--claude-args \"...\"]
+  Restarts the swarm's agents that aren't running (or the named ones, including the master)
+  in their panes, continuing each agent's previous Claude conversation (--fresh: start new),
+  and reopens addons whose pane is gone (--no-addons: leave them).";
+
+const RESUME_PROMPT: &str = "hiver restarted this swarm and you were relaunched. Catch up: \
+run `hiver msg inbox`, re-read the Status section of your CLAUDE.md, then continue from your \
+Next steps. Tell the coordinator you're back with `hiver msg send coordinator --fyi \"back\"`.";
+const FRESH_PROMPT: &str = "You were (re)started in a running swarm. Read your CLAUDE.md \
+carefully, including its Status section; if it shows earlier work you are resuming. Run \
+`hiver msg inbox`, then continue from your Next steps (or start your mission). Tell the \
+coordinator with `hiver msg send coordinator --fyi \"started\"`.";
+
+struct Request {
+    slug: String,
+    only: Vec<String>,
+    fresh: bool,
+    addons: bool,
+    kickoff: Option<String>,
+    claude_args: Option<Vec<String>>,
+}
+
+fn parse(args: &[String]) -> Result<Request, String> {
+    let mut request = Request {
+        slug: String::new(),
+        only: Vec::new(),
+        fresh: false,
+        addons: true,
+        kickoff: None,
+        claude_args: None,
+    };
+    let mut positional = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--fresh" => request.fresh = true,
+            "--no-addons" => request.addons = false,
+            "--kickoff" => {
+                request.kickoff = Some(iter.next().cloned().ok_or("missing value for --kickoff")?)
+            }
+            "--claude-args" => {
+                let line = iter.next().ok_or("missing value for --claude-args")?;
+                request.claude_args = Some(super::split_args(line));
+            }
+            flag if flag.starts_with("--") => return Err(format!("unknown flag {flag}")),
+            _ => positional.push(arg.clone()),
+        }
+    }
+    let mut positional = positional.into_iter();
+    request.slug = positional.next().ok_or("missing <swarm>")?;
+    request.only = positional.collect();
+    Ok(request)
+}
+
+/// Claude Code keeps transcripts per working directory in ~/.claude/projects/<mangled cwd>/.
+fn has_conversation(dir: &Path) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let mangled: String = dir
+        .to_string_lossy()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    std::fs::read_dir(
+        PathBuf::from(home)
+            .join(".claude")
+            .join("projects")
+            .join(mangled),
+    )
+    .map(|entries| {
+        entries
+            .flatten()
+            .any(|entry| entry.path().extension().is_some_and(|ext| ext == "jsonl"))
+    })
+    .unwrap_or(false)
+}
+
+/// A pane with no agent in it: the agent's recorded pane, else a shell in the swarm's space
+/// whose folder is the agent's home, else a new split.
+fn find_pane(
+    recorded: Option<&str>,
+    workspace: Option<&str>,
+    home: &Path,
+    beside: &str,
+) -> Result<String, String> {
+    let free = |pane: &Value| pane["agent"].is_null() && pane["agent_status"] != "working";
+    if let Some(pane) = recorded.and_then(|id| api("pane.get", json!({ "pane_id": id })).ok()) {
+        if free(&pane["pane"]) {
+            return Ok(pane["pane"]["pane_id"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string());
+        }
+    }
+    if let Some(workspace) = workspace {
+        let panes = api("pane.list", json!({ "workspace_id": workspace }))?;
+        let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+        let found = panes["panes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|pane| {
+                free(pane)
+                    && pane["cwd"]
+                        .as_str()
+                        .map(|cwd| {
+                            std::fs::canonicalize(cwd).unwrap_or_else(|_| PathBuf::from(cwd))
+                        })
+                        .is_some_and(|cwd| cwd == home)
+            });
+        if let Some(pane) = found {
+            return Ok(pane["pane_id"].as_str().unwrap_or_default().to_string());
+        }
+    }
+    split(beside, "down", home)
+}
+
+pub(in crate::cli::swarm) fn run(args: &[String]) -> std::io::Result<i32> {
+    let request = match parse(args) {
+        Ok(request) => request,
+        Err(err) => {
+            eprintln!("error: {err}\n{HELP}");
+            return Ok(2);
+        }
+    };
+    match relaunch(&request) {
+        Ok(0) => {
+            eprintln!("nothing to relaunch: every agent is running");
+            Ok(0)
+        }
+        Ok(_) => Ok(0),
+        Err(err) => {
+            eprintln!("error: {err}");
+            Ok(1)
+        }
+    }
+}
+
+fn relaunch(request: &Request) -> Result<usize, String> {
+    let list = super::super::call("list", json!({})).map_err(|err| err.to_string())?;
+    let swarm = list["result"]["swarms"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|swarm| swarm["slug"] == request.slug.as_str())
+        .cloned()
+        .ok_or_else(|| format!("no swarm {:?} (hiver swarm list)", request.slug))?;
+    let root = PathBuf::from(swarm["root"].as_str().unwrap_or_default());
+    let mut manifest: Value = std::fs::read_to_string(manifest_path(&root))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .ok_or_else(|| format!("cannot read {}", manifest_path(&root).display()))?;
+    let agents: Vec<Value> = swarm["agents"].as_array().cloned().unwrap_or_default();
+    for name in &request.only {
+        if !agents.iter().any(|agent| agent["key"] == name.as_str()) {
+            return Err(format!("swarm {:?} has no agent {name:?}", request.slug));
+        }
+    }
+    let targets: Vec<&Value> = agents
+        .iter()
+        .filter(|agent| agent["role"] != "script")
+        .filter(|agent| {
+            let key = agent["key"].as_str().unwrap_or_default();
+            if request.only.is_empty() {
+                // The master is the user's own session: only relaunched when named.
+                agent["role"] != "master" && agent["status"] == "gone"
+            } else {
+                request.only.iter().any(|name| name == key)
+            }
+        })
+        .collect();
+
+    // Where new panes go: beside any live pane of the swarm, else its recorded master pane.
+    let workspace = manifest["workspace_id"].as_str().map(str::to_string);
+    let beside = agents
+        .iter()
+        .filter(|agent| agent["status"] != "gone")
+        .filter_map(|agent| agent["pane_id"].as_str())
+        .next()
+        .or(manifest["coordinator_pane_id"].as_str())
+        .map(str::to_string)
+        .ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hiver swarm launch`")?;
+
+    let claude_args = request.claude_args.clone().unwrap_or_else(|| {
+        manifest["claude_args"]
+            .as_array()
+            .map(|args| {
+                args.iter()
+                    .filter_map(|a| a.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_else(|| super::split_args(DEFAULT_CLAUDE_ARGS))
+    });
+    let models: BTreeMap<String, String> = agents
+        .iter()
+        .filter_map(|agent| {
+            Some((
+                agent["key"].as_str()?.to_string(),
+                agent["model"].as_str()?.to_string(),
+            ))
+        })
+        .collect();
+    let opts = Options {
+        root: root.clone(),
+        slug: request.slug.clone(),
+        agents: Vec::new(),
+        channel: None,
+        models,
+        claude_args,
+        kickoff: String::new(),
+        budget_min: None,
+        master_pane: None,
+        move_master: false,
+        addons: Vec::new(),
+    };
+
+    let mut relaunched = 0;
+    for agent in targets {
+        let key = agent["key"].as_str().unwrap_or_default();
+        let is_master = agent["role"] == "master";
+        let name = agent["herdr_name"]
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{}-{key}", request.slug));
+        let home = if is_master {
+            // The coordinator works from where it was launched.
+            manifest["launch_dir"]
+                .as_str()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| root.clone())
+        } else {
+            root.join(key)
+        };
+        let recorded = if is_master {
+            manifest["coordinator_pane_id"].as_str()
+        } else {
+            manifest["agents"][key]["pane_id"].as_str()
+        };
+        let pane = match find_pane(recorded, workspace.as_deref(), &home, &beside) {
+            Ok(pane) => pane,
+            Err(err) => {
+                eprintln!("  {name}: no pane ({err})");
+                continue;
+            }
+        };
+        let mut args = agent_args(&opts, &root, key);
+        let resume = !request.fresh && has_conversation(&home);
+        if resume {
+            args.push("--continue".into());
+        }
+        let status = start_agent(&name, &pane, &args);
+        let status = if status == "ready" {
+            let prompt = request
+                .kickoff
+                .clone()
+                .unwrap_or_else(|| (if resume { RESUME_PROMPT } else { FRESH_PROMPT }).to_string());
+            let _ = api("agent.prompt", json!({ "target": name, "text": prompt }));
+            if resume { "resumed" } else { "restarted" }.to_string()
+        } else {
+            status
+        };
+        eprintln!("  {name}: {status} in {pane}");
+        if is_master {
+            manifest["coordinator_pane_id"] = json!(pane);
+        } else if manifest["agents"][key].is_object() {
+            manifest["agents"][key]["pane_id"] = json!(pane);
+            manifest["agents"][key]["status"] = json!(status);
+        }
+        relaunched += 1;
+    }
+
+    if request.addons {
+        relaunched += reopen_addons(&mut manifest, &request.slug, &root, &beside);
+    }
+    save_manifest(&root, &manifest)?;
+    import(&root)?;
+    Ok(relaunched)
+}
+
+/// A restart restores an addon's pane as a bare shell: the addon is alive only if something
+/// other than a shell runs in the foreground.
+fn runs_a_program(pane: &str) -> bool {
+    const SHELLS: &[&str] = &["zsh", "bash", "sh", "fish", "dash", "nu", "tcsh", "ksh"];
+    api("pane.process_info", json!({ "pane_id": pane }))
+        .ok()
+        .and_then(|info| {
+            info["process_info"]["foreground_processes"]
+                .as_array()
+                .cloned()
+        })
+        .is_some_and(|processes| {
+            processes.iter().any(|process| {
+                let name = process["name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .trim_start_matches('-');
+                !name.is_empty() && !SHELLS.contains(&name)
+            })
+        })
+}
+
+/// Reopens recorded addons whose pane no longer runs them (gone after a restart).
+fn reopen_addons(manifest: &mut Value, slug: &str, root: &Path, beside: &str) -> usize {
+    let recorded: Vec<Value> = manifest["addons"].as_array().cloned().unwrap_or_default();
+    let (alive, dead): (Vec<Value>, Vec<Value>) = recorded
+        .into_iter()
+        .partition(|addon| addon["pane_id"].as_str().is_some_and(runs_a_program));
+    if dead.is_empty() {
+        return 0;
+    }
+    // A pane that survived a restart as a plain shell is closed and replaced.
+    for addon in &dead {
+        if let Some(pane) = addon["pane_id"].as_str() {
+            let _ = api("pane.close", json!({ "pane_id": pane }));
+        }
+    }
+    let specs: Vec<Addon> = dead
+        .iter()
+        .filter_map(|addon| {
+            Some((
+                addon["plugin"].as_str()?.to_string(),
+                addon["entrypoint"].as_str().map(str::to_string),
+            ))
+        })
+        .collect();
+    let channel = manifest["channel_id"].as_str().unwrap_or("").to_string();
+    let opened = open_addons(&specs, slug, root, &channel, beside);
+    let count = opened.len();
+    let mut all = alive;
+    all.extend(opened);
+    manifest["addons"] = json!(all);
+    count
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_relaunch_arguments() {
+        let request =
+            parse(&["app", "scout", "critic", "--fresh", "--no-addons"].map(String::from)).unwrap();
+        assert_eq!(request.slug, "app");
+        assert_eq!(request.only, ["scout", "critic"]);
+        assert!(request.fresh && !request.addons);
+        assert!(parse(&[]).is_err());
+        assert!(parse(&["app", "--bogus"].map(String::from)).is_err());
+    }
+
+    #[test]
+    fn finds_claude_conversations_by_mangled_folder() {
+        let home = std::env::temp_dir().join(format!("hiver-relaunch-home-{}", std::process::id()));
+        let work = std::env::temp_dir().join(format!("hiver_relaunch.work-{}", std::process::id()));
+        std::fs::create_dir_all(&work).unwrap();
+        let canonical = std::fs::canonicalize(&work).unwrap();
+        let mangled: String = canonical
+            .to_string_lossy()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        let project = home.join(".claude/projects").join(mangled);
+        std::fs::create_dir_all(&project).unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        assert!(!has_conversation(&work));
+        std::fs::write(project.join("abc.jsonl"), "{}\n").unwrap();
+        assert!(has_conversation(&work));
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::remove_dir_all(&work);
+    }
+}

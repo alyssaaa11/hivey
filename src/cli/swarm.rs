@@ -13,6 +13,7 @@ const SWARM_HELP: &str = "\
 hiver swarm commands:
   hiver swarm launch <root> --slug S <agent>...  start a swarm in its own space (see --help)
   hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
+  hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
   hiver swarm import <root>          register a swarm folder (<root>/.swarm/agents.json)
   hiver swarm list [--json]          swarms, agents, roles, states and queued messages
   hiver swarm master [<slug>] [--focus]
@@ -187,6 +188,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
         }
         Some("launch") => launch::run(&args[1..]),
         Some("addon") => launch::run_addon(&args[1..]),
+        Some("relaunch") => launch::relaunch::run(&args[1..]),
         Some("pick") => pick_master(),
         Some("install-keys") => install_keys(),
         Some("help" | "--help" | "-h") => {

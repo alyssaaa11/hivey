@@ -14,6 +14,8 @@ use serde_json::{json, Value};
 
 use super::{api, canonical_pane_id};
 
+pub(super) mod relaunch;
+
 const DEFAULT_CLAUDE_ARGS: &str = "--chrome --dangerously-skip-permissions --model opus";
 const DEFAULT_KICKOFF: &str =
     "Read your CLAUDE.md carefully, then read the swarm wiki it points to \
@@ -598,6 +600,7 @@ fn new_manifest(
         ),
         ("budget_minutes", json!(opts.budget_min)),
         ("launch_dir", json!(std::env::current_dir().ok())),
+        ("claude_args", json!(opts.claude_args)),
     ] {
         manifest[key] = value;
     }
