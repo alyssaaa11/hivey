@@ -1,64 +1,47 @@
 # hiver — status (2026-09-30)
 
-Design: [`hiver-design.md`](hiver-design.md). Repo: `github.com/jcsancho/hiver` (private). Local: `~/projects/swarmAgents/hiver`.
-Remotes: `origin` = hiver, `upstream` = herdrdev/herdr (push disabled).
+Design: [`hiver-design.md`](hiver-design.md) · Fork rules: [`../HIVER.md`](../HIVER.md)
+Repo: `github.com/jcsancho/hiver` (private) · Local: `~/projects/swarmAgents/hiver` · Binary: `~/.local/bin/hiver`
 
-## Done
+## Done (all on `main`, 3,729 tests passing)
 
-### P0 — fork (committed and pushed: `9265f795`)
-- Binary `hiver`, own config/socket/session dirs (`~/.config/hiver`), so it runs **side by side with herdr**.
-- Panes get `HIVER_ENV=1` and keep `HERDR_*` vars, so `herdr agent prompt`, the swarm scripts and Claude hooks still work inside hiver panes.
-- hiver started from a herdr pane drops the inherited `HERDR_*` vars (verified both ways).
-- Self-update and herdr.dev release checks disabled.
-- NOTICE, README header, design doc.
-- **All 3,699 upstream tests pass** (`cargo nextest run`).
-- Build needs Zig 0.16.0 (`brew install zig`) and cargo-nextest (`brew install cargo-nextest`); both installed.
-
-### Message bus + swarm engine (written, builds, **NOT committed**)
-Covers the four gaps in herdr's `agent prompt`:
-
-| Gap | What's implemented |
+| Commit | What |
 |---|---|
-| Timing | Normal messages are held until the target has been idle for 3 s. `--urgent` delivers right away but never types into a blocked dialog. `--fyi` never wakes anyone. |
-| Queue / inbox | Per-agent queues are rebuilt from `.swarm/bus.jsonl` after a restart. Blocked or gone targets: messages are held and the master is told once. Queued messages go out as **one digest prompt**. `hiver msg inbox` pulls messages and cancels their pending delivery. |
-| Addressing | `scout`, `app-ideas-scout`, `master`, `@all`, `@role:worker\|critic\|master`, `@masters`, `<swarm>/<agent>`, `human`. Only masters and the human can message another swarm. Scripts are excluded. Rate limit: 30 messages/min per sender. |
-| Record | Every message plus delivered/read/held receipts goes to `<root>/.swarm/bus.jsonl`. Cross-swarm messages are logged in both swarms. `hiver msg log`. |
+| `9265f795` | **Fork.** `hiver` binary, own config/socket (`~/.config/hiver`), runs side by side with herdr, no self-update. |
+| `2c16ccac` | **Message bus + swarm engine.** Delivery when idle, `--fyi` never wakes, `--urgent` now (never into a dialog), per-agent queue rebuilt after restart, one digest per wake-up, blocked/gone targets escalated to the master, `@all` / `@role:` / `@masters` / `<swarm>/<agent>` / `human`, full log in `.swarm/bus.jsonl`. |
+| `64212901` | **Live-test fixes.** Stops agent↔agent ping-pong (footer asks for replies only when needed; a pair may wake each other 6×/5 min, further messages become FYI). The master is told once per blocked episode. |
+| `a3bcc86b` | **Swarm tree** in the Agents panel. Master first; a collapsed swarm shows its master plus agents that need attention; counters `●working/total ⚠attention ✉queued`. Clicking a header focuses that swarm's master and shows its panes. Client-only, no protocol change. |
+| `bf6f4204` | **Role-colored pane titles** (`◆ coordinator · app-ideas · opus` in gold, workers blue, critic purple). **Keys:** `prefix+m` jump to master, `prefix+shift+m` pick a swarm, `prefix+a` send a message, `prefix+i` message log (`hiver swarm install-keys`). |
+| `2e683c95` | **`hiver swarm launch`.** Same arguments and manifest as `launch_swarm.py`; the calling pane (master) moves into a new space named after the swarm as pane 1, workers are tiled beside it, the swarm is registered. Pane identity survives the move. |
 
-Also:
-- Pane titles/borders: `◆ coordinator · app-ideas · opus · ✉2`, plus pane tokens `role`, `swarm`, `queued` for sidebar rules.
-- The engine sits idle when no swarm is registered.
+Verified live with real Claude (Haiku) agents via `scripts/live_smoke.sh`, and a hiver client read through a herdr pane:
+- delivery timing, digests, blocked hold + escalation
+- ping-pong fix
+- tree rendering + clicks
+- all four keys
+- launch into its own space
 
-Files:
-- `src/swarm/{mod,model,bus,engine}.rs` — roster, bus logic, the server thread (an internal API client: `agent.list`, `agent.prompt`, `pane.report_metadata`).
-- `src/cli/swarm.rs` — `hiver swarm import|list|master [--focus]|forget` and `hiver msg send|inbox|log`.
-- Core hooks: one `Method::Swarm` variant, handling in `api/server.rs`, engine start, `api::dispatch_internal`, CLI dispatch. All of them are reapplied by `scripts/hiver_hooks.py` (idempotent, for upstream rebases).
+## Known limitations
+- **Restart:** after a hiver server restart, agents that never received a prompt come back as plain shells (herdr only resumes Claude sessions that exist). Needs `hiver swarm relaunch`.
+- Scripts (the Slack relay) aren't agents, so they don't appear in the tree; their pane title still shows `▷`.
+- The tree only renders in the single-machine sidebar (the multi-SSH-machine sidebar still shows the flat list).
+- The onboarding dialog and some help texts still say "herdr".
+- `launch` doesn't start the Slack relay or dashboard; the skill still does.
 
-Tests: 18 of 19 new swarm tests pass. Failing: `swarm::bus::tests::role_addressing_selects_by_role`. The test data is the likely cause, not the code: `serde_json::Map` sorts keys, so recipients come back as `analyst, scout`, not the expected `scout, analyst`.
+## Next steps
+1. **`/swarm` skill switch-over (needs your OK: it edits `~/.claude/skills/swarm`).** When `HIVER_ENV=1`:
+   - `launch_swarm.py` calls `hiver swarm launch`
+   - agent CLAUDE.md templates say `hiver msg send` instead of Slack for agent↔agent
+   - the relay only bridges Slack
+2. **`hiver swarm relaunch [<agent>]`:** restart gone agents in their panes with their briefs (fixes the restart limitation).
+3. **Slack bridge** as the only Slack path: mirror the bus to `#swarm-<slug>` (masters-only by default), Slack `@agent` → bus.
+4. **Whiteboard** (`hiver task …` compatible with `swarm_tasks.py`, kanban panel), then the built-in supervisor (idle/stall/budget) to retire `swarm_relay.py`.
+5. Weekly upstream rebase job (`scripts/hiver_hooks.py` + nextest).
 
-## Missing
-
-1. **Fix that test** (compare sorted), run the full suite, commit and push the engine.
-2. **Live test with real Claude panes.** Import `~/swarms/apps_ideas`, then check:
-   - multi-line digests paste and submit correctly through `agent.prompt`
-   - the 3 s idle settle is long enough
-   - escalation messages reach the master
-3. **Tree sidebar** (P1 UI). Nothing written yet. It's client-side (`src/client/shell/sidebar.rs`, `endpoint_sidebar.rs`); follow CLAUDE.md's endpoint-contract rules and add *optional* fields/new codecs only.
-   - Interim option without code: `[ui.sidebar.agents]` rules on `$role`/`$queued`, plus `agent.view.set` filtered to `role=master` or blocked/done.
-4. **Role-colored pane borders** (`src/ui/panes.rs`; today only the focus accent is used).
-5. **Keys:**
-   - `prefix m`: jump to master (`hiver swarm master --focus` already works from the CLI)
-   - `prefix 1..9`: jump to the master of swarm N
-   - `prefix s`: send-message popup
-   - `prefix w`: whiteboard
-6. **`hiver swarm launch`** (P2): one space per swarm, master in pane 1, create agent folders, start the agents; replaces `launch_swarm.py`.
-7. **Slack bridge plugin** (P3 remainder): mirror the bus to `#swarm-<slug>` (default scope: masters only) and turn Slack `@agent` messages into bus sends.
-8. **Whiteboard** (P4): `hiver task …` compatible with `swarm_tasks.py`, notes, kanban panel.
-9. **Supervisor** (P5): idle/stall/budget alerts and token usage built in; retire `swarm_relay.py`.
-10. **`/swarm` skill** (P6): use `hiver` when `HIVER_ENV=1`, and tell agents to talk via `hiver msg send` instead of Slack.
-11. Weekly upstream rebase job (CI) running `scripts/hiver_hooks.py` + nextest.
-
-## Next steps (in order)
-1. Fix the test → `cargo nextest run` → commit and push the engine.
-2. Install the binary (`cp target/release/hiver ~/.local/bin/`), start `hiver` in a new terminal, run `hiver swarm import ~/swarms/apps_ideas`, and test `hiver msg send` against real agents.
-3. Interim sidebar config (masters-only Agent view + role colors), then the native tree sidebar.
-4. `hiver swarm launch` and the `/swarm` skill switch-over.
+## Try it
+```bash
+hiver                                   # start (separate from herdr)
+hiver swarm install-keys                # prefix+m / prefix+shift+m / prefix+a / prefix+i
+hiver swarm import ~/swarms/<name>      # adopt an existing /swarm folder
+hiver msg send <swarm>/coordinator "…"  # talk to a master
+```
