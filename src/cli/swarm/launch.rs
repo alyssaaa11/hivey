@@ -22,7 +22,7 @@ Status section shows earlier work, you are resuming: open the files it lists, ca
 `hiver msg inbox` and the Slack channel, post RESUMED, and continue from Next steps. Otherwise \
 announce yourself (command in CLAUDE.md) and start your mission. Keep the Status section current \
 as you work.";
-/// Pane entrypoint an addon plugin declares when `--addon` names no other.
+/// Entrypoint used when `--addon` names none and the plugin declares no pane.
 const ADDON_ENTRYPOINT: &str = "relay";
 /// Workers stay silent; only the coordinator speaks (AGENTS Stop hook).
 const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
@@ -49,8 +49,9 @@ struct Options {
     budget_min: Option<u64>,
     master_pane: Option<String>,
     move_master: bool,
-    /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays).
-    addons: Vec<(String, String)>,
+    /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays);
+    /// no entrypoint means the plugin's first pane.
+    addons: Vec<Addon>,
 }
 
 fn valid_name(name: &str) -> bool {
@@ -89,15 +90,37 @@ fn split_args(line: &str) -> Vec<String> {
     args
 }
 
-/// `plugin.id` or `plugin.id:entrypoint`; the entrypoint defaults to `relay`.
-fn parse_addon(spec: &str) -> Result<(String, String), String> {
-    let (plugin, entry) = spec.split_once(':').unwrap_or((spec, ADDON_ENTRYPOINT));
-    if plugin.is_empty() || entry.is_empty() {
+type Addon = (String, Option<String>);
+
+/// `plugin.id` or `plugin.id:entrypoint`.
+fn parse_addon(spec: &str) -> Result<Addon, String> {
+    let (plugin, entry) = match spec.split_once(':') {
+        Some((plugin, entry)) => (plugin, Some(entry)),
+        None => (spec, None),
+    };
+    if plugin.is_empty() || entry.is_some_and(str::is_empty) {
         return Err(format!(
-            "--addon {spec:?}: expected <plugin-id>[:<entrypoint>]"
+            "addon {spec:?}: expected <plugin-id>[:<entrypoint>]"
         ));
     }
-    Ok((plugin.to_string(), entry.to_string()))
+    Ok((plugin.to_string(), entry.map(str::to_string)))
+}
+
+/// The plugin's first declared pane, else `relay`.
+fn default_entrypoint(plugin: &str) -> String {
+    api("plugin.list", json!({}))
+        .ok()
+        .and_then(|list| {
+            list["plugins"]
+                .as_array()?
+                .iter()
+                .find(|p| p["plugin_id"] == plugin)?["panes"]
+                .as_array()?
+                .first()?["id"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| ADDON_ENTRYPOINT.to_string())
 }
 
 fn parse(args: &[String]) -> Result<Options, String> {
@@ -496,7 +519,8 @@ fn launch(opts: &Options) -> Result<Value, String> {
         .last()
         .map_or(master.as_str(), |(_, pane)| pane.as_str())
         .to_string();
-    let addons = open_addons(opts, &root, &manifest, &last_pane);
+    let channel = manifest["channel_id"].as_str().unwrap_or("").to_string();
+    let addons = open_addons(&opts.addons, &opts.slug, &root, &channel, &last_pane);
     if !addons.is_empty() {
         manifest["addons"] = json!(addons);
         save_manifest(&root, &manifest)?;
@@ -608,10 +632,17 @@ fn import(root: &Path) -> Result<(), String> {
 
 /// Opens each addon's pane in the swarm's space, stacked under `below`. A missing or
 /// failing addon is reported but doesn't stop the launch.
-fn open_addons(opts: &Options, root: &Path, manifest: &Value, below: &str) -> Vec<Value> {
+fn open_addons(
+    addons: &[Addon],
+    slug: &str,
+    root: &Path,
+    channel: &str,
+    below: &str,
+) -> Vec<Value> {
     let mut opened = Vec::new();
     let mut target = below.to_string();
-    for (plugin, entrypoint) in &opts.addons {
+    for (plugin, entry) in addons {
+        let entrypoint = entry.clone().unwrap_or_else(|| default_entrypoint(plugin));
         let result = api(
             "plugin.pane.open",
             json!({
@@ -624,8 +655,8 @@ fn open_addons(opts: &Options, root: &Path, manifest: &Value, below: &str) -> Ve
                 "focus": false,
                 "env": {
                     "HIVER_SWARM_ROOT": root,
-                    "HIVER_SWARM_SLUG": opts.slug,
-                    "HIVER_SWARM_CHANNEL": manifest["channel_id"].as_str().unwrap_or(""),
+                    "HIVER_SWARM_SLUG": slug,
+                    "HIVER_SWARM_CHANNEL": channel,
                 },
             }),
         );
@@ -644,6 +675,88 @@ fn open_addons(opts: &Options, root: &Path, manifest: &Value, below: &str) -> Ve
         }
     }
     opened
+}
+
+pub(super) const ADDON_HELP: &str = "\
+usage: hiver swarm addon <swarm> <plugin>[:<entrypoint>]...
+  Opens addons (dashboard, relays) in a running swarm's space, e.g.
+  hiver swarm addon app-ideas hiver.dashboard";
+
+/// `hiver swarm addon <swarm> <plugin>...`: add addons to a swarm that is already running.
+pub(super) fn run_addon(args: &[String]) -> std::io::Result<i32> {
+    let parsed = (|| -> Result<(String, Vec<Addon>), String> {
+        let (slug, specs) = args.split_first().ok_or("missing <swarm>")?;
+        if specs.is_empty() {
+            return Err("name at least one plugin".into());
+        }
+        Ok((
+            slug.clone(),
+            specs
+                .iter()
+                .map(|spec| parse_addon(spec))
+                .collect::<Result<_, _>>()?,
+        ))
+    })();
+    let (slug, addons) = match parsed {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            eprintln!("error: {err}\n{ADDON_HELP}");
+            return Ok(2);
+        }
+    };
+    match add_addons(&slug, &addons) {
+        Ok(count) if count > 0 => Ok(0),
+        Ok(_) => Ok(1),
+        Err(err) => {
+            eprintln!("error: {err}");
+            Ok(1)
+        }
+    }
+}
+
+fn add_addons(slug: &str, addons: &[Addon]) -> Result<usize, String> {
+    let list = super::call("list", json!({})).map_err(|err| err.to_string())?;
+    let swarm = list["result"]["swarms"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|swarm| swarm["slug"] == slug)
+        .cloned()
+        .ok_or_else(|| format!("no swarm {slug:?} (hiver swarm list)"))?;
+    let root = PathBuf::from(swarm["root"].as_str().unwrap_or_default());
+    // Stack under the last running agent pane of the swarm (its own space).
+    let below = swarm["agents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|agent| agent["status"] != "gone" && agent["role"] != "script")
+        .filter_map(|agent| agent["pane_id"].as_str())
+        .last()
+        .map(str::to_string)
+        .ok_or_else(|| format!("swarm {slug:?} has no running pane to open addons beside"))?;
+    let mut manifest: Value = std::fs::read_to_string(manifest_path(&root))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .ok_or_else(|| format!("cannot read {}", manifest_path(&root).display()))?;
+    let channel = manifest["channel_id"].as_str().unwrap_or("").to_string();
+    let opened = open_addons(addons, slug, &root, &channel, &below);
+    // Keep only addons whose pane still exists (a quit dashboard leaves a stale entry).
+    let mut kept: Vec<Value> = manifest["addons"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|addon| {
+            addon["pane_id"]
+                .as_str()
+                .is_some_and(|pane| api("pane.get", json!({ "pane_id": pane })).is_ok())
+        })
+        .cloned()
+        .collect();
+    kept.extend(opened.iter().cloned());
+    manifest["addons"] = json!(kept);
+    save_manifest(&root, &manifest)?;
+    import(&root)?;
+    Ok(opened.len())
 }
 
 #[cfg(test)]
@@ -708,15 +821,16 @@ mod tests {
     }
 
     #[test]
-    fn addon_specs_default_to_the_relay_entrypoint() {
+    fn addon_specs_name_a_plugin_and_optional_entrypoint() {
         assert_eq!(
             parse_addon("hiver.slack-relay").unwrap(),
-            ("hiver.slack-relay".into(), "relay".into())
+            ("hiver.slack-relay".into(), None)
         );
         assert_eq!(
             parse_addon("me.discord:bridge").unwrap(),
-            ("me.discord".into(), "bridge".into())
+            ("me.discord".into(), Some("bridge".into()))
         );
+        assert!(parse_addon("me.discord:").is_err());
         assert!(parse_addon(":x").is_err());
         let opts = parse(
             &["/r", "--slug", "s", "a", "--relay", "x.y", "--addon", "z:w"].map(String::from),
