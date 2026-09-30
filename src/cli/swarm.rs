@@ -7,8 +7,11 @@ use std::io::{BufRead, Write};
 use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
+mod launch;
+
 const SWARM_HELP: &str = "\
 hiver swarm commands:
+  hiver swarm launch <root> --slug S <agent>...  start a swarm in its own space (see --help)
   hiver swarm import <root>          register a swarm folder (<root>/.swarm/agents.json)
   hiver swarm list [--json]          swarms, agents, roles, states and queued messages
   hiver swarm master [<slug>] [--focus]
@@ -33,9 +36,13 @@ fn call(op: &str, mut args: Value) -> std::io::Result<Value> {
     if let Some(object) = args.as_object_mut() {
         // The caller's own pane identifies the sender; the focused pane only picks the swarm.
         if let Ok(pane) = std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR) {
-            object.entry("from_pane").or_insert(json!(pane));
+            object
+                .entry("from_pane")
+                .or_insert(json!(canonical_pane_id(&pane)));
         } else if let Ok(pane) = std::env::var(ACTIVE_PANE_ENV_VAR) {
-            object.entry("context_pane").or_insert(json!(pane));
+            object
+                .entry("context_pane")
+                .or_insert(json!(canonical_pane_id(&pane)));
         }
     }
     super::send_request(&Request {
@@ -45,6 +52,30 @@ fn call(op: &str, mut args: Value) -> std::io::Result<Value> {
             args,
         }),
     })
+}
+
+/// A pane keeps the id it was started with in `HERDR_PANE_ID` even after it moves to
+/// another space; hiver resolves such ids, so ask it for the current one.
+fn canonical_pane_id(pane: &str) -> String {
+    api("pane.get", json!({ "pane_id": pane }))
+        .ok()
+        .and_then(|result| result["pane"]["pane_id"].as_str().map(str::to_string))
+        .unwrap_or_else(|| pane.to_string())
+}
+
+/// One socket API call by method name and JSON params (the documented wire format).
+fn api(method: &str, params: Value) -> Result<Value, String> {
+    let request: Request = serde_json::from_value(json!({
+        "id": format!("cli:swarm:{method}"),
+        "method": method,
+        "params": params,
+    }))
+    .map_err(|err| format!("{method}: {err}"))?;
+    let response = super::send_request(&request).map_err(|err| err.to_string())?;
+    if let Some(error) = response.get("error") {
+        return Err(error["message"].as_str().unwrap_or("error").to_string());
+    }
+    Ok(response.get("result").cloned().unwrap_or(Value::Null))
 }
 
 /// Prints errors and returns the result object on success.
@@ -153,6 +184,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
                 }
             }
         }
+        Some("launch") => launch::run(&args[1..]),
         Some("pick") => pick_master(),
         Some("install-keys") => install_keys(),
         Some("help" | "--help" | "-h") => {

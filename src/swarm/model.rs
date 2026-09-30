@@ -130,7 +130,11 @@ impl Swarm {
                     herdr_name: Some(name.to_string()),
                     role: Role::Master,
                     model: None,
-                    pane_id: None,
+                    // Written by `hiver swarm launch`; finds the master even if not renamed.
+                    pane_id: manifest
+                        .get("coordinator_pane_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                 });
             }
         }

@@ -440,10 +440,11 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
         match bus::decide(state.presence(agent), &pending) {
             Decision::Hold => {}
             Decision::Deliver => {
-                let Some(target) = agent
-                    .herdr_name
-                    .clone()
-                    .or_else(|| state.live(agent).map(|live| live.pane_id.clone()))
+                // The live pane is always a valid target, renamed or not.
+                let Some(target) = state
+                    .live(agent)
+                    .map(|live| live.pane_id.clone())
+                    .or_else(|| agent.herdr_name.clone())
                 else {
                     continue;
                 };
@@ -1082,7 +1083,7 @@ mod tests {
             Duration::from_millis(bus::IDLE_SETTLE_MS);
         let deliveries = plan_deliveries(&mut restarted);
         assert_eq!(deliveries.len(), 1);
-        assert_eq!(deliveries[0].target, "eng-scout");
+        assert_eq!(deliveries[0].target, "w1:p2");
         assert!(
             deliveries[0].text.contains("from coordinator") && deliveries[0].text.contains("FYI"),
             "{}",
