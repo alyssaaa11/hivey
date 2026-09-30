@@ -25,6 +25,10 @@ const TICK: Duration = Duration::from_secs(1);
 const RELOAD_EVERY: Duration = Duration::from_secs(5);
 const RATE_WINDOW: Duration = Duration::from_secs(60);
 const RATE_LIMIT: usize = 30;
+/// Two agents may wake each other this many times per `PAIR_WINDOW`; after that their
+/// messages are saved as FYI, which breaks agent↔agent ping-pong.
+const PAIR_LIMIT: usize = 6;
+const PAIR_WINDOW: Duration = Duration::from_secs(300);
 const METADATA_SOURCE: &str = "hiver:swarm";
 
 struct Engine {
@@ -50,11 +54,15 @@ struct State {
     queues: HashMap<(String, String), Vec<Message>>,
     /// Message ids whose master was already told the target is blocked/gone.
     escalated: HashSet<String>,
+    /// Agents whose master was told during the current blocked/gone episode.
+    escalated_agents: HashSet<(String, String)>,
     live_by_name: HashMap<String, Live>,
     live_by_pane: HashMap<String, Live>,
     /// Last metadata signature reported per pane, to report only on change.
     reported: HashMap<String, String>,
     sent_at: HashMap<String, VecDeque<Instant>>,
+    /// Wake-up messages per agent pair (sorted labels), for `PAIR_LIMIT`.
+    pair_wakes: HashMap<(String, String), VecDeque<Instant>>,
     seq: u64,
     last_reload: Option<Instant>,
 }
@@ -248,7 +256,8 @@ impl State {
         }
         // Cross-swarm: keep a copy in the sender's log too.
         if let Some((from_slug, _)) = msg.from.split_once('/') {
-            if slug.as_deref() != Some(from_slug) {
+            // Messages to the human (no recipient swarm) are already in the sender's log.
+            if slug.is_some() && slug.as_deref() != Some(from_slug) {
                 if let Some(swarm) = self.swarm(from_slug) {
                     let copy = Message {
                         copy: true,
@@ -268,6 +277,28 @@ impl State {
             }
         }
         Ok(())
+    }
+
+    /// Counts a wake-up message between two agents; false once the pair is over its limit.
+    fn pair_allows_wake(&mut self, a: &str, b: &str) -> bool {
+        let key = if a <= b {
+            (a.to_string(), b.to_string())
+        } else {
+            (b.to_string(), a.to_string())
+        };
+        let now = Instant::now();
+        let times = self.pair_wakes.entry(key).or_default();
+        while times
+            .front()
+            .is_some_and(|at| now.duration_since(*at) > PAIR_WINDOW)
+        {
+            times.pop_front();
+        }
+        if times.len() >= PAIR_LIMIT {
+            return false;
+        }
+        times.push_back(now);
+        true
     }
 
     fn rate_limited(&mut self, sender: &str) -> bool {
@@ -379,6 +410,22 @@ fn tick(api_tx: &ApiRequestSender) {
 fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
     let mut deliveries = Vec::new();
     let mut escalations = Vec::new();
+    // An episode ends when the agent is reachable again; the next one notifies anew.
+    let recovered: Vec<(String, String)> = state
+        .escalated_agents
+        .iter()
+        .filter(|(slug, name)| {
+            let presence = state
+                .swarm(slug)
+                .and_then(|swarm| swarm.agent(name))
+                .map(|agent| state.presence(agent));
+            !matches!(presence, Some(Presence::Blocked | Presence::Gone))
+        })
+        .cloned()
+        .collect();
+    for entry in recovered {
+        state.escalated_agents.remove(&entry);
+    }
     for ((slug, key), queue) in &state.queues {
         if queue.is_empty() {
             continue;
@@ -475,7 +522,7 @@ fn confirm_delivery(state: &mut State, delivery: &Delivery) {
     }
 }
 
-/// Tell the master that `agent` can't take its messages; recorded so it happens once.
+/// Records the held messages and, once per blocked/gone episode, tells the master.
 fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, msgs: &[Message]) {
     let ts = now_ms();
     let held: Vec<Record> = msgs
@@ -491,6 +538,12 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
     state
         .escalated
         .extend(msgs.iter().map(|msg| msg.id.clone()));
+    if !state
+        .escalated_agents
+        .insert((swarm.slug.clone(), agent.key.clone()))
+    {
+        return;
+    }
 
     let Some(master) = swarm.master().filter(|master| master.key != agent.key) else {
         return;
@@ -763,7 +816,17 @@ fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
     }
     let ts = now_ms();
     let mut sent = Vec::new();
+    let mut downgraded = Vec::new();
     for (slug, key) in recipients {
+        let mut kind = kind;
+        // Agent↔agent only: the human and hiver may always wake an agent.
+        if let (Some(_), Some(to_slug), true) = (&sender.swarm, &slug, kind != Kind::Fyi) {
+            let to_label = format!("{to_slug}/{key}");
+            if !state.pair_allows_wake(&sender.label(), &to_label) {
+                kind = Kind::Fyi;
+                downgraded.push(to_label);
+            }
+        }
         let msg = Message {
             id: state.next_id(),
             ts,
@@ -781,7 +844,16 @@ fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
         );
         state.post(msg)?;
     }
-    Ok(json!({ "from": sender.label(), "sent": sent }))
+    let mut result = json!({ "from": sender.label(), "sent": sent });
+    if !downgraded.is_empty() {
+        result["notice"] = json!(format!(
+            "you and {} have woken each other {PAIR_LIMIT} times in {} min; saved as FYI so it won't wake them. \
+             Message again only if they must act; otherwise stop replying.",
+            downgraded.join(", "),
+            PAIR_WINDOW.as_secs() / 60
+        ));
+    }
+    Ok(result)
 }
 
 /// Pulled messages count as delivered, so they aren't typed into the pane later.
@@ -1040,6 +1112,68 @@ mod tests {
     }
 
     #[test]
+    fn master_is_told_once_per_blocked_episode_not_per_message() {
+        let root = temp_swarm("epi");
+        let mut state = state_with(&[&root]);
+        let live = |status| {
+            vec![
+                info("epi-coordinator", "w1:p1", AgentStatus::Working),
+                info("epi-scout", "w1:p2", status),
+            ]
+        };
+        let notices = |state: &State| {
+            state
+                .queues
+                .get(&("epi".to_string(), "coordinator".to_string()))
+                .map_or(0, Vec::len)
+        };
+        state.update_live(live(AgentStatus::Blocked));
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "epi/scout", "text": "a"}),
+        )
+        .unwrap();
+        plan_deliveries(&mut state);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "epi/scout", "text": "b"}),
+        )
+        .unwrap();
+        plan_deliveries(&mut state);
+        assert_eq!(notices(&state), 1, "one notice for the episode");
+        // Unblocked, then blocked again: a new episode notifies again.
+        state.update_live(live(AgentStatus::Working));
+        plan_deliveries(&mut state);
+        state.update_live(live(AgentStatus::Blocked));
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "epi/scout", "text": "c"}),
+        )
+        .unwrap();
+        plan_deliveries(&mut state);
+        assert_eq!(notices(&state), 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn messages_to_the_human_are_logged_once() {
+        let root = temp_swarm("hum");
+        let mut state = state_with(&[&root]);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "human", "text": "hi", "from": "hum/scout"}),
+        )
+        .unwrap();
+        let records = bus::read_log(&root.join(".swarm/bus.jsonl"));
+        assert_eq!(records.len(), 1, "{records:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn inbox_pull_marks_read_and_cancels_pending_delivery() {
         let root = temp_swarm("inb");
         let mut state = state_with(&[&root]);
@@ -1058,6 +1192,44 @@ mod tests {
             again["messages"].as_array().unwrap().is_empty(),
             "read messages are not shown twice"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn agent_ping_pong_is_downgraded_to_fyi_after_the_pair_limit() {
+        let root = temp_swarm("png");
+        let mut state = state_with(&[&root]);
+        for round in 0..PAIR_LIMIT {
+            let (from, to) = if round % 2 == 0 {
+                ("png/scout", "coordinator")
+            } else {
+                ("png/coordinator", "scout")
+            };
+            let sent = run_op(
+                &mut state,
+                "msg.send",
+                &json!({"to": to, "text": "ok", "from": from}),
+            )
+            .unwrap();
+            assert!(sent.get("notice").is_none(), "round {round} still wakes");
+        }
+        let sent = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "coordinator", "text": "ok", "from": "png/scout"}),
+        )
+        .unwrap();
+        assert!(sent["notice"].as_str().unwrap().contains("saved as FYI"));
+        let queue = &state.queues[&("png".to_string(), "coordinator".to_string())];
+        assert_eq!(queue.last().unwrap().kind, Kind::Fyi);
+        // The human is never limited.
+        let human = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "png/coordinator", "text": "go"}),
+        )
+        .unwrap();
+        assert!(human.get("notice").is_none());
         let _ = std::fs::remove_dir_all(&root);
     }
 

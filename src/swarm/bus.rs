@@ -360,7 +360,7 @@ pub(crate) fn digest(pending: &[&Message]) -> String {
         }
     }
     out.push_str(
-        "\n(reply: hiver msg send <agent> \"…\" · FYI: add --fyi · inbox: hiver msg inbox)",
+        "\n(Reply only if you must act or were asked a question. Acks and status updates: hiver msg send <agent> --fyi \"…\")",
     );
     out
 }

@@ -232,6 +232,9 @@ pub(super) fn run_msg_command(args: &[String]) -> std::io::Result<i32> {
             let Some(result) = result(&response) else {
                 return Ok(1);
             };
+            if let Some(notice) = result["notice"].as_str() {
+                eprintln!("hiver: {notice}");
+            }
             if json_out {
                 println!("{result}");
             } else {
