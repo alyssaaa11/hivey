@@ -1,0 +1,73 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>swarm-eta · dashboard</title><style>
+body{background:#0b1020;color:#e5e7eb;font:14px -apple-system,system-ui,sans-serif;margin:24px}
+h1{font-size:20px;margin:0 0 4px} .sub{color:#9ca3af;font-size:12px} .stats span{margin-right:14px}
+.cards{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0} .card{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:10px 12px;min-width:210px}
+.pill{display:inline-block;border-radius:9px;padding:1px 8px;margin-left:6px;font-size:11px;color:#fff}
+.panel{background:#111827;border:1px solid #1f2937;border-radius:10px;padding:12px;margin-top:12px}
+svg text{fill:#e5e7eb} .agent{font-weight:700;font-size:13px} .task{font-size:11px;fill:#cbd5e1} svg .sub{fill:#9ca3af;font-size:10px}
+.tick{font-size:10px;fill:#9ca3af;text-anchor:middle} .grid{stroke:#1f2937} .now{stroke:#f472b6;stroke-width:2}
+.nowt{fill:#f472b6;font-size:10px} .budget{stroke:#fbbf24;stroke-dasharray:4 3} .budt{fill:#fbbf24;font-size:10px}
+ul{list-style:none;padding:0;margin:0}
+.done{margin-top:10px;padding:8px 12px;border-radius:10px;background:rgba(34,197,94,.12);border:1px solid #22c55e;color:#bbf7d0}
+.tok{font-size:11px;fill:#f9a8d4;font-weight:700} .tokc{color:#f9a8d4}
+.fresh{border-radius:9px;padding:1px 8px;color:#fff;background:#15803d} .fresh.warn{background:#b45309} .fresh.stale{background:#b91c1c;animation:pulse .8s infinite}
+.ago.warn{fill:#fbbf24;color:#fbbf24} .ago.stale{fill:#f87171;color:#f87171;font-weight:700}
+/* animation */
+.bar,.strip{transform-box:fill-box;transform-origin:left center}
+.intro .bar,.intro .strip{animation:grow .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:var(--d,0ms)}
+.diamond{transform-box:fill-box;transform-origin:center} .intro .diamond{animation:pop .5s 1s both}
+@keyframes grow{from{transform:scaleX(0)}}
+@keyframes pop{0%{transform:scale(0)}70%{transform:scale(1.5)}100%{transform:scale(1)}}
+.st-blocked{animation:glow 1.4s ease-in-out infinite}
+.intro .st-blocked{animation:grow .9s cubic-bezier(.2,.8,.2,1) both,glow 1.4s ease-in-out 1s infinite}
+@keyframes glow{50%{filter:drop-shadow(0 0 6px #ef4444);opacity:.75}}
+.pill.st-working{animation:pulse 1.6s ease-in-out infinite} .pill.st-blocked{animation:pulse 0.8s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 5px rgba(59,130,246,0);opacity:.6}}
+.now{animation:nowp 2s ease-in-out infinite} @keyframes nowp{50%{opacity:.45}}
+.intro li{animation:slide .45s ease-out both;animation-delay:calc(var(--i) * 45ms + 300ms)}
+@keyframes slide{from{opacity:0;transform:translateX(-12px)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}} li{padding:2px 0;font-size:12px} a{color:#93c5fd}
+</style></head><body>
+<h1>🐝 swarm-eta</h1>
+<div class="sub"><span id="fresh" class="fresh" data-built="1790787549">updated 18:59:08</span>
+ · data rebuilt every 60 s by the relay · no Archify diagram yet</div>
+
+<div class="stats" style="margin-top:10px"><span>⏱ <b id="elapsed">0</b> min</span>
+<span>🤖 agent time: <b>0m</b></span>
+<span>open: <b>0</b></span><span>in-progress: <b>0</b></span><span>review: <b>0</b></span><span>blocked: <b>0</b></span><span>approved: <b>0</b></span>
+<span>🔥 tokens: <b>0</b></span></div>
+<div class="cards"><div class="card"><b>critic</b><span class="pill st-unknown" style="background:#374151">unknown</span><div class="sub">haiku · 0/0 tasks approved · <b class="tokc">— tok</b> (out 0) · ⏱ <b>0m</b> working · no activity yet</div><div class="sub">now: —</div></div><div class="card"><b>scout</b><span class="pill st-unknown" style="background:#374151">unknown</span><div class="sub">haiku · 0/0 tasks approved · <b class="tokc">— tok</b> (out 0) · ⏱ <b>0m</b> working · no activity yet</div><div class="sub">now: —</div></div></div>
+<div class="panel"><div class="sub" style="margin-bottom:6px">Gantt · top strip per agent = agent state (working / idle / blocked) · bars = tasks by status · ◆ approved &nbsp; <span class="pill" style="background:#6b7280">open</span><span class="pill" style="background:#3b82f6">in-progress</span><span class="pill" style="background:#f59e0b">review</span><span class="pill" style="background:#ef4444">blocked</span><span class="pill" style="background:#22c55e">approved</span></div><svg viewBox="0 0 1100 138" width="100%"><defs><pattern id="stripes" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="12" fill="rgba(255,255,255,.18)"/><animateTransform attributeName="patternTransform" type="translate" from="0 0" to="12 0" additive="sum" dur="0.8s" repeatCount="indefinite"/></pattern></defs><line x1="953.8" y1="28" x2="953.8" y2="128" class="grid"/><text x="953.8" y="22" class="tick">19:00</text><line id="nowline" x1="190.1" y1="28" x2="190.1" y2="128" class="now"/><text id="nowtext" x="194.1" y="36" class="nowt">now</text><text x="182" y="57" class="tok" text-anchor="end">— tok<title>critic: 0 output tokens</title></text><text x="8" y="57" class="agent">critic</text><text x="8" y="70" class="sub">haiku · ⏱ 0m · no activity yet</text><text x="182" y="101" class="tok" text-anchor="end">— tok<title>scout: 0 output tokens</title></text><text x="8" y="101" class="agent">scout</text><text x="8" y="114" class="sub">haiku · ⏱ 0m · no activity yet</text></svg></div>
+
+<div class="panel"><div class="sub" style="margin-bottom:6px">Recent events</div><ul><li style="--i:0"><span class="sub">18:59</span> <b>coordinator</b> restart </li><li style="--i:1"><span class="sub">18:55</span> <b>coordinator</b> pause </li></ul></div>
+<script>
+(function(){
+  const START=1790787548.496125, SPAN=60.00987696647644, W=1100, LABEL=190, FINISHED=false;
+  const X=t=>LABEL+(t-START)/SPAN*(W-LABEL-20);
+  const KEY="swarm-eta";
+  const headless=/HeadlessChrome/.test(navigator.userAgent);  // screenshots: always the final state
+  if(!headless && location.hash!=="#nointro" && !sessionStorage.getItem(KEY+":seen")){
+    document.body.classList.add("intro"); sessionStorage.setItem(KEY+":seen","1");
+    setTimeout(()=>document.body.classList.remove("intro"),2500);  // never leave bars mid-animation
+  }
+  const y=sessionStorage.getItem(KEY+":scroll"); if(y) window.scrollTo(0,+y);
+  addEventListener("beforeunload",()=>sessionStorage.setItem(KEY+":scroll",scrollY));
+  function tick(){  // grow running bars + move "now" in real time between rebuilds
+    const now=Date.now()/1000, xn=X(now);
+    document.querySelectorAll("[data-live]").forEach(r=>r.setAttribute("width",Math.max(xn-parseFloat(r.dataset.x0),2).toFixed(1)));
+    const l=document.getElementById("nowline"); if(l){l.setAttribute("x1",xn);l.setAttribute("x2",xn);}
+    const tx=document.getElementById("nowtext"); if(tx) tx.setAttribute("x",xn+4);
+    const el=document.getElementById("elapsed"); if(el && !FINISHED) el.textContent=Math.floor((now-START)/60);
+    const f=document.getElementById("fresh");  // how old is this data?
+    if(f){const s=Math.max(0,Math.round(now-f.dataset.built));
+      f.textContent=s<90?`updated ${s} s ago`:`updated ${Math.floor(s/60)} m ago`+(s>=300?" — stale, is the relay running?":"");
+      f.className="fresh"+(s>=300?" stale":s>=120?" warn":"");}
+    document.querySelectorAll(".ago[data-t]").forEach(a=>{const mnt=Math.floor((now-a.dataset.t)/60);
+      a.textContent=`active ${mnt<1?"<1":mnt} m ago`; a.classList.toggle("warn",mnt>=10&&mnt<30); a.classList.toggle("stale",mnt>=30);});
+  }
+  setInterval(tick,1000); tick();
+  setTimeout(()=>location.reload(),60000);  // pick up the relay's rebuild
+})();
+</script>
+</body></html>

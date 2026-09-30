@@ -510,7 +510,8 @@ fn launch(opts: &Options) -> Result<Value, String> {
         agents.insert(
             agent.clone(),
             json!({ "herdr_name": format!("{}-{agent}", opts.slug), "pane_id": pane, "status": "starting",
-                    "model": model_of(&agent_args(opts, &root, agent)) }),
+                    "model": model_of(&agent_args(opts, &root, agent)),
+                    "args": agent_args(opts, &root, agent) }),
         );
     }
     let mut manifest = new_manifest(opts, &root, &master, agents);

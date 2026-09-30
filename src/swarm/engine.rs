@@ -16,8 +16,8 @@ use serde_json::{json, Value};
 use super::bus::{self, Decision, Kind, Message, Presence, Record, Sender};
 use super::model::{Role, Swarm, SwarmAgent};
 use crate::api::schema::{
-    AgentInfo, AgentPromptParams, AgentStatus, EmptyParams, Method, PaneReportMetadataParams,
-    Request,
+    AgentInfo, AgentPromptParams, AgentStatus, EmptyParams, Method, PaneReportAgentSessionParams,
+    PaneReportMetadataParams, Request,
 };
 use crate::api::ApiRequestSender;
 
@@ -44,6 +44,8 @@ struct Live {
     pane_id: String,
     status: AgentStatus,
     since: Instant,
+    /// `(source, agent, session id)` herdr stores for the pane's agent.
+    session: Option<(String, String, String)>,
 }
 
 #[derive(Default)]
@@ -60,6 +62,8 @@ struct State {
     live_by_pane: HashMap<String, Live>,
     /// Last metadata signature reported per pane, to report only on change.
     reported: HashMap<String, String>,
+    /// Last resume command reported per pane (session id + argv).
+    resume_reported: HashMap<String, Vec<String>>,
     sent_at: HashMap<String, VecDeque<Instant>>,
     /// Wake-up messages per agent pair (sorted labels), for `PAIR_LIMIT`.
     pair_wakes: HashMap<(String, String), VecDeque<Instant>>,
@@ -226,6 +230,10 @@ impl State {
                 info.pane_id.clone(),
                 Live {
                     name: info.name.clone(),
+                    session: info
+                        .agent_session
+                        .as_ref()
+                        .map(|s| (s.source.clone(), s.agent.clone(), s.value.clone())),
                     pane_id: info.pane_id,
                     status,
                     since,
@@ -370,14 +378,18 @@ fn tick(api_tx: &ApiRequestSender) {
         .and_then(|result| result.get("agents").cloned())
         .and_then(|agents| serde_json::from_value::<Vec<AgentInfo>>(agents).ok());
 
-    let (deliveries, metadata) = {
+    let (deliveries, metadata, resumes) = {
         let Ok(mut state) = engine.state.lock() else {
             return;
         };
         let Some(agents) = agents else { return };
         state.update_live(agents);
         let deliveries = plan_deliveries(&mut state);
-        (deliveries, plan_metadata(&mut state))
+        (
+            deliveries,
+            plan_metadata(&mut state),
+            plan_resume(&mut state),
+        )
     };
 
     for delivery in deliveries {
@@ -395,6 +407,15 @@ fn tick(api_tx: &ApiRequestSender) {
             }
             Err(err) => {
                 tracing::warn!(target = %delivery.target, %err, "hiver delivery failed; will retry")
+            }
+        }
+    }
+    for params in resumes {
+        let pane_id = params.pane_id.clone();
+        if let Err(err) = dispatch(api_tx, Method::PaneReportAgentSession(params)) {
+            tracing::warn!(%pane_id, %err, "hiver: resume command not recorded; will retry");
+            if let Ok(mut state) = engine.state.lock() {
+                state.resume_reported.remove(&pane_id);
             }
         }
     }
@@ -586,6 +607,85 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
     if let Err(err) = state.post(notice) {
         tracing::warn!(%err, "hiver: cannot notify master");
     }
+}
+
+/// The resume command for an agent: its session plus the arguments it was launched with
+/// (permission mode, model, --add-dir, --chrome), minus any earlier resume/continue flags.
+fn resume_argv(session_id: &str, launch_args: &[String]) -> Option<Vec<String>> {
+    let mut argv = vec![
+        "claude".to_string(),
+        "--resume".to_string(),
+        session_id.to_string(),
+    ];
+    let mut skip_value = false;
+    for arg in launch_args {
+        if std::mem::take(&mut skip_value) {
+            continue;
+        }
+        match arg.as_str() {
+            "--continue" | "-c" => {}
+            "--resume" | "-r" | "--session-id" => skip_value = true,
+            _ if arg.starts_with("--resume=") || arg.starts_with("--session-id=") => {}
+            _ => argv.push(arg.clone()),
+        }
+    }
+    // herdr's rules for reported resume commands (see validate_resume_argv).
+    let fits = argv.len() <= 64
+        && argv.iter().map(String::len).sum::<usize>() <= 8 * 1024
+        && !argv
+            .iter()
+            .any(|a| a.contains('\'') || a.chars().any(char::is_control));
+    fits.then_some(argv)
+}
+
+/// Herdr resumes Claude after a restart with only `claude --resume <id>`, dropping the
+/// swarm's flags (permission mode, model, add-dirs). Report the full command instead,
+/// again whenever an agent's session changes.
+fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
+    let mut out = Vec::new();
+    for swarm in &state.swarms {
+        for agent in swarm.agents.iter().filter(|a| !a.args.is_empty()) {
+            let Some(live) = state.live(agent) else {
+                continue;
+            };
+            let Some((source, agent_label, session_id)) = live.session.clone() else {
+                continue;
+            };
+            if source != "herdr:claude" {
+                continue;
+            }
+            let Some(argv) = resume_argv(&session_id, &agent.args) else {
+                continue;
+            };
+            if state.resume_reported.get(&live.pane_id) == Some(&argv) {
+                continue;
+            }
+            out.push(PaneReportAgentSessionParams {
+                pane_id: live.pane_id.clone(),
+                source,
+                agent: agent_label,
+                // Same clock as the Claude hook's own reports, so ours counts as newest.
+                seq: Some(
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .map(|d| d.as_nanos() as u64)
+                        .unwrap_or_default(),
+                ),
+                agent_session_id: Some(session_id),
+                agent_session_path: None,
+                session_start_source: None,
+                resume_argv: Some(argv),
+            });
+        }
+    }
+    for params in &out {
+        if let Some(argv) = &params.resume_argv {
+            state
+                .resume_reported
+                .insert(params.pane_id.clone(), argv.clone());
+        }
+    }
+    out
 }
 
 fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
@@ -1255,6 +1355,39 @@ mod tests {
             Duration::from_millis(bus::IDLE_SETTLE_MS);
         assert_eq!(plan_deliveries(&mut state).len(), 1, "released on resume");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resume_command_keeps_launch_flags_and_drops_old_resume_flags() {
+        let args: Vec<String> = [
+            "--chrome",
+            "--dangerously-skip-permissions",
+            "--model",
+            "sonnet",
+            "--add-dir",
+            "/r",
+            "--continue",
+            "--resume",
+            "old",
+            "--session-id=x",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            resume_argv("abc", &args).unwrap(),
+            [
+                "claude",
+                "--resume",
+                "abc",
+                "--chrome",
+                "--dangerously-skip-permissions",
+                "--model",
+                "sonnet",
+                "--add-dir",
+                "/r"
+            ]
+        );
+        assert!(resume_argv("abc", &["--add-dir".into(), "/it's".into()]).is_none());
     }
 
     #[test]

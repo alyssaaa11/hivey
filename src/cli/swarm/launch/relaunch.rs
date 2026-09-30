@@ -16,7 +16,7 @@ use super::{
 };
 
 pub(in crate::cli::swarm) const HELP: &str = "\
-usage: hiver swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons] [--kickoff TEXT]
+usage: hiver swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons | --addons-only] [--kickoff TEXT]
          [--claude-args \"...\"]
   Restarts the swarm's agents that aren't running (or the named ones, including the master)
   in their panes, continuing each agent's previous Claude conversation (--fresh: start new),
@@ -35,6 +35,8 @@ struct Request {
     only: Vec<String>,
     fresh: bool,
     addons: bool,
+    /// Only reopen addons; leave agents alone (e.g. the /swarm skill's restart).
+    addons_only: bool,
     kickoff: Option<String>,
     claude_args: Option<Vec<String>>,
 }
@@ -45,6 +47,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
         only: Vec::new(),
         fresh: false,
         addons: true,
+        addons_only: false,
         kickoff: None,
         claude_args: None,
     };
@@ -54,6 +57,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
         match arg.as_str() {
             "--fresh" => request.fresh = true,
             "--no-addons" => request.addons = false,
+            "--addons-only" => request.addons_only = true,
             "--kickoff" => {
                 request.kickoff = Some(iter.next().cloned().ok_or("missing value for --kickoff")?)
             }
@@ -179,25 +183,32 @@ fn relaunch(request: &Request) -> Result<usize, String> {
     }
     let targets: Vec<&Value> = agents
         .iter()
+        .filter(|_| !request.addons_only)
         .filter(|agent| agent["role"] != "script")
         .filter(|agent| {
             let key = agent["key"].as_str().unwrap_or_default();
             if request.only.is_empty() {
                 // The master is the user's own session: only relaunched when named.
                 agent["role"] != "master" && agent["status"] == "gone"
+            } else if request.only.iter().any(|name| name == key) {
+                // A running agent keeps running: a second Claude would clash on the name.
+                if agent["status"] != "gone" {
+                    eprintln!(
+                        "  {key}: already running ({}); stop it first to relaunch",
+                        agent["status"]
+                    );
+                    return false;
+                }
+                true
             } else {
-                request.only.iter().any(|name| name == key)
+                false
             }
         })
         .collect();
 
     // Where new panes go: beside any live pane of the swarm, else its recorded master pane.
     let workspace = manifest["workspace_id"].as_str().map(str::to_string);
-    let beside = agents
-        .iter()
-        .filter(|agent| agent["status"] != "gone")
-        .filter_map(|agent| agent["pane_id"].as_str())
-        .next()
+    let beside = live_agent_pane(&agents)
         .or(manifest["coordinator_pane_id"].as_str())
         .map(str::to_string)
         .ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hiver swarm launch`")?;
@@ -284,6 +295,8 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         if is_master {
             manifest["coordinator_pane_id"] = json!(pane);
         } else if manifest["agents"][key].is_object() {
+            let launch_args: Vec<&String> = args.iter().filter(|a| *a != "--continue").collect();
+            manifest["agents"][key]["args"] = json!(launch_args);
             manifest["agents"][key]["pane_id"] = json!(pane);
             manifest["agents"][key]["status"] = json!(status);
         }
@@ -291,7 +304,22 @@ fn relaunch(request: &Request) -> Result<usize, String> {
     }
 
     if request.addons {
-        relaunched += reopen_addons(&mut manifest, &request.slug, &root, &beside);
+        // Anchor addons on an agent pane that is alive now (after the restarts above).
+        let fresh = super::super::call("list", json!({}))
+            .ok()
+            .and_then(|list| {
+                list["result"]["swarms"]
+                    .as_array()?
+                    .iter()
+                    .find(|swarm| swarm["slug"] == request.slug.as_str())?["agents"]
+                    .as_array()
+                    .cloned()
+            })
+            .unwrap_or_default();
+        let anchor = live_agent_pane(&fresh)
+            .map(str::to_string)
+            .unwrap_or_else(|| beside.clone());
+        relaunched += reopen_addons(&mut manifest, &request.slug, &root, &anchor);
     }
     save_manifest(&root, &manifest)?;
     import(&root)?;
@@ -318,6 +346,14 @@ fn runs_a_program(pane: &str) -> bool {
                 !name.is_empty() && !SHELLS.contains(&name)
             })
         })
+}
+
+/// The pane of a running agent (never a script/addon pane, which may be about to close).
+fn live_agent_pane(agents: &[Value]) -> Option<&str> {
+    agents
+        .iter()
+        .filter(|agent| agent["status"] != "gone" && agent["role"] != "script")
+        .find_map(|agent| agent["pane_id"].as_str())
 }
 
 /// Reopens recorded addons whose pane no longer runs them (gone after a restart).
@@ -347,8 +383,20 @@ fn reopen_addons(manifest: &mut Value, slug: &str, root: &Path, beside: &str) ->
     let channel = manifest["channel_id"].as_str().unwrap_or("").to_string();
     let opened = open_addons(&specs, slug, root, &channel, beside);
     let count = opened.len();
+    // An addon that failed to reopen stays recorded (without a pane), so the next relaunch
+    // retries it instead of forgetting it.
+    let failed: Vec<Value> = dead
+        .iter()
+        .filter(|addon| {
+            !opened
+                .iter()
+                .any(|o| o["plugin"] == addon["plugin"] && o["entrypoint"] == addon["entrypoint"])
+        })
+        .map(|addon| json!({ "plugin": addon["plugin"], "entrypoint": addon["entrypoint"], "pane_id": "" }))
+        .collect();
     let mut all = alive;
     all.extend(opened);
+    all.extend(failed);
     manifest["addons"] = json!(all);
     count
 }
@@ -364,6 +412,12 @@ mod tests {
         assert_eq!(request.slug, "app");
         assert_eq!(request.only, ["scout", "critic"]);
         assert!(request.fresh && !request.addons);
+        assert!(!request.addons_only);
+        assert!(
+            parse(&["app", "--addons-only"].map(String::from))
+                .unwrap()
+                .addons_only
+        );
         assert!(parse(&[]).is_err());
         assert!(parse(&["app", "--bogus"].map(String::from)).is_err());
     }
