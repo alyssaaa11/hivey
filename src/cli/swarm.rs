@@ -20,6 +20,7 @@ hiver swarm commands:
                                      show (or focus) a swarm's master; default: your swarm
   hiver swarm pick                   choose a swarm and jump to its master (interactive)
   hiver swarm install-keys           add hiver keybindings to config.toml and reload
+  hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)
   hiver swarm forget <slug>          unregister (files are kept)";
 
 const MSG_HELP: &str = "\
@@ -136,6 +137,24 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
                 return Ok(1);
             };
             print_swarm(&result["swarm"]);
+            Ok(0)
+        }
+        Some(op @ ("pause" | "resume")) if rest.len() == 1 => {
+            let response = call(op, json!({ "slug": rest[0] }))?;
+            let Some(result) = result(&response) else {
+                return Ok(1);
+            };
+            println!(
+                "{} {}: {} queued message(s) {}",
+                rest[0],
+                if op == "pause" { "paused" } else { "resumed" },
+                result["queued"],
+                if op == "pause" {
+                    "held"
+                } else {
+                    "will be delivered"
+                }
+            );
             Ok(0)
         }
         Some("forget") if rest.len() == 1 => {

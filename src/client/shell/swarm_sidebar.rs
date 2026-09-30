@@ -86,6 +86,7 @@ pub(super) enum TreeRow {
         rollup: AgentStatus,
         master_pane: Option<String>,
         holds_focus: bool,
+        paused: bool,
     },
     Member {
         pane_id: String,
@@ -150,6 +151,7 @@ pub(super) fn tree_rows(
     let mut swarms: BTreeMap<String, Vec<(&crate::protocol::ClientShellAgent, Role, usize)>> =
         BTreeMap::new();
     let mut solo = Vec::new();
+    let mut paused = std::collections::HashSet::new();
     for pane_id in &order {
         let Some(agent) = snapshot
             .agents
@@ -167,6 +169,9 @@ pub(super) fn tree_rows(
         };
         match token("swarm") {
             Some(slug) => {
+                if token("paused").is_some() {
+                    paused.insert(slug.to_string());
+                }
                 let queued = token("queued").and_then(|q| q.parse().ok()).unwrap_or(0);
                 swarms.entry(slug.to_string()).or_default().push((
                     agent,
@@ -211,6 +216,7 @@ pub(super) fn tree_rows(
                 .find(|(_, role, _)| *role == Role::Master)
                 .map(|(agent, _, _)| agent.pane_id.clone()),
             holds_focus,
+            paused: paused.contains(&slug),
         });
         for (agent, role, queued) in members {
             if expanded || role == Role::Master || needs_attention(agent.agent_status) {
@@ -317,6 +323,7 @@ fn render_swarm_header(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &
         queued,
         rollup,
         holds_focus,
+        paused,
         ..
     } = row
     else {
@@ -350,6 +357,9 @@ fn render_swarm_header(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &
             .fg(palette.text)
             .add_modifier(Modifier::BOLD),
     );
+    if *paused {
+        x = put(buffer, x, rect, " ⏸", Style::default().fg(palette.yellow));
+    }
     let mut summary = if *attention > 0 {
         format!("⚠{attention} ●{working}/{members}")
     } else {

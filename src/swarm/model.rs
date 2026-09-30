@@ -91,6 +91,8 @@ pub(crate) struct SwarmAgent {
 pub(crate) struct Swarm {
     pub slug: String,
     pub root: PathBuf,
+    /// Manifest `"state": "paused"`: deliveries are held (still queued and logged).
+    pub paused: bool,
     /// Master first, then by role, then by key (manifest maps are key-sorted).
     pub agents: Vec<SwarmAgent>,
 }
@@ -181,6 +183,7 @@ impl Swarm {
         Ok(Self {
             slug,
             root: root.to_path_buf(),
+            paused: manifest.get("state").and_then(Value::as_str) == Some("paused"),
             agents,
         })
     }

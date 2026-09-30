@@ -434,6 +434,10 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
         let Some(swarm) = state.swarm(slug) else {
             continue;
         };
+        // Paused swarm: hold everything, no deliveries and no escalations.
+        if swarm.paused {
+            continue;
+        }
         let Some(agent) = swarm.agent(key) else {
             continue;
         };
@@ -607,12 +611,16 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
             if queued > 0 {
                 title.push_str(&format!(" · ✉{queued}"));
             }
+            if swarm.paused {
+                title.push_str(" · ⏸ paused");
+            }
             if state.reported.get(&pane_id) == Some(&title) {
                 continue;
             }
             let mut tokens = HashMap::new();
             tokens.insert("role".to_string(), Some(agent.role.as_str().to_string()));
             tokens.insert("swarm".to_string(), Some(swarm.slug.clone()));
+            tokens.insert("paused".to_string(), swarm.paused.then(|| "1".to_string()));
             tokens.insert(
                 "queued".to_string(),
                 (queued > 0).then(|| queued.to_string()),
@@ -683,6 +691,8 @@ fn run_op(state: &mut State, op: &str, args: &Value) -> Result<Value, String> {
     match op {
         "import" => op_import(state, args),
         "forget" => op_forget(state, args),
+        "pause" => op_set_paused(state, args, true),
+        "resume" => op_set_paused(state, args, false),
         "list" => Ok(op_list(state)),
         "master" => op_master(state, args),
         "msg.send" => op_send(state, args),
@@ -715,6 +725,37 @@ fn op_import(state: &mut State, args: &Value) -> Result<Value, String> {
     state.reload();
     state.rebuild_queues();
     Ok(json!({ "swarm": swarm_json(state, state.swarm(&swarm.slug).ok_or("import failed")?) }))
+}
+
+/// Marks the manifest `state` (the same field the /swarm skill's swarm_ctl.py uses) and
+/// reloads, so deliveries stop or resume at once.
+fn op_set_paused(state: &mut State, args: &Value, paused: bool) -> Result<Value, String> {
+    let slug = arg(args, "slug").ok_or("missing slug")?;
+    let root = state
+        .swarm(slug)
+        .map(|swarm| swarm.root.clone())
+        .ok_or(format!("no swarm {slug:?}"))?;
+    let path = super::model::manifest_path(&root);
+    let mut manifest: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .ok_or(format!("cannot read {}", path.display()))?;
+    manifest["state"] = json!(if paused { "paused" } else { "running" });
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(
+        &tmp,
+        serde_json::to_string_pretty(&manifest).unwrap_or_default() + "\n",
+    )
+    .and_then(|_| std::fs::rename(&tmp, &path))
+    .map_err(|err| format!("cannot write {}: {err}", path.display()))?;
+    state.reload();
+    let queued: usize = state
+        .queues
+        .iter()
+        .filter(|((queue_slug, _), _)| queue_slug == slug)
+        .map(|(_, queue)| queue.len())
+        .sum();
+    Ok(json!({ "slug": slug, "paused": paused, "queued": queued }))
 }
 
 fn op_forget(state: &mut State, args: &Value) -> Result<Value, String> {
@@ -761,7 +802,7 @@ fn swarm_json(state: &State, swarm: &Swarm) -> Value {
             })
         })
         .collect();
-    json!({ "slug": swarm.slug, "root": swarm.root, "agents": agents })
+    json!({ "slug": swarm.slug, "root": swarm.root, "paused": swarm.paused, "agents": agents })
 }
 
 fn op_list(state: &State) -> Value {
@@ -1189,6 +1230,30 @@ mod tests {
         .unwrap();
         let records = bus::read_log(&root.join(".swarm/bus.jsonl"));
         assert_eq!(records.len(), 1, "{records:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn paused_swarms_hold_deliveries_until_resumed() {
+        let root = temp_swarm("pau");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![info("pau-scout", "w1:p2", AgentStatus::Idle)]);
+        state.live_by_name.get_mut("pau-scout").unwrap().since -=
+            Duration::from_millis(bus::IDLE_SETTLE_MS);
+        run_op(&mut state, "pause", &json!({"slug": "pau"})).unwrap();
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "pau/scout", "text": "hi"}),
+        )
+        .unwrap();
+        assert!(plan_deliveries(&mut state).is_empty(), "held while paused");
+        let listed = run_op(&mut state, "list", &json!({})).unwrap();
+        assert_eq!(listed["swarms"][0]["paused"], true);
+        run_op(&mut state, "resume", &json!({"slug": "pau"})).unwrap();
+        state.live_by_name.get_mut("pau-scout").unwrap().since -=
+            Duration::from_millis(bus::IDLE_SETTLE_MS);
+        assert_eq!(plan_deliveries(&mut state).len(), 1, "released on resume");
         let _ = std::fs::remove_dir_all(&root);
     }
 
