@@ -22,15 +22,21 @@ Status section shows earlier work, you are resuming: open the files it lists, ca
 `hiver msg inbox` and the Slack channel, post RESUMED, and continue from Next steps. Otherwise \
 announce yourself (command in CLAUDE.md) and start your mission. Keep the Status section current \
 as you work.";
+/// Pane entrypoint an addon plugin declares when `--addon` names no other.
+const ADDON_ENTRYPOINT: &str = "relay";
 /// Workers stay silent; only the coordinator speaks (AGENTS Stop hook).
 const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
 
 pub(super) const HELP: &str = "\
 usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--claude-args \"...\"] [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
+         [--addon PLUGIN[:ENTRYPOINT]]...
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
-  (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.";
+  (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
+  --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
+  before the agents start, with HIVER_SWARM_ROOT, HIVER_SWARM_SLUG and HIVER_SWARM_CHANNEL set:
+  e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.";
 
 struct Options {
     root: PathBuf,
@@ -43,6 +49,8 @@ struct Options {
     budget_min: Option<u64>,
     master_pane: Option<String>,
     move_master: bool,
+    /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays).
+    addons: Vec<(String, String)>,
 }
 
 fn valid_name(name: &str) -> bool {
@@ -81,6 +89,17 @@ fn split_args(line: &str) -> Vec<String> {
     args
 }
 
+/// `plugin.id` or `plugin.id:entrypoint`; the entrypoint defaults to `relay`.
+fn parse_addon(spec: &str) -> Result<(String, String), String> {
+    let (plugin, entry) = spec.split_once(':').unwrap_or((spec, ADDON_ENTRYPOINT));
+    if plugin.is_empty() || entry.is_empty() {
+        return Err(format!(
+            "--addon {spec:?}: expected <plugin-id>[:<entrypoint>]"
+        ));
+    }
+    Ok((plugin.to_string(), entry.to_string()))
+}
+
 fn parse(args: &[String]) -> Result<Options, String> {
     let mut positional = Vec::new();
     let mut opts = Options {
@@ -94,6 +113,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         budget_min: None,
         master_pane: None,
         move_master: true,
+        addons: Vec::new(),
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -109,6 +129,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--claude-args" => opts.claude_args = split_args(&value("--claude-args")?),
             "--master-pane" => opts.master_pane = Some(value("--master-pane")?),
             "--no-move" => opts.move_master = false,
+            "--addon" | "--relay" => opts.addons.push(parse_addon(&value(arg)?)?),
             "--budget-min" => {
                 opts.budget_min = Some(
                     value("--budget-min")?
@@ -457,7 +478,30 @@ fn launch(opts: &Options) -> Result<Value, String> {
     let master = place_master(opts, &root)?;
     let panes = tile_workers(opts, &root, &master)?;
 
+    // Register the swarm before anything runs, so addons (relays) and the bus are live
+    // while the agents boot and no early message is missed.
     let mut agents = serde_json::Map::new();
+    for (agent, pane) in &panes {
+        agents.insert(
+            agent.clone(),
+            json!({ "herdr_name": format!("{}-{agent}", opts.slug), "pane_id": pane, "status": "starting",
+                    "model": model_of(&agent_args(opts, &root, agent)) }),
+        );
+    }
+    let mut manifest = new_manifest(opts, &root, &master, agents);
+    save_manifest(&root, &manifest)?;
+    import(&root)?;
+
+    let last_pane = panes
+        .last()
+        .map_or(master.as_str(), |(_, pane)| pane.as_str())
+        .to_string();
+    let addons = open_addons(opts, &root, &manifest, &last_pane);
+    if !addons.is_empty() {
+        manifest["addons"] = json!(addons);
+        save_manifest(&root, &manifest)?;
+    }
+
     for (agent, pane) in &panes {
         let name = format!("{}-{agent}", opts.slug);
         let args = agent_args(opts, &root, agent);
@@ -469,21 +513,34 @@ fn launch(opts: &Options) -> Result<Value, String> {
             );
             status = "started".into();
         }
-        let model = args
-            .iter()
-            .position(|arg| arg == "--model")
-            .and_then(|index| args.get(index + 1))
-            .cloned();
         eprintln!("  {name}: {status}");
-        agents.insert(
-            agent.clone(),
-            json!({ "herdr_name": name, "pane_id": pane, "status": status, "model": model }),
-        );
+        manifest["agents"][agent]["status"] = json!(status);
     }
+    save_manifest(&root, &manifest)?;
+    import(&root)?;
+    Ok(manifest)
+}
 
-    // Same manifest as launch_swarm.py (the relay and dashboard read it), plus workspace_id.
-    let path = root.join(".swarm").join("agents.json");
-    let previous: Value = std::fs::read_to_string(&path)
+fn model_of(args: &[String]) -> Option<String> {
+    args.iter()
+        .position(|arg| arg == "--model")
+        .and_then(|index| args.get(index + 1))
+        .cloned()
+}
+
+fn manifest_path(root: &Path) -> PathBuf {
+    root.join(".swarm").join("agents.json")
+}
+
+/// Same manifest as launch_swarm.py (its relay and dashboard read it), plus
+/// workspace_id, coordinator_pane_id and addons. Unknown existing fields are kept.
+fn new_manifest(
+    opts: &Options,
+    root: &Path,
+    master: &str,
+    agents: serde_json::Map<String, Value>,
+) -> Value {
+    let previous: Value = std::fs::read_to_string(manifest_path(root))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
@@ -520,25 +577,73 @@ fn launch(opts: &Options) -> Result<Value, String> {
     ] {
         manifest[key] = value;
     }
+    if let Some(object) = manifest.as_object_mut() {
+        object.remove("addons");
+    }
+    manifest
+}
+
+fn save_manifest(root: &Path, manifest: &Value) -> Result<(), String> {
+    let path = manifest_path(root);
     std::fs::create_dir_all(root.join(".swarm")).map_err(|err| err.to_string())?;
     let tmp = path.with_extension("json.tmp");
     std::fs::write(
         &tmp,
-        serde_json::to_string_pretty(&manifest).unwrap_or_default() + "\n",
+        serde_json::to_string_pretty(manifest).unwrap_or_default() + "\n",
     )
     .and_then(|_| std::fs::rename(&tmp, &path))
-    .map_err(|err| format!("cannot write {}: {err}", path.display()))?;
+    .map_err(|err| format!("cannot write {}: {err}", path.display()))
+}
 
-    super::call("import", json!({ "root": root }))
-        .map_err(|err| err.to_string())
-        .and_then(|response| match response.get("error") {
-            Some(error) => Err(error["message"]
-                .as_str()
-                .unwrap_or("import failed")
-                .to_string()),
-            None => Ok(()),
-        })?;
-    Ok(manifest)
+fn import(root: &Path) -> Result<(), String> {
+    let response = super::call("import", json!({ "root": root })).map_err(|err| err.to_string())?;
+    match response.get("error") {
+        Some(error) => Err(error["message"]
+            .as_str()
+            .unwrap_or("import failed")
+            .to_string()),
+        None => Ok(()),
+    }
+}
+
+/// Opens each addon's pane in the swarm's space, stacked under `below`. A missing or
+/// failing addon is reported but doesn't stop the launch.
+fn open_addons(opts: &Options, root: &Path, manifest: &Value, below: &str) -> Vec<Value> {
+    let mut opened = Vec::new();
+    let mut target = below.to_string();
+    for (plugin, entrypoint) in &opts.addons {
+        let result = api(
+            "plugin.pane.open",
+            json!({
+                "plugin_id": plugin,
+                "entrypoint": entrypoint,
+                "placement": "split",
+                "target_pane_id": target,
+                "direction": "down",
+                "cwd": root,
+                "focus": false,
+                "env": {
+                    "HIVER_SWARM_ROOT": root,
+                    "HIVER_SWARM_SLUG": opts.slug,
+                    "HIVER_SWARM_CHANNEL": manifest["channel_id"].as_str().unwrap_or(""),
+                },
+            }),
+        );
+        match result {
+            Ok(result) => {
+                let pane = result["plugin_pane"]["pane"]["pane_id"].as_str().unwrap_or("").to_string();
+                eprintln!("  addon {plugin}:{entrypoint}: started in {pane}");
+                if !pane.is_empty() {
+                    target = pane.clone();
+                }
+                opened.push(json!({ "plugin": plugin, "entrypoint": entrypoint, "pane_id": pane }));
+            }
+            Err(err) => eprintln!(
+                "  addon {plugin}:{entrypoint}: not started ({err}); install it with `hiver plugin link <dir>`"
+            ),
+        }
+    }
+    opened
 }
 
 #[cfg(test)]
@@ -600,6 +705,24 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|w| w[0] == "--add-dir" && w[1] == "/nonexistent"));
+    }
+
+    #[test]
+    fn addon_specs_default_to_the_relay_entrypoint() {
+        assert_eq!(
+            parse_addon("hiver.slack-relay").unwrap(),
+            ("hiver.slack-relay".into(), "relay".into())
+        );
+        assert_eq!(
+            parse_addon("me.discord:bridge").unwrap(),
+            ("me.discord".into(), "bridge".into())
+        );
+        assert!(parse_addon(":x").is_err());
+        let opts = parse(
+            &["/r", "--slug", "s", "a", "--relay", "x.y", "--addon", "z:w"].map(String::from),
+        )
+        .unwrap();
+        assert_eq!(opts.addons.len(), 2);
     }
 
     #[test]

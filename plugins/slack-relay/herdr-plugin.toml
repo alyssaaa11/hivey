@@ -1,0 +1,15 @@
+id = "hiver.slack-relay"
+name = "Slack relay"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "hiver swarm addon: bridges a swarm's message bus and its Slack channel"
+platforms = ["linux", "macos"]
+
+# Opened by `hiver swarm launch --addon hiver.slack-relay` in the swarm's space, with
+# HIVER_SWARM_ROOT / HIVER_SWARM_SLUG / HIVER_SWARM_CHANNEL set. Runs with the swarm root
+# as working directory, so the script is addressed through HERDR_PLUGIN_ROOT.
+[[panes]]
+id = "relay"
+title = "slack relay"
+placement = "split"
+command = ["sh", "-c", "exec python3 \"$HERDR_PLUGIN_ROOT/relay.py\""]

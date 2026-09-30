@@ -149,6 +149,34 @@ impl Swarm {
                 });
             }
         }
+        // Addons opened by `hiver swarm launch --addon` (relays etc.) are script panes.
+        for addon in manifest
+            .get("addons")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let plugin = addon
+                .get("plugin")
+                .and_then(Value::as_str)
+                .unwrap_or("addon");
+            let short = plugin.rsplit('.').next().unwrap_or(plugin);
+            let key = if agents.iter().any(|agent| agent.key == short) {
+                format!("{short}-addon")
+            } else {
+                short.to_string()
+            };
+            agents.push(SwarmAgent {
+                key,
+                herdr_name: None,
+                role: Role::Script,
+                model: None,
+                pane_id: addon
+                    .get("pane_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            });
+        }
         agents.sort_by_key(|agent| agent.role.rank());
         Ok(Self {
             slug,
@@ -219,7 +247,8 @@ mod tests {
                 "critic": {"herdr_name": "app-ideas-critic", "model": "opus"},
                 "watch": {"command": ["python3", "w.py"]}
             },
-            "relay_pane_id": "wB:pE"
+            "relay_pane_id": "wB:pE",
+            "addons": [{"plugin": "hiver.slack-relay", "entrypoint": "relay", "pane_id": "wB:pF"}]
         })
     }
 
@@ -237,6 +266,7 @@ mod tests {
         assert!(roles.contains(&("critic", Role::Critic)));
         assert!(roles.contains(&("watch", Role::Script)));
         assert!(roles.contains(&("relay", Role::Script)));
+        assert!(roles.contains(&("slack-relay", Role::Script)));
         assert_eq!(roles.last().unwrap().1, Role::Script);
     }
 
