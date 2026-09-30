@@ -3,7 +3,7 @@
 Design: [`hiver-design.md`](hiver-design.md) · Fork rules: [`../HIVER.md`](../HIVER.md)
 Repo: `github.com/jcsancho/hiver` (private) · Local: `~/projects/swarmAgents/hiver` · Binary: `~/.local/bin/hiver`
 
-## Done (all on `main`, 3,729 tests passing)
+## Done (all on `main`, 3,730 Rust tests + addon tests passing)
 
 | Commit | What |
 |---|---|
@@ -13,6 +13,12 @@ Repo: `github.com/jcsancho/hiver` (private) · Local: `~/projects/swarmAgents/hi
 | `a3bcc86b` | **Swarm tree** in the Agents panel. Master first; a collapsed swarm shows its master plus agents that need attention; counters `●working/total ⚠attention ✉queued`. Clicking a header focuses that swarm's master and shows its panes. Client-only, no protocol change. |
 | `bf6f4204` | **Role-colored pane titles** (`◆ coordinator · app-ideas · opus` in gold, workers blue, critic purple). **Keys:** `prefix+m` jump to master, `prefix+shift+m` pick a swarm, `prefix+a` send a message, `prefix+i` message log (`hiver swarm install-keys`). |
 | `2e683c95` | **`hiver swarm launch`.** Same arguments and manifest as `launch_swarm.py`; the calling pane (master) moves into a new space named after the swarm as pane 1, workers are tiled beside it, the swarm is registered. Pane identity survives the move. |
+| `e5a4d5d2` | **One hiver per project:** swarm registry per named session (`hiver --session <name>`). |
+| `8f353757` | **Addons.** `launch --addon <plugin>` (alias `--relay`) opens plugin panes in the swarm's space before the agents; **`hiver.slack-relay`** (Slack ↔ bus, masters-only mirror, no echoes). Contract in `plugins/README.md`. |
+| `eafbcb43` | **`hiver.dashboard`** addon (states, token bars + sparkline, budget, tasks, messages) and `hiver swarm addon <swarm> <plugin>` for running swarms. |
+| `4faef301` | **`hiver.github`** addon: product and swarm workspace as two repos (`<slug>`, `<slug>-swarm`), confirm-first, gitleaks gate, "push both". |
+| `384ad950` | **Addon map + runtime-driver proposal** (`docs/hiver-addons.md`): herdr as one driver among tmux/zellij/… |
+| skill | **`/swarm` switch-over** (only when `HIVER_ENV=1`; backup in `~/.claude/skill-backups/`): `launch_swarm.py` → `hiver swarm launch` with the relay, dashboard and the skill's own `swarm.watcher` addon; agent briefs get a hiver messaging variant; SKILL.md "Running inside hiver" (incl. two GitHub repos). |
 
 Verified live with real Claude (Haiku) agents via `scripts/live_smoke.sh`, and a hiver client read through a herdr pane:
 - delivery timing, digests, blocked hold + escalation
@@ -26,17 +32,14 @@ Verified live with real Claude (Haiku) agents via `scripts/live_smoke.sh`, and a
 - Scripts (the Slack relay) aren't agents, so they don't appear in the tree; their pane title still shows `▷`.
 - The tree only renders in the single-machine sidebar (the multi-SSH-machine sidebar still shows the flat list).
 - The onboarding dialog and some help texts still say "herdr".
-- `launch` doesn't start the Slack relay or dashboard; the skill still does.
+- The skill's `swarm_ctl.py` (pause/resume) still wakes agents through Slack; in hiver it should use the bus.
+- `~/SKILLS/swarm` (backup copy) isn't synced yet: run `/save-skill swarm` once the other session editing the skill is done.
 
 ## Next steps
-1. **`/swarm` skill switch-over (needs your OK: it edits `~/.claude/skills/swarm`).** When `HIVER_ENV=1`:
-   - `launch_swarm.py` calls `hiver swarm launch`
-   - agent CLAUDE.md templates say `hiver msg send` instead of Slack for agent↔agent
-   - the relay only bridges Slack
-2. **`hiver swarm relaunch [<agent>]`:** restart gone agents in their panes with their briefs (fixes the restart limitation).
-3. **Slack bridge** as the only Slack path: mirror the bus to `#swarm-<slug>` (masters-only by default), Slack `@agent` → bus.
-4. **Whiteboard** (`hiver task …` compatible with `swarm_tasks.py`, kanban panel), then the built-in supervisor (idle/stall/budget) to retire `swarm_relay.py`.
-5. Weekly upstream rebase job (`scripts/hiver_hooks.py` + nextest).
+1. `hiver swarm relaunch [<agent>]`: restart agents that came back as shells after a restart.
+2. `swarm_ctl.py` pause/resume via the bus inside hiver.
+3. From `docs/hiver-addons.md`: event hooks → agent adapters (mixed Claude/Codex swarms) → `Runtime` trait + standalone daemon → tmux driver.
+4. Weekly upstream rebase job (`scripts/hiver_hooks.py` + nextest).
 
 ## Try it
 ```bash
@@ -44,4 +47,7 @@ hiver                                   # start (separate from herdr)
 hiver swarm install-keys                # prefix+m / prefix+shift+m / prefix+a / prefix+i
 hiver swarm import ~/swarms/<name>      # adopt an existing /swarm folder
 hiver msg send <swarm>/coordinator "…"  # talk to a master
+hiver plugin link ~/projects/swarmAgents/hiver/plugins/{slack-relay,dashboard,github}
+hiver swarm addon <swarm> hiver.dashboard   # live dashboard for a running swarm
 ```
+In a hiver pane, `/swarm` launches straight into its own space with the relay, dashboard and watcher.
