@@ -1,12 +1,11 @@
 [package]
-name = "herdr"
+name = "hiver"
 version = "0.9.3"
 edition = "2021"
 build = "build.rs"
-description = "terminal workspace manager for AI coding agents"
+description = "terminal workspace for swarms of AI coding agents (fork of herdr)"
 license = "Apache-2.0"
-repository = "https://github.com/herdrdev/herdr"
-homepage = "https://herdr.dev"
+repository = "https://github.com/jcsancho/hiver"
 keywords = ["terminal", "tui", "ai", "agents", "multiplexer"]
 categories = ["command-line-utilities"]
 include = [

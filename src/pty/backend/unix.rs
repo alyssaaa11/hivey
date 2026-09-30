@@ -75,6 +75,7 @@ mod tests {
         let before = parent_pty_fd_count();
         let mut cmd = CommandBuilder::new("/bin/cat");
         cmd.env(crate::HERDR_ENV_VAR, crate::HERDR_ENV_VALUE);
+        cmd.env(crate::hiver::HIVER_ENV_VAR, crate::HERDR_ENV_VALUE); // hiver
 
         let mut spawned =
             spawn_with_portable_pty(24, 80, cmd).expect("portable pty setup succeeds");

@@ -1,0 +1,9 @@
+hiver
+Copyright 2026 the hiver authors
+
+hiver is a fork of herdr (https://github.com/herdrdev/herdr),
+Copyright the herdr authors, licensed under the Apache License 2.0.
+
+Files modified from herdr carry "hiver:" comments at each change;
+hiver-only code lives in src/hiver.rs and src/swarm/.
+"herdr" is the name of the upstream project; hiver is not affiliated with or endorsed by it.
