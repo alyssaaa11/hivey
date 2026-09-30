@@ -70,7 +70,8 @@ struct State {
 pub(crate) fn start(api_tx: ApiRequestSender) {
     let (wake, wake_rx) = mpsc::channel();
     let mut state = State {
-        registry_path: crate::config::config_dir().join("swarms.json"),
+        // Per session: each `hiver --session <name>` (e.g. one per project) has its own swarms.
+        registry_path: crate::session::data_dir().join("swarms.json"),
         ..State::default()
     };
     state.reload();
