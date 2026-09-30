@@ -60,3 +60,11 @@ they never receive messages themselves.
   `$(hiver plugin config-dir hiver.slack-relay)/config.json`:
   `{"token_command": "envsave get <id>", "mirror": "masters"}` (or set `SLACK_TOKEN`).
   `mirror` is `masters` (default), `all`, or `off`. Tests: `python3 -m unittest plugins/slack-relay/test_relay.py`.
+- [`dashboard`](dashboard/) (`hiver.dashboard`): live pane with agent states, token bars and a
+  token-rate sparkline, budget, task counts and recent messages. Tests:
+  `python3 -m unittest plugins/dashboard/test_dashboard.py`.
+- [`github`](github/) (`hiver.github`): publishes the product (e.g. `app/`) and the swarm
+  workspace as two repos, `<slug>` and `<slug>-swarm`. It shows the plan and creates nothing
+  until you confirm; gitleaks scans what is committed before each first push. Then "push both"
+  on demand. Try it safely with `HIVER_GITHUB_DRY_RUN=1`. Tests:
+  `python3 -m unittest plugins/github/test_github.py`.

@@ -1,0 +1,14 @@
+id = "hiver.github"
+name = "Swarm GitHub"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "hiver swarm addon: publish the product and the swarm workspace as two separate GitHub repos"
+platforms = ["linux", "macos"]
+
+# `hiver swarm addon <swarm> hiver.github` (or `--addon hiver.github` at launch).
+# Interactive: shows the plan and creates nothing until you confirm in the pane.
+[[panes]]
+id = "github"
+title = "swarm github"
+placement = "split"
+command = ["sh", "-c", "exec python3 \"$HERDR_PLUGIN_ROOT/github.py\""]
