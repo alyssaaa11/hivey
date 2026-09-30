@@ -766,6 +766,19 @@ fn op_list(state: &State) -> Value {
     json!({ "swarms": state.swarms.iter().map(|swarm| swarm_json(state, swarm)).collect::<Vec<_>>() })
 }
 
+/// The swarm the caller is looking at: its own pane, else the focused pane
+/// (`context_pane`, passed by popups and key commands, which have no pane of their own).
+fn context_swarm(state: &State, args: &Value) -> Option<String> {
+    ["from_pane", "context_pane"]
+        .iter()
+        .filter_map(|field| arg(args, field))
+        .find_map(|pane| {
+            state
+                .agent_in_pane(pane)
+                .map(|(swarm, _)| swarm.slug.clone())
+        })
+}
+
 /// Who is calling: explicit `from`, else the agent running in `from_pane`, else the human.
 fn identify(state: &State, args: &Value) -> Result<Sender, String> {
     if let Some(from) = arg(args, "from") {
@@ -806,7 +819,8 @@ fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
     let sender = identify(state, args)?;
     let default_swarm = arg(args, "swarm")
         .map(str::to_string)
-        .or_else(|| sender.swarm.clone());
+        .or_else(|| sender.swarm.clone())
+        .or_else(|| context_swarm(state, args));
     let recipients = bus::resolve(to, &sender, default_swarm.as_deref(), &state.swarms)?;
     if state.rate_limited(&sender.label()) {
         return Err(format!(
@@ -933,7 +947,10 @@ fn op_inbox(state: &mut State, args: &Value) -> Result<Value, String> {
 
 fn op_log(state: &State, args: &Value) -> Result<Value, String> {
     let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(30) as usize;
-    let swarms: Vec<&Swarm> = match arg(args, "swarm") {
+    let slug = arg(args, "swarm")
+        .map(str::to_string)
+        .or_else(|| context_swarm(state, args));
+    let swarms: Vec<&Swarm> = match slug.as_deref() {
         Some(slug) => vec![state.swarm(slug).ok_or(format!("no swarm {slug:?}"))?],
         None => state.swarms.iter().collect(),
     };
@@ -961,8 +978,8 @@ fn op_log(state: &State, args: &Value) -> Result<Value, String> {
 fn op_master(state: &State, args: &Value) -> Result<Value, String> {
     let slug = match arg(args, "swarm") {
         Some(slug) => slug.to_string(),
-        None => match arg(args, "from_pane").and_then(|pane| state.agent_in_pane(pane)) {
-            Some((swarm, _)) => swarm.slug.clone(),
+        None => match context_swarm(state, args) {
+            Some(slug) => slug,
             None if state.swarms.len() == 1 => state.swarms[0].slug.clone(),
             None => return Err("which swarm? pass a swarm slug".into()),
         },
@@ -1231,6 +1248,26 @@ mod tests {
         .unwrap();
         assert!(human.get("notice").is_none());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn popup_sends_as_human_into_the_focused_swarm() {
+        let a = temp_swarm("pa");
+        let b = temp_swarm("pb");
+        let mut state = state_with(&[&a, &b]);
+        state.update_live(vec![info("pb-scout", "w2:p2", AgentStatus::Working)]);
+        let sent = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "master", "text": "hi", "context_pane": "w2:p2"}),
+        )
+        .unwrap();
+        assert_eq!(sent["from"], "human");
+        assert_eq!(sent["sent"][0]["to"], "pb/coordinator");
+        let master = run_op(&mut state, "master", &json!({"context_pane": "w2:p2"})).unwrap();
+        assert_eq!(master["swarm"], "pb");
+        let _ = std::fs::remove_dir_all(&a);
+        let _ = std::fs::remove_dir_all(&b);
     }
 
     #[test]

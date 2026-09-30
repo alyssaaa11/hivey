@@ -81,6 +81,11 @@ impl MetadataTokens {
         keys.len()
     }
 
+    /// hiver: one value without allocating (used per pane while rendering borders).
+    pub(crate) fn get(&self, key: &str) -> Option<&str> {
+        self.entries.get(key).map(|token| token.value.as_str())
+    }
+
     pub(crate) fn values(&self) -> HashMap<String, String> {
         self.entries
             .iter()

@@ -268,3 +268,44 @@ edit("src/client/shell/mouse.rs",
                     .iter()
                     .find(|(rect, _)| super::contains(*rect, point))""")
 print("swarm sidebar hooks applied")
+
+# ---------------------------------------------------------------------------
+# Role-colored pane border titles
+# ---------------------------------------------------------------------------
+edit("src/metadata_tokens.rs",
+     "    pub(crate) fn values(&self) -> HashMap<String, String> {",
+     "    /// hiver: one value without allocating (used per pane while rendering borders).\n"
+     "    pub(crate) fn get(&self, key: &str) -> Option<&str> {\n"
+     "        self.entries.get(key).map(|token| token.value.as_str())\n"
+     "    }\n\n"
+     "    pub(crate) fn values(&self) -> HashMap<String, String> {")
+edit("src/ui/panes.rs",
+     """        let color = if info.is_focused {
+            app.palette.accent
+        } else {
+            app.palette.overlay0
+        };
+        let mut style = Style::default().fg(color);
+        if info.is_focused {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        buf.set_stringn(
+            start_x,""",
+     """        // hiver: swarm panes take their role color (master, worker, critic, script).
+        let role_color = ws
+            .pane_state(info.id)
+            .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
+            .and_then(|terminal| terminal.metadata_tokens.get("role"))
+            .and_then(|role| crate::swarm::model::role_color(role, &app.palette));
+        let color = role_color.unwrap_or(if info.is_focused {
+            app.palette.accent
+        } else {
+            app.palette.overlay0
+        });
+        let mut style = Style::default().fg(color);
+        if info.is_focused {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+        buf.set_stringn(
+            start_x,""")
+print("border color hooks applied")

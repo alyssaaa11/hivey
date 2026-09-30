@@ -62,6 +62,19 @@ impl Role {
     }
 }
 
+/// Border/title color for a `role` token value (pane metadata); `None` for non-swarm panes.
+pub(crate) fn role_color(
+    role: &str,
+    palette: &crate::app::state::Palette,
+) -> Option<ratatui::style::Color> {
+    Some(match Role::parse(role)? {
+        Role::Master => palette.yellow,
+        Role::Worker => palette.blue,
+        Role::Critic => palette.mauve,
+        Role::Script => palette.overlay0,
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SwarmAgent {
     /// Short name inside the swarm (`scout`, `critic`, `coordinator`).

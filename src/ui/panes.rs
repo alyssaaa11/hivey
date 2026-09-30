@@ -666,11 +666,17 @@ fn render_pane_border_titles(
         if start_x >= end_x {
             continue;
         }
-        let color = if info.is_focused {
+        // hiver: swarm panes take their role color (master, worker, critic, script).
+        let role_color = ws
+            .pane_state(info.id)
+            .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
+            .and_then(|terminal| terminal.metadata_tokens.get("role"))
+            .and_then(|role| crate::swarm::model::role_color(role, &app.palette));
+        let color = role_color.unwrap_or(if info.is_focused {
             app.palette.accent
         } else {
             app.palette.overlay0
-        };
+        });
         let mut style = Style::default().fg(color);
         if info.is_focused {
             style = style.add_modifier(Modifier::BOLD);
