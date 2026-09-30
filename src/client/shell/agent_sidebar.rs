@@ -55,15 +55,20 @@ pub(super) fn render_agent_panel(
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
     agent_scroll: &mut usize,
+    swarm_tree: &super::swarm_sidebar::SwarmTreeState,
     hits: &mut ShellHitMap,
 ) {
-    if !render_agent_panel_header(
-        buffer,
-        area,
-        snapshot.agent_view_label.as_deref(),
-        config,
-        hits,
-    ) {
+    // hiver: swarm tree whenever an agent belongs to a swarm.
+    let swarm_rows = super::swarm_sidebar::tree_rows(snapshot, config, swarm_tree);
+    let label = snapshot
+        .agent_view_label
+        .as_deref()
+        .or(swarm_rows.as_ref().map(|_| "swarms"));
+    if !render_agent_panel_header(buffer, area, label, config, hits) {
+        return;
+    }
+    if let Some(rows) = swarm_rows {
+        super::swarm_sidebar::render_tree(buffer, area, &rows, config, agent_scroll, hits);
         return;
     }
 

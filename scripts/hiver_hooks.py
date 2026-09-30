@@ -6,10 +6,15 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
+def norm(text):
+    """Whitespace-insensitive form, so hooks reformatted by cargo fmt still count as applied."""
+    return re.sub(r"\s+", " ", text)
+
+
 def edit(rel, old, new, count=1, required=True):
     p = ROOT / rel
     s = p.read_text()
-    if new in s:
+    if new in s or norm(new) in norm(s):
         return
     if old not in s:
         if required:
@@ -102,7 +107,8 @@ print("p0 rename hooks applied")
 # ---------------------------------------------------------------------------
 # Swarm engine hooks (src/swarm)
 # ---------------------------------------------------------------------------
-edit("src/main.rs", "mod hiver;\n", "mod hiver;\nmod swarm;\n")
+if "\nmod swarm;" not in (ROOT / "src/main.rs").read_text():
+    edit("src/main.rs", "mod hiver;\n", "mod hiver;\nmod swarm;\n")
 edit("src/api/schema.rs",
      '    #[serde(rename = "agent.view.set")]\n    AgentViewSet(AgentViewSetParams),\n',
      '    // hiver: swarm engine (src/swarm); one variant keeps upstream rebases small.\n'
@@ -160,3 +166,105 @@ if "\nmod swarm;" not in s:
         raise SystemExit("src/cli.rs: mod list anchor not found")
     p.write_text(s)
 print("cli hooks applied")
+
+# ---------------------------------------------------------------------------
+# Swarm tree in the Agents panel (src/client/shell/swarm_sidebar.rs)
+# ---------------------------------------------------------------------------
+# rustfmt sorts `mod` lines, so check for the line anywhere rather than at the anchor.
+if "mod swarm_sidebar;" not in (ROOT / "src/client/shell.rs").read_text():
+    edit("src/client/shell.rs", "mod agent_sidebar;\n", "mod agent_sidebar;\nmod swarm_sidebar; // hiver\n")
+edit("src/client/shell/state.rs",
+     "    pub(super) agents: Vec<(Rect, String)>,\n    pub(super) endpoint_agents:",
+     "    pub(super) agents: Vec<(Rect, String)>,\n"
+     "    pub(super) swarm_headers: Vec<super::swarm_sidebar::SwarmHeaderHit>, // hiver\n"
+     "    pub(super) endpoint_agents:")
+edit("src/client/shell/state.rs",
+     "    pub(super) agent_scroll: usize,\n    pub(super) pending_agent_reveal",
+     "    pub(super) agent_scroll: usize,\n"
+     "    pub(super) swarm_tree: super::swarm_sidebar::SwarmTreeState, // hiver\n"
+     "    pub(super) pending_agent_reveal")
+edit("src/client/shell/state.rs",
+     "            agent_scroll: 0,\n            pending_agent_reveal: None,",
+     "            agent_scroll: 0,\n            swarm_tree: Default::default(), // hiver\n            pending_agent_reveal: None,")
+edit("src/client/shell/render.rs",
+     "    pub(super) agent_scroll: &'a mut usize,\n",
+     "    pub(super) agent_scroll: &'a mut usize,\n"
+     "    pub(super) swarm_tree: &'a super::swarm_sidebar::SwarmTreeState, // hiver\n")
+p = ROOT / "src/client/shell/composition.rs"
+s = p.read_text()
+if "swarm_tree: &self.swarm_tree" not in s:
+    s, n = re.subn(r"\n(\s*)agent_scroll: &mut self\.agent_scroll,",
+                   lambda m: m.group(0) + f"\n{m.group(1)}swarm_tree: &self.swarm_tree, // hiver", s)
+    if n != 2:
+        raise SystemExit(f"composition.rs: expected 2 render-state constructors, found {n}")
+    p.write_text(s)
+edit("src/client/shell/sidebar.rs",
+     "        config,\n        state.agent_scroll,\n        hits,\n    );",
+     "        config,\n        state.agent_scroll,\n        state.swarm_tree, // hiver\n        hits,\n    );")
+edit("src/client/shell/agent_sidebar.rs",
+     """    agent_scroll: &mut usize,
+    hits: &mut ShellHitMap,
+) {
+    if !render_agent_panel_header(
+        buffer,
+        area,
+        snapshot.agent_view_label.as_deref(),
+        config,
+        hits,
+    ) {
+        return;
+    }
+""",
+     """    agent_scroll: &mut usize,
+    swarm_tree: &super::swarm_sidebar::SwarmTreeState,
+    hits: &mut ShellHitMap,
+) {
+    // hiver: swarm tree whenever an agent belongs to a swarm.
+    let swarm_rows = super::swarm_sidebar::tree_rows(snapshot, config, swarm_tree);
+    let label = snapshot
+        .agent_view_label
+        .as_deref()
+        .or(swarm_rows.as_ref().map(|_| "swarms"));
+    if !render_agent_panel_header(buffer, area, label, config, hits) {
+        return;
+    }
+    if let Some(rows) = swarm_rows {
+        super::swarm_sidebar::render_tree(buffer, area, &rows, config, agent_scroll, hits);
+        return;
+    }
+""")
+edit("src/client/shell/mouse.rs",
+     """                let agent_pane_id = self
+                    .hits
+                    .agents
+                    .iter()
+                    .find(|(rect, _)| super::contains(*rect, point))""",
+     """                // hiver: swarm headers; the chevron toggles, the rest focuses the master.
+                let swarm_header = self
+                    .hits
+                    .swarm_headers
+                    .iter()
+                    .find(|(rect, ..)| super::contains(*rect, point))
+                    .cloned();
+                if let Some((rect, slug, expanded, master)) = swarm_header {
+                    match master.filter(|_| point.0 >= rect.x.saturating_add(3)) {
+                        Some(pane_id) => {
+                            self.swarm_tree.set_expanded(&slug, true);
+                            self.push_endpoint_method(
+                                crate::api::schema::Method::PaneFocus(
+                                    crate::api::schema::PaneTarget { pane_id },
+                                ),
+                                outcome,
+                            );
+                        }
+                        None => self.swarm_tree.set_expanded(&slug, !expanded),
+                    }
+                    outcome.repaint = true;
+                    return;
+                }
+                let agent_pane_id = self
+                    .hits
+                    .agents
+                    .iter()
+                    .find(|(rect, _)| super::contains(*rect, point))""")
+print("swarm sidebar hooks applied")

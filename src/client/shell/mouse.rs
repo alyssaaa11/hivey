@@ -2140,6 +2140,29 @@ impl ClientShellState {
                 if self.handle_endpoint_agent_click(point, outcome) {
                     return;
                 }
+                // hiver: swarm headers; the chevron toggles, the rest focuses the master.
+                let swarm_header = self
+                    .hits
+                    .swarm_headers
+                    .iter()
+                    .find(|(rect, ..)| super::contains(*rect, point))
+                    .cloned();
+                if let Some((rect, slug, expanded, master)) = swarm_header {
+                    match master.filter(|_| point.0 >= rect.x.saturating_add(3)) {
+                        Some(pane_id) => {
+                            self.swarm_tree.set_expanded(&slug, true);
+                            self.push_endpoint_method(
+                                crate::api::schema::Method::PaneFocus(
+                                    crate::api::schema::PaneTarget { pane_id },
+                                ),
+                                outcome,
+                            );
+                        }
+                        None => self.swarm_tree.set_expanded(&slug, !expanded),
+                    }
+                    outcome.repaint = true;
+                    return;
+                }
                 let agent_pane_id = self
                     .hits
                     .agents
