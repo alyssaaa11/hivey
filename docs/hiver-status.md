@@ -3,7 +3,7 @@
 Design: [`hiver-design.md`](hiver-design.md) · Fork rules: [`../HIVER.md`](../HIVER.md)
 Repo: `github.com/jcsancho/hiver` (private) · Local: `~/projects/swarmAgents/hiver` · Binary: `~/.local/bin/hiver`
 
-## Done (all on `main`, 3,730 Rust tests + addon tests passing)
+## Done (all on `main`, 3,734 Rust tests + addon tests passing)
 
 | Commit | What |
 |---|---|
@@ -18,6 +18,9 @@ Repo: `github.com/jcsancho/hiver` (private) · Local: `~/projects/swarmAgents/hi
 | `eafbcb43` | **`hiver.dashboard`** addon (states, token bars + sparkline, budget, tasks, messages) and `hiver swarm addon <swarm> <plugin>` for running swarms. |
 | `4faef301` | **`hiver.github`** addon: product and swarm workspace as two repos (`<slug>`, `<slug>-swarm`), confirm-first, gitleaks gate, "push both". |
 | `384ad950` | **Addon map + runtime-driver proposal** (`docs/hiver-addons.md`): herdr as one driver among tmux/zellij/… |
+| `c6572ed0` | **`hiver swarm relaunch`**: restarts agents that aren't running in their own pane, continuing their Claude conversation; reopens dead addons. |
+| `4038879b` | **Pause/resume**: `hiver swarm pause|resume` (and the skill's `swarm_ctl.py`) hold/release all message delivery; `⏸` in titles and the tree. |
+| `3eb2796f` | **Resume keeps launch flags**: after a restart herdr resumed agents with only `claude --resume <id>` (no permission mode, model or add-dirs); the engine now reports the full resume command. Relaunch fixes (`--addons-only`, no double start, addon anchor, failed addons retried). |
 | skill | **`/swarm` switch-over** (only when `HIVER_ENV=1`; backup in `~/.claude/skill-backups/`): `launch_swarm.py` → `hiver swarm launch` with the relay, dashboard and the skill's own `swarm.watcher` addon; agent briefs get a hiver messaging variant; SKILL.md "Running inside hiver" (incl. two GitHub repos). |
 
 Verified live with real Claude (Haiku) agents via `scripts/live_smoke.sh`, and a hiver client read through a herdr pane:
@@ -28,18 +31,16 @@ Verified live with real Claude (Haiku) agents via `scripts/live_smoke.sh`, and a
 - launch into its own space
 
 ## Known limitations
-- **Restart:** after a hiver server restart, agents that never received a prompt come back as plain shells (herdr only resumes Claude sessions that exist). Needs `hiver swarm relaunch`.
+- After a restart, agents that never had a conversation come back as shells: run `hiver swarm relaunch <swarm>`.
+- Swarms imported from herdr (not launched by hiver) have no recorded per-agent args, so their resume flags are only fixed after one `hiver swarm relaunch`.
 - Scripts (the Slack relay) aren't agents, so they don't appear in the tree; their pane title still shows `▷`.
 - The tree only renders in the single-machine sidebar (the multi-SSH-machine sidebar still shows the flat list).
 - The onboarding dialog and some help texts still say "herdr".
-- The skill's `swarm_ctl.py` (pause/resume) still wakes agents through Slack; in hiver it should use the bus.
 - `~/SKILLS/swarm` (backup copy) isn't synced yet: run `/save-skill swarm` once the other session editing the skill is done.
 
 ## Next steps
-1. `hiver swarm relaunch [<agent>]`: restart agents that came back as shells after a restart.
-2. `swarm_ctl.py` pause/resume via the bus inside hiver.
-3. From `docs/hiver-addons.md`: event hooks → agent adapters (mixed Claude/Codex swarms) → `Runtime` trait + standalone daemon → tmux driver.
-4. Weekly upstream rebase job (`scripts/hiver_hooks.py` + nextest).
+1. From `docs/hiver-addons.md`: event hooks → agent adapters (mixed Claude/Codex swarms) → `Runtime` trait + standalone daemon → tmux driver.
+2. Weekly upstream rebase job (`scripts/hiver_hooks.py` + nextest).
 
 ## Try it
 ```bash
