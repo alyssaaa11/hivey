@@ -1,0 +1,559 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "hiver: swarm runtime core and its addons",
+    "output": "docs/diagrams/hiver-architecture.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "git@github.com:jcsancho/hiver.git",
+      "link_mode": "local-only",
+      "revision": "a7598034c29f4e06ee5e03454f8cdf0205cc7a79"
+    }
+  },
+  "components": [
+    {
+      "id": "agents",
+      "type": "external",
+      "label": "Agents in panes",
+      "sublabel": "Claude Code · Codex",
+      "pos": [
+        540,
+        30
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/cli/swarm/launch.rs",
+          "line": 446,
+          "end_line": 470,
+          "label": "start agent in its pane"
+        }
+      ]
+    },
+    {
+      "id": "user",
+      "type": "external",
+      "label": "You",
+      "sublabel": "terminal · Slack",
+      "pos": [
+        10,
+        180
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "skill",
+      "type": "external",
+      "label": "/swarm skill",
+      "sublabel": "team design · briefs",
+      "pos": [
+        10,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "tui",
+      "type": "frontend",
+      "label": "TUI client",
+      "sublabel": "tree · colors · keys",
+      "pos": [
+        270,
+        180
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/client/shell/swarm_sidebar.rs",
+          "line": 145,
+          "end_line": 246,
+          "label": "swarm tree rows"
+        },
+        {
+          "path": "src/ui/panes.rs",
+          "line": 669,
+          "end_line": 693,
+          "label": "role-colored pane titles"
+        }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "hiver CLI",
+      "sublabel": "swarm launch · msg send",
+      "pos": [
+        270,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/cli/swarm.rs",
+          "line": 134,
+          "end_line": 227,
+          "label": "hiver swarm …"
+        },
+        {
+          "path": "src/cli/swarm.rs",
+          "line": 258,
+          "end_line": 376,
+          "label": "hiver msg …"
+        },
+        {
+          "path": "src/cli/swarm/launch.rs",
+          "line": 545,
+          "end_line": 597,
+          "label": "launch into own space"
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "Runtime core",
+      "sublabel": "PTYs · state · plugins",
+      "pos": [
+        540,
+        180
+      ],
+      "size": [
+        150,
+        214
+      ],
+      "tag": "socket API",
+      "sources": [
+        {
+          "path": "src/api/server.rs",
+          "line": 458,
+          "end_line": 475,
+          "label": "method swarm → engine"
+        },
+        {
+          "path": "src/api/server.rs",
+          "line": 121,
+          "end_line": 123,
+          "label": "starts swarm engine"
+        }
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Swarm engine",
+      "sublabel": "roster · delivery · pause",
+      "pos": [
+        775,
+        180
+      ],
+      "size": [
+        150,
+        214
+      ],
+      "tag": "1 s tick",
+      "sources": [
+        {
+          "path": "src/swarm/engine.rs",
+          "line": 375,
+          "end_line": 447,
+          "label": "tick: deliver, label, resume"
+        },
+        {
+          "path": "src/swarm/engine.rs",
+          "line": 448,
+          "end_line": 524,
+          "label": "hold, deliver, escalate"
+        },
+        {
+          "path": "src/swarm/engine.rs",
+          "line": 631,
+          "end_line": 677,
+          "label": "full resume commands"
+        }
+      ]
+    },
+    {
+      "id": "adapter",
+      "type": "backend",
+      "label": "Agent adapters",
+      "sublabel": "claude · codex args",
+      "pos": [
+        1015,
+        180
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/swarm/adapter.rs",
+          "line": 17,
+          "end_line": 113,
+          "label": "start, continue, resume"
+        }
+      ]
+    },
+    {
+      "id": "bus",
+      "type": "messagebus",
+      "label": "Message bus",
+      "sublabel": "@all · @role · digests",
+      "pos": [
+        1015,
+        330
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "src/swarm/bus.rs",
+          "line": 200,
+          "end_line": 267,
+          "label": "address resolution"
+        },
+        {
+          "path": "src/swarm/bus.rs",
+          "line": 302,
+          "end_line": 321,
+          "label": "deliver when idle"
+        },
+        {
+          "path": "src/swarm/bus.rs",
+          "line": 330,
+          "end_line": 367,
+          "label": "digest"
+        }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "Swarm folder .swarm/",
+      "sublabel": "agents.json · bus.jsonl",
+      "pos": [
+        775,
+        470
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "sources": [
+        {
+          "path": "src/swarm/engine.rs",
+          "line": 272,
+          "end_line": 300,
+          "label": "log + queue a message"
+        },
+        {
+          "path": "src/swarm/bus.rs",
+          "line": 99,
+          "end_line": 119,
+          "label": "append bus.jsonl"
+        },
+        {
+          "path": "src/swarm/model.rs",
+          "line": 110,
+          "end_line": 117,
+          "label": "read agents.json"
+        }
+      ]
+    },
+    {
+      "id": "slackrelay",
+      "type": "cloud",
+      "label": "hiver.slack-relay",
+      "sublabel": "Slack ⇄ bus",
+      "pos": [
+        270,
+        640
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "addon",
+      "sources": [
+        {
+          "path": "plugins/slack-relay/relay.py",
+          "line": 242,
+          "end_line": 272,
+          "label": "slack→bus, bus→slack"
+        }
+      ]
+    },
+    {
+      "id": "githubaddon",
+      "type": "cloud",
+      "label": "hiver.github",
+      "sublabel": "app repo + swarm repo",
+      "pos": [
+        540,
+        640
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "addon",
+      "sources": [
+        {
+          "path": "plugins/github/github.py",
+          "line": 145,
+          "end_line": 159,
+          "label": "commit, scan, create, push"
+        },
+        {
+          "path": "plugins/github/github.py",
+          "line": 187,
+          "end_line": 259,
+          "label": "confirm-first pane"
+        }
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "cloud",
+      "label": "hiver.dashboard",
+      "sublabel": "states · tokens · tasks",
+      "pos": [
+        775,
+        640
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "addon",
+      "sources": [
+        {
+          "path": "plugins/dashboard/dashboard.py",
+          "line": 183,
+          "end_line": 247,
+          "label": "token metering"
+        }
+      ]
+    },
+    {
+      "id": "watcher",
+      "type": "external",
+      "label": "swarm.watcher",
+      "sublabel": "skill addon: idle, budget",
+      "pos": [
+        1015,
+        640
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "addon"
+    },
+    {
+      "id": "slack",
+      "type": "external",
+      "label": "Slack",
+      "sublabel": "#swarm-<slug>",
+      "pos": [
+        270,
+        800
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "github",
+      "type": "external",
+      "label": "GitHub",
+      "sublabel": "<slug> · <slug>-swarm",
+      "pos": [
+        540,
+        800
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "hiver server process (Rust, herdr fork)",
+      "wraps": [
+        "server",
+        "engine",
+        "adapter",
+        "bus"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Addons: plugin panes in each swarm's space",
+      "wraps": [
+        "slackrelay",
+        "githubaddon",
+        "dashboard",
+        "watcher"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "user-keys",
+      "from": "user",
+      "to": "tui",
+      "label": "keys & clicks"
+    },
+    {
+      "id": "user-cli",
+      "from": "user",
+      "to": "cli",
+      "label": "commands"
+    },
+    {
+      "id": "skill-launch",
+      "from": "skill",
+      "to": "cli",
+      "label": "launch",
+      "variant": "emphasis"
+    },
+    {
+      "id": "tui-server",
+      "from": "tui",
+      "to": "server",
+      "label": "client protocol"
+    },
+    {
+      "id": "cli-server",
+      "from": "cli",
+      "to": "server",
+      "label": "socket API",
+      "variant": "emphasis"
+    },
+    {
+      "id": "server-engine",
+      "from": "server",
+      "to": "engine",
+      "label": "swarm ops",
+      "variant": "emphasis"
+    },
+    {
+      "id": "server-agents",
+      "from": "server",
+      "to": "agents",
+      "label": "runs, detects state"
+    },
+    {
+      "id": "engine-agents",
+      "from": "engine",
+      "to": "agents",
+      "label": "types digests when idle",
+      "fromSide": "top",
+      "toSide": "right"
+    },
+    {
+      "id": "engine-adapter",
+      "from": "engine",
+      "to": "adapter",
+      "label": "resume cmd"
+    },
+    {
+      "id": "engine-bus",
+      "from": "engine",
+      "to": "bus",
+      "label": "route"
+    },
+    {
+      "id": "engine-store",
+      "from": "engine",
+      "to": "store",
+      "label": "log · roster"
+    },
+    {
+      "id": "server-addons",
+      "from": "server",
+      "to": "githubaddon",
+      "label": "opens addon panes",
+      "variant": "dashed"
+    },
+    {
+      "id": "relay-cli",
+      "from": "slackrelay",
+      "to": "cli",
+      "label": "msg send --from human"
+    },
+    {
+      "id": "slack-relay",
+      "from": "slack",
+      "to": "slackrelay",
+      "label": "@mentions ⇄ mirror"
+    },
+    {
+      "id": "dashboard-store",
+      "from": "dashboard",
+      "to": "store",
+      "label": "reads log"
+    },
+    {
+      "id": "github-push",
+      "from": "githubaddon",
+      "to": "github",
+      "label": "create + push"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "hiver core does",
+      "items": [
+        "One space per swarm; the master is pane 1",
+        "Message bus: delivery when idle, --fyi never wakes, --urgent now",
+        "Queues survive restarts; blocked agents escalate to the master",
+        "Pause/resume, relaunch, full resume commands after a restart",
+        "Mixed Claude Code + Codex agents (adapters)"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Addons (plugins)",
+      "items": [
+        "hiver.slack-relay: Slack @mentions → bus; mirror of master traffic",
+        "hiver.dashboard: live states, token bars, budget, tasks, messages",
+        "hiver.github: product and workspace as two repos, gitleaks gate",
+        "swarm.watcher (/swarm skill): idle, stall and budget alerts"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Addon contract",
+      "items": [
+        "Any herdr-format plugin with a pane; opened by launch --addon or swarm addon",
+        "Gets HIVER_SWARM_ROOT, _SLUG, _CHANNEL",
+        "Talks in with `hiver msg send`; reads out from .swarm/bus.jsonl"
+      ]
+    }
+  ]
+}
