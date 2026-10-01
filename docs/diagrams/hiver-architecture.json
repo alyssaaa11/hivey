@@ -9,7 +9,7 @@
     "repository": {
       "url": "git@github.com:jcsancho/hiver.git",
       "link_mode": "local-only",
-      "revision": "a7598034c29f4e06ee5e03454f8cdf0205cc7a79"
+      "revision": "8fd65b6bb9d9ae3658a9c310047292d99f58023d"
     }
   },
   "components": [
@@ -67,7 +67,7 @@
       "id": "tui",
       "type": "frontend",
       "label": "TUI client",
-      "sublabel": "tree · colors · keys",
+      "sublabel": "swarm list · hover · zoom",
       "pos": [
         270,
         180
@@ -78,16 +78,22 @@
       ],
       "sources": [
         {
-          "path": "src/client/shell/swarm_sidebar.rs",
-          "line": 145,
-          "end_line": 246,
-          "label": "swarm tree rows"
+          "path": "src/client/shell/sidebar.rs",
+          "line": 214,
+          "end_line": 235,
+          "label": "swarms list, full height"
         },
         {
-          "path": "src/ui/panes.rs",
-          "line": 669,
-          "end_line": 693,
-          "label": "role-colored pane titles"
+          "path": "src/client/shell/swarm_sidebar.rs",
+          "line": 472,
+          "end_line": 550,
+          "label": "hover info card"
+        },
+        {
+          "path": "src/client/shell/mouse.rs",
+          "line": 694,
+          "end_line": 716,
+          "label": "double-click title: zoom"
         }
       ]
     },
@@ -107,14 +113,14 @@
       "sources": [
         {
           "path": "src/cli/swarm.rs",
-          "line": 134,
-          "end_line": 227,
+          "line": 135,
+          "end_line": 246,
           "label": "hiver swarm …"
         },
         {
           "path": "src/cli/swarm.rs",
-          "line": 258,
-          "end_line": 376,
+          "line": 277,
+          "end_line": 395,
           "label": "hiver msg …"
         },
         {
@@ -129,7 +135,7 @@
       "id": "server",
       "type": "backend",
       "label": "Runtime core",
-      "sublabel": "PTYs · state · plugins",
+      "sublabel": "herdr today · swappable",
       "pos": [
         540,
         180
@@ -171,21 +177,21 @@
       "sources": [
         {
           "path": "src/swarm/engine.rs",
-          "line": 375,
-          "end_line": 447,
+          "line": 381,
+          "end_line": 462,
           "label": "tick: deliver, label, resume"
         },
         {
           "path": "src/swarm/engine.rs",
-          "line": 448,
-          "end_line": 524,
+          "line": 463,
+          "end_line": 539,
           "label": "hold, deliver, escalate"
         },
         {
           "path": "src/swarm/engine.rs",
-          "line": 631,
-          "end_line": 677,
-          "label": "full resume commands"
+          "line": 696,
+          "end_line": 790,
+          "label": "swarm info for the hover card"
         }
       ]
     },
@@ -261,8 +267,8 @@
       "sources": [
         {
           "path": "src/swarm/engine.rs",
-          "line": 272,
-          "end_line": 300,
+          "line": 278,
+          "end_line": 306,
           "label": "log + queue a message"
         },
         {
@@ -529,11 +535,12 @@
       "dot": "emerald",
       "title": "hiver core does",
       "items": [
-        "One space per swarm; the master is pane 1",
+        "One space per swarm; click it to talk to its master",
         "Message bus: delivery when idle, --fyi never wakes, --urgent now",
         "Queues survive restarts; blocked agents escalate to the master",
         "Pause/resume, relaunch, full resume commands after a restart",
-        "Mixed Claude Code + Codex agents (adapters)"
+        "Mixed Claude Code + Codex agents (adapters)",
+        "Hover a swarm for its agents, Slack, vault, addons; ⌥ keys; double-click a title to zoom"
       ]
     },
     {
@@ -553,6 +560,15 @@
         "Any herdr-format plugin with a pane; opened by launch --addon or swarm addon",
         "Gets HIVER_SWARM_ROOT, _SLUG, _CHANNEL",
         "Talks in with `hiver msg send`; reads out from .swarm/bus.jsonl"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Swappable runtime",
+      "items": [
+        "Runtime core = herdr today (compiled in)",
+        "The engine, CLI and addons use it only through its socket API",
+        "tmux or cmux can plug in as runtime drivers: designed, not built yet"
       ]
     }
   ]
