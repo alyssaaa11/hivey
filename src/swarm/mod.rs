@@ -7,6 +7,7 @@ pub(crate) mod adapter;
 pub(crate) mod bus;
 pub(crate) mod engine;
 pub(crate) mod model;
+pub(crate) mod schedule;
 
 pub(crate) use engine::{handle_request, start};
 

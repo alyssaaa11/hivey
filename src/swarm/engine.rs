@@ -30,6 +30,12 @@ const RATE_LIMIT: usize = 30;
 const PAIR_LIMIT: usize = 6;
 const PAIR_WINDOW: Duration = Duration::from_secs(300);
 const METADATA_SOURCE: &str = "hiver:swarm";
+/// How often due schedules are looked for.
+const SCHEDULE_CHECK: Duration = Duration::from_secs(30);
+pub(crate) const HEARTBEAT_TASK: &str = "Monitoring pass. Check `hiver swarm list` (who is idle, \
+blocked or gone), `hiver msg log --limit 20` and the task board. Answer questions, unblock or \
+nudge agents, review finished work, re-plan if needed, and keep the wiki current. Message the \
+user only if something needs them.";
 
 struct Engine {
     state: Mutex<State>,
@@ -67,6 +73,7 @@ struct State {
     resume_reported: HashMap<String, Vec<String>>,
     /// Last swarm tokens reported per workspace (summary, master pane, info lines).
     workspace_reported: HashMap<String, (String, String, Vec<String>)>,
+    last_schedule_check: Option<Instant>,
     /// Info lines per swarm (hover card / `hiver swarm info`), refreshed every RELOAD_EVERY.
     info_cache: HashMap<String, (Instant, Vec<String>)>,
     sent_at: HashMap<String, VecDeque<Instant>>,
@@ -406,6 +413,13 @@ fn tick(api_tx: &ApiRequestSender) {
         };
         let Some(agents) = agents else { return };
         state.update_live(agents);
+        if state
+            .last_schedule_check
+            .is_none_or(|at| at.elapsed() >= SCHEDULE_CHECK)
+        {
+            state.last_schedule_check = Some(Instant::now());
+            run_due_schedules(&mut state);
+        }
         let deliveries = plan_deliveries(&mut state);
         (
             deliveries,
@@ -799,6 +813,14 @@ fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
     if !github.is_empty() {
         lines.push(format!("GitHub      {}", github.join(" · ")));
     }
+    let schedules: Vec<String> = super::schedule::load(&swarm.root)
+        .schedules
+        .iter()
+        .map(|s| format!("{} → {}", s.describe(), s.to))
+        .collect();
+    if !schedules.is_empty() {
+        lines.push(format!("schedules   {}", schedules.join(", ")));
+    }
     lines.push(format!("folder      {}", swarm.root.display()));
     lines
 }
@@ -829,6 +851,111 @@ fn info_token_lines(lines: &[String]) -> Vec<String> {
 }
 
 const MAX_INFO_LINES: usize = 12;
+
+/// Queues every due schedule of every running swarm as a bus message to its target.
+fn run_due_schedules(state: &mut State) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    let local = super::schedule::local_now();
+    let swarms: Vec<Swarm> = state.swarms.iter().filter(|s| !s.paused).cloned().collect();
+    for swarm in swarms {
+        let mut book = super::schedule::load(&swarm.root);
+        let mut changed = false;
+        for index in 0..book.schedules.len() {
+            if !book.schedules[index].is_due(now, &local) {
+                continue;
+            }
+            match fire_schedule(state, &swarm, &book.schedules[index]) {
+                Ok(true) => {
+                    book.schedules[index].mark_run(now, &local);
+                    changed = true;
+                }
+                Ok(false) => {} // the previous wake-up is still waiting: no pile-up
+                Err(err) => tracing::warn!(%err, swarm = %swarm.slug, "hiver: schedule failed"),
+            }
+        }
+        if changed {
+            if let Err(err) = super::schedule::save(&swarm.root, &book) {
+                tracing::warn!(%err, "hiver: cannot save schedules");
+            }
+        }
+    }
+}
+
+/// Sends one schedule's task with a status snapshot. `Ok(false)` when its previous wake-up
+/// hasn't been delivered yet (nothing is sent).
+fn fire_schedule(
+    state: &mut State,
+    swarm: &Swarm,
+    schedule: &super::schedule::Schedule,
+) -> Result<bool, String> {
+    let target = swarm
+        .agent(&schedule.to)
+        .ok_or_else(|| format!("swarm {:?} has no agent {:?}", swarm.slug, schedule.to))?
+        .key
+        .clone();
+    let tag = format!("schedule:{}", schedule.id);
+    let waiting = state
+        .queues
+        .get(&(swarm.slug.clone(), target.clone()))
+        .is_some_and(|queue| queue.iter().any(|msg| msg.addressed == tag));
+    if waiting {
+        return Ok(false);
+    }
+    let text = format!(
+        "Scheduled check `{}` ({}): {}\n{}",
+        schedule.id,
+        schedule.describe(),
+        schedule.task,
+        status_snapshot(state, swarm, schedule.last_run.unwrap_or(schedule.created))
+    );
+    let msg = Message {
+        id: state.next_id(),
+        ts: now_ms(),
+        from: bus::HIVER.into(),
+        swarm: Some(swarm.slug.clone()),
+        to: target,
+        addressed: tag,
+        kind: Kind::Normal,
+        text,
+        reply_to: None,
+        copy: false,
+    };
+    state.post(msg)?;
+    Ok(true)
+}
+
+/// What changed since `since` (unix seconds): summary, agents needing attention, messages.
+fn status_snapshot(state: &State, swarm: &Swarm, since: u64) -> String {
+    let attention: Vec<String> = swarm
+        .agents
+        .iter()
+        .filter(|a| a.role != Role::Script)
+        .filter_map(|a| match state.live(a).map(|live| live.status) {
+            Some(AgentStatus::Blocked) => Some(format!("{} blocked", a.key)),
+            Some(AgentStatus::Done) => Some(format!("{} finished", a.key)),
+            None if a.role != Role::Master => Some(format!("{} gone", a.key)),
+            _ => None,
+        })
+        .collect();
+    let since_ms = since.saturating_mul(1000);
+    let messages = bus::read_log(&swarm.bus_path())
+        .iter()
+        .filter(
+            |r| matches!(r, Record::Msg(m) if !m.copy && m.ts > since_ms && m.from != bus::HIVER),
+        )
+        .count();
+    let mut status = format!("Status: {}", swarm_summary(state, swarm));
+    if !attention.is_empty() {
+        status.push_str(&format!(" · needs you: {}", attention.join(", ")));
+    }
+    status.push_str(&format!(
+        " · {messages} message(s) since the last check (hiver msg log --limit 20)."
+    ));
+    status
+}
 
 /// One line per swarm for its space row (`●2/3 ⚠1 ✉2 ⏸`).
 fn swarm_summary(state: &State, swarm: &Swarm) -> String {
@@ -1045,6 +1172,10 @@ fn run_op(state: &mut State, op: &str, args: &Value) -> Result<Value, String> {
         "import" => op_import(state, args),
         "forget" => op_forget(state, args),
         "info" => op_info(state, args),
+        "schedule.add" => op_schedule_add(state, args),
+        "schedule.list" => op_schedule_list(state, args),
+        "schedule.remove" => op_schedule_remove(state, args),
+        "schedule.run" => op_schedule_run(state, args),
         "pause" => op_set_paused(state, args, true),
         "resume" => op_set_paused(state, args, false),
         "list" => Ok(op_list(state)),
@@ -1079,6 +1210,125 @@ fn op_import(state: &mut State, args: &Value) -> Result<Value, String> {
     state.reload();
     state.rebuild_queues();
     Ok(json!({ "swarm": swarm_json(state, state.swarm(&swarm.slug).ok_or("import failed")?) }))
+}
+
+fn schedule_swarm(state: &State, args: &Value) -> Result<Swarm, String> {
+    let slug = match arg(args, "swarm") {
+        Some(slug) => slug.to_string(),
+        None => context_swarm(state, args).ok_or("which swarm? pass a swarm slug")?,
+    };
+    state
+        .swarm(&slug)
+        .cloned()
+        .ok_or(format!("no swarm {slug:?}"))
+}
+
+fn op_schedule_add(state: &mut State, args: &Value) -> Result<Value, String> {
+    use super::schedule::{load, parse_at, parse_every, save, Schedule};
+    let swarm = schedule_swarm(state, args)?;
+    let task = arg(args, "task").ok_or("missing task")?.to_string();
+    let to = arg(args, "to").unwrap_or("coordinator").to_string();
+    if swarm.agent(&to).is_none() {
+        return Err(format!("swarm {:?} has no agent {to:?}", swarm.slug));
+    }
+    let every_secs = arg(args, "every").map(parse_every).transpose()?;
+    let at = match arg(args, "at") {
+        Some(at) => {
+            parse_at(at)?;
+            Some(at.trim().to_string())
+        }
+        None => None,
+    };
+    if every_secs.is_some() == at.is_some() {
+        return Err("give exactly one of --every <interval> or --at <HH:MM>".into());
+    }
+    let mut book = load(&swarm.root);
+    let id = match arg(args, "id") {
+        Some(id) => id.to_string(),
+        None => (1..)
+            .map(|n| format!("s{n}"))
+            .find(|id| !book.schedules.iter().any(|s| &s.id == id))
+            .unwrap_or_default(),
+    };
+    book.schedules.retain(|s| s.id != id); // re-adding an id replaces it
+    let schedule = Schedule {
+        id,
+        every_secs,
+        at,
+        to,
+        task,
+        last_run: None,
+        last_day: None,
+        created: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default(),
+    };
+    let added = json!({ "id": schedule.id, "when": schedule.describe(), "to": schedule.to });
+    book.schedules.push(schedule);
+    save(&swarm.root, &book)?;
+    Ok(json!({ "swarm": swarm.slug, "added": added }))
+}
+
+fn op_schedule_list(state: &State, args: &Value) -> Result<Value, String> {
+    let swarms: Vec<Swarm> = match arg(args, "swarm")
+        .map(str::to_string)
+        .or_else(|| context_swarm(state, args))
+    {
+        Some(slug) => vec![state
+            .swarm(&slug)
+            .cloned()
+            .ok_or(format!("no swarm {slug:?}"))?],
+        None => state.swarms.clone(),
+    };
+    let rows: Vec<Value> = swarms
+        .iter()
+        .flat_map(|swarm| {
+            super::schedule::load(&swarm.root)
+                .schedules
+                .into_iter()
+                .map(move |s| {
+                    json!({ "swarm": swarm.slug, "id": s.id, "when": s.describe(), "to": s.to,
+                            "task": s.task, "last_run": s.last_run })
+                })
+        })
+        .collect();
+    Ok(json!({ "schedules": rows }))
+}
+
+fn op_schedule_remove(state: &mut State, args: &Value) -> Result<Value, String> {
+    let swarm = schedule_swarm(state, args)?;
+    let id = arg(args, "id").ok_or("missing id")?;
+    let mut book = super::schedule::load(&swarm.root);
+    let before = book.schedules.len();
+    book.schedules.retain(|s| s.id != id);
+    if book.schedules.len() == before {
+        return Err(format!("swarm {:?} has no schedule {id:?}", swarm.slug));
+    }
+    super::schedule::save(&swarm.root, &book)?;
+    Ok(json!({ "swarm": swarm.slug, "removed": id }))
+}
+
+/// Fires a schedule now (it still waits for its target to be idle).
+fn op_schedule_run(state: &mut State, args: &Value) -> Result<Value, String> {
+    let swarm = schedule_swarm(state, args)?;
+    let id = arg(args, "id").ok_or("missing id")?;
+    let mut book = super::schedule::load(&swarm.root);
+    let index = book
+        .schedules
+        .iter()
+        .position(|s| s.id == id)
+        .ok_or(format!("swarm {:?} has no schedule {id:?}", swarm.slug))?;
+    let sent = fire_schedule(state, &swarm, &book.schedules[index])?;
+    if sent {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        book.schedules[index].mark_run(now, &super::schedule::local_now());
+        super::schedule::save(&swarm.root, &book)?;
+    }
+    Ok(json!({ "swarm": swarm.slug, "id": id, "queued": sent }))
 }
 
 fn op_info(state: &State, args: &Value) -> Result<Value, String> {
@@ -1714,6 +1964,71 @@ mod tests {
             wrapped.len() > 1 && wrapped.iter().all(|l| l.chars().count() <= 80),
             "{wrapped:?}"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn schedules_wake_the_master_once_and_never_pile_up() {
+        let root = temp_swarm("sch");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![
+            info("sch-coordinator", "w1:p1", AgentStatus::Working),
+            info("sch-scout", "w1:p2", AgentStatus::Blocked),
+        ]);
+        let added = run_op(
+            &mut state,
+            "schedule.add",
+            &json!({"swarm": "sch", "every": "15m", "task": "check the board"}),
+        )
+        .unwrap();
+        assert_eq!(added["added"]["when"], "every 15m");
+        assert!(run_op(
+            &mut state,
+            "schedule.add",
+            &json!({"swarm": "sch", "task": "x"})
+        )
+        .is_err());
+        // Not due yet: nothing queued.
+        run_due_schedules(&mut state);
+        assert!(state
+            .queues
+            .get(&("sch".to_string(), "coordinator".to_string()))
+            .is_none_or(Vec::is_empty));
+        // Run it now; a second run while the first waits is skipped.
+        let first = run_op(
+            &mut state,
+            "schedule.run",
+            &json!({"swarm": "sch", "id": "s1"}),
+        )
+        .unwrap();
+        assert_eq!(first["queued"], true);
+        let second = run_op(
+            &mut state,
+            "schedule.run",
+            &json!({"swarm": "sch", "id": "s1"}),
+        )
+        .unwrap();
+        assert_eq!(second["queued"], false, "no pile-up");
+        let queue = &state.queues[&("sch".to_string(), "coordinator".to_string())];
+        assert_eq!(queue.len(), 1);
+        assert!(
+            queue[0].text.contains("check the board"),
+            "{}",
+            queue[0].text
+        );
+        assert!(
+            queue[0].text.contains("needs you: scout blocked"),
+            "{}",
+            queue[0].text
+        );
+        let listed = run_op(&mut state, "schedule.list", &json!({"swarm": "sch"})).unwrap();
+        assert_eq!(listed["schedules"].as_array().unwrap().len(), 1);
+        run_op(
+            &mut state,
+            "schedule.remove",
+            &json!({"swarm": "sch", "id": "s1"}),
+        )
+        .unwrap();
         let _ = std::fs::remove_dir_all(&root);
     }
 

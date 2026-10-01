@@ -316,6 +316,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         master_pane: None,
         move_master: false,
         addons: Vec::new(),
+        heartbeat: None,
     };
 
     let mut relaunched = 0;

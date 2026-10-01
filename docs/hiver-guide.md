@@ -158,6 +158,28 @@ hiver swarm info [<swarm>]           # what the swarm uses: agents, Slack, vault
 
 The skill's own pause/restart (`swarm_ctl.py pause|restart`) also works inside hiver.
 
+### Scheduled checks (wake the master on a timer)
+
+The `/swarm` skill asks at plan time whether the master should run scheduled checks. You can
+also set them yourself:
+
+```bash
+hiver swarm launch … --heartbeat 15m                 # monitoring pass every 15 min, from the start
+hiver swarm schedule add <swarm> --every 2h "run the test suite and file failures"
+hiver swarm schedule add <swarm> --at 09:00 "summarize yesterday's progress for the user"
+hiver swarm schedule add <swarm> --every 30m --to critic "review anything marked DONE"
+hiver swarm schedule list [<swarm>]
+hiver swarm schedule run <swarm> <id>                 # fire one now
+hiver swarm schedule remove <swarm> <id>
+```
+
+When one is due, the master (or `--to` agent) gets a `[hiver]` message with the task plus a
+status snapshot: the summary, who needs attention (blocked, finished, gone), and how many
+messages arrived since the last check. It's **delivered only when that agent is idle**, so it
+never interrupts work. A wake-up that's still waiting is never duplicated, and paused swarms are
+skipped. Each wake-up costs one turn of that agent's model. Schedules live in
+`<root>/.swarm/schedules.json` and show up in the hover card and `hiver swarm info`.
+
 ## 5. After restarting hiver (or the Mac)
 
 The layout comes back, and agents with a conversation resume **with their original flags**

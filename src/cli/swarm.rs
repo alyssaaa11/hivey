@@ -19,6 +19,9 @@ hiver swarm commands:
   hiver swarm master [<slug>] [--focus]
                                      show (or focus) a swarm's master; default: your swarm
   hiver swarm info [<slug>]          agents, Slack channel, vault, addons, budget, tasks, repos
+  hiver swarm schedule add <swarm> (--every 15m | --at 09:00) [--to AGENT] [--id ID] <task…>
+                                     wake the master (or AGENT) with a task on a schedule
+  hiver swarm schedule list|remove|run [<swarm>] [<id>]
   hiver swarm pick                   choose a swarm and jump to its master (interactive)
   hiver swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥F ⌥Q)
   hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)
@@ -84,6 +87,107 @@ fn api(method: &str, params: Value) -> Result<Value, String> {
         return Err(error["message"].as_str().unwrap_or("error").to_string());
     }
     Ok(response.get("result").cloned().unwrap_or(Value::Null))
+}
+
+const SCHEDULE_HELP: &str = "\
+usage: hiver swarm schedule add <swarm> (--every 15m | --at 09:00) [--to AGENT] [--id ID] <task…>
+       hiver swarm schedule list [<swarm>]
+       hiver swarm schedule remove <swarm> <id>
+       hiver swarm schedule run <swarm> <id>      (now; still delivered when the target is idle)
+  When due, the target (default: the master) gets the task plus a status snapshot, delivered
+  when it is idle. A wake-up still waiting is never duplicated. Paused swarms are skipped.";
+
+fn schedule_command(args: &[String]) -> std::io::Result<i32> {
+    let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    let parsed = (|| -> Result<Value, String> {
+        let mut params = json!({});
+        for (flag, key) in [
+            ("--every", "every"),
+            ("--at", "at"),
+            ("--to", "to"),
+            ("--id", "id"),
+        ] {
+            if let Some(value) = take_value(&mut rest, flag)? {
+                params[key] = json!(value);
+            }
+        }
+        Ok(params)
+    })();
+    let mut params = match parsed {
+        Ok(params) => params,
+        Err(err) => {
+            eprintln!("error: {err}\n{SCHEDULE_HELP}");
+            return Ok(2);
+        }
+    };
+    let (op, ok) = match (args.first().map(String::as_str), rest.as_slice()) {
+        (Some("add"), [swarm, task @ ..]) if !task.is_empty() => {
+            params["swarm"] = json!(swarm);
+            params["task"] = json!(task.join(" "));
+            ("schedule.add", true)
+        }
+        (Some("list"), []) => ("schedule.list", true),
+        (Some("list"), [swarm]) => {
+            params["swarm"] = json!(swarm);
+            ("schedule.list", true)
+        }
+        (Some(op @ ("remove" | "run")), [swarm, id]) => {
+            params["swarm"] = json!(swarm);
+            params["id"] = json!(id);
+            (
+                if op == "remove" {
+                    "schedule.remove"
+                } else {
+                    "schedule.run"
+                },
+                true,
+            )
+        }
+        _ => ("", false),
+    };
+    if !ok {
+        eprintln!("{SCHEDULE_HELP}");
+        return Ok(2);
+    }
+    let response = call(op, params)?;
+    let Some(result) = result(&response) else {
+        return Ok(1);
+    };
+    match op {
+        "schedule.add" => println!(
+            "added {} to {}: {} → {}",
+            result["added"]["id"].as_str().unwrap_or("?"),
+            result["swarm"].as_str().unwrap_or("?"),
+            result["added"]["when"].as_str().unwrap_or("?"),
+            result["added"]["to"].as_str().unwrap_or("?")
+        ),
+        "schedule.list" => {
+            let rows = result["schedules"].as_array().cloned().unwrap_or_default();
+            if rows.is_empty() {
+                println!("no schedules (hiver swarm schedule add …)");
+            }
+            for row in rows {
+                println!(
+                    "{}/{}  {} → {}  {}",
+                    row["swarm"].as_str().unwrap_or("?"),
+                    row["id"].as_str().unwrap_or("?"),
+                    row["when"].as_str().unwrap_or("?"),
+                    row["to"].as_str().unwrap_or("?"),
+                    row["task"].as_str().unwrap_or("")
+                );
+            }
+        }
+        "schedule.remove" => println!("removed {}", result["removed"].as_str().unwrap_or("?")),
+        _ => println!(
+            "{}",
+            if result["queued"] == true {
+                "queued: delivered when the target is idle"
+            } else {
+                "the previous wake-up is still waiting; nothing added"
+            }
+        ),
+    }
+    Ok(0)
 }
 
 /// Prints errors and returns the result object on success.
@@ -231,6 +335,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
             }
             Ok(0)
         }
+        Some("schedule") => schedule_command(&args[1..]),
         Some("pick") => pick_master(),
         Some("setup" | "install-keys") => install_keys(),
         Some("help" | "--help" | "-h") => {

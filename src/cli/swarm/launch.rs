@@ -34,13 +34,15 @@ pub(super) const HELP: &str = "\
 usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
-         [--addon PLUGIN[:ENTRYPOINT]]...
+         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m]
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
   (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
   --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
   before the agents start, with HIVER_SWARM_ROOT, HIVER_SWARM_SLUG and HIVER_SWARM_CHANNEL set:
-  e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.";
+  e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.
+  --heartbeat 15m wakes the master every 15 min with a monitoring task and a status
+  snapshot (hiver swarm schedule … adds more, e.g. a daily report at 09:00).";
 
 struct Options {
     root: PathBuf,
@@ -57,6 +59,8 @@ struct Options {
     budget_min: Option<u64>,
     master_pane: Option<String>,
     move_master: bool,
+    /// Interval of the master's monitoring wake-up (`--heartbeat 15m`), if any.
+    heartbeat: Option<String>,
     /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays);
     /// no entrypoint means the plugin's first pane.
     addons: Vec<Addon>,
@@ -153,6 +157,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         master_pane: None,
         move_master: true,
         addons: Vec::new(),
+        heartbeat: None,
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -179,6 +184,11 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--master-pane" => opts.master_pane = Some(value("--master-pane")?),
             "--no-move" => opts.move_master = false,
+            "--heartbeat" => {
+                let every = value("--heartbeat")?;
+                crate::swarm::schedule::parse_every(&every)?;
+                opts.heartbeat = Some(every);
+            }
             "--addon" | "--relay" => opts.addons.push(parse_addon(&value(arg)?)?),
             "--budget-min" => {
                 opts.budget_min = Some(
@@ -592,6 +602,19 @@ fn launch(opts: &Options) -> Result<Value, String> {
     }
     save_manifest(&root, &manifest)?;
     import(&root)?;
+    if let Some(every) = &opts.heartbeat {
+        // The master's monitoring pass (replaces a /loop heartbeat inside the coordinator).
+        let added = super::call(
+            "schedule.add",
+            json!({ "swarm": opts.slug, "every": every, "id": "heartbeat",
+                    "task": crate::swarm::engine::HEARTBEAT_TASK }),
+        )
+        .map_err(|err| err.to_string())?;
+        match added.get("error") {
+            Some(error) => eprintln!("  heartbeat not scheduled: {}", error["message"]),
+            None => eprintln!("  heartbeat: master checks the swarm every {every}"),
+        }
+    }
     Ok(manifest)
 }
 
