@@ -77,7 +77,7 @@ Blocked detection is deliberately strict for screen-manifest agents. Herdr only 
 
 For those other agents, unusual new prompts may initially show as `idle` instead of `blocked` until Herdr learns that screen shape. The misclassification affects only the visible status and waits. It should not make Herdr send input or take destructive action.
 
-For Codex, a visible spinner or live activity timer can establish `working`, and a visible approval prompt can establish `blocked`. An ordinary title, composer, or missing spinner cannot establish that a turn ended. Codex may therefore stay `unknown` after a response, and waits for `idle` or completion may time out. Managed startup uses the initial composer only to determine when it can accept a prompt; that observation does not change turn status.
+For Codex, a visible spinner or live activity timer can establish `working`, and a visible approval prompt can establish `blocked`. When Codex's terminal title shows no spinner, Herdr reports `idle`. Codex stays `unknown` only when no rule matches, for example when Codex sets no terminal title, and waits for `idle` or completion may then time out. Managed startup uses the initial composer only to determine when it can accept a prompt; that observation does not change turn status.
 
 ## Detection manifests
 
