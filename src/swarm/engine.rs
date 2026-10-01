@@ -193,6 +193,22 @@ impl State {
         }
     }
 
+    /// The (non-master, non-script) agent whose home folder `<root>/<agent>` contains `cwd`.
+    fn agent_in_dir(&self, cwd: &str) -> Option<(&Swarm, &SwarmAgent)> {
+        let cwd = std::fs::canonicalize(cwd).ok()?;
+        self.swarms.iter().find_map(|swarm| {
+            swarm
+                .agents
+                .iter()
+                .filter(|agent| !matches!(agent.role, Role::Master | Role::Script))
+                .find(|agent| {
+                    std::fs::canonicalize(swarm.root.join(&agent.key))
+                        .is_ok_and(|home| cwd.starts_with(home))
+                })
+                .map(|agent| (swarm, agent))
+        })
+    }
+
     /// The swarm agent running in `pane_id`, if any.
     fn agent_in_pane(&self, pane_id: &str) -> Option<(&Swarm, &SwarmAgent)> {
         let live_name = self
@@ -609,38 +625,9 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
     }
 }
 
-/// The resume command for an agent: its session plus the arguments it was launched with
-/// (permission mode, model, --add-dir, --chrome), minus any earlier resume/continue flags.
-fn resume_argv(session_id: &str, launch_args: &[String]) -> Option<Vec<String>> {
-    let mut argv = vec![
-        "claude".to_string(),
-        "--resume".to_string(),
-        session_id.to_string(),
-    ];
-    let mut skip_value = false;
-    for arg in launch_args {
-        if std::mem::take(&mut skip_value) {
-            continue;
-        }
-        match arg.as_str() {
-            "--continue" | "-c" => {}
-            "--resume" | "-r" | "--session-id" => skip_value = true,
-            _ if arg.starts_with("--resume=") || arg.starts_with("--session-id=") => {}
-            _ => argv.push(arg.clone()),
-        }
-    }
-    // herdr's rules for reported resume commands (see validate_resume_argv).
-    let fits = argv.len() <= 64
-        && argv.iter().map(String::len).sum::<usize>() <= 8 * 1024
-        && !argv
-            .iter()
-            .any(|a| a.contains('\'') || a.chars().any(char::is_control));
-    fits.then_some(argv)
-}
-
-/// Herdr resumes Claude after a restart with only `claude --resume <id>`, dropping the
-/// swarm's flags (permission mode, model, add-dirs). Report the full command instead,
-/// again whenever an agent's session changes.
+/// Herdr resumes agents after a restart with only `claude --resume <id>` / `codex resume
+/// <id>`, dropping the swarm's flags (permission mode, model, add-dirs). Report the full
+/// command instead (see `adapter`), again whenever an agent's session changes.
 fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
     let mut out = Vec::new();
     for swarm in &state.swarms {
@@ -651,10 +638,10 @@ fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
             let Some((source, agent_label, session_id)) = live.session.clone() else {
                 continue;
             };
-            if source != "herdr:claude" {
+            if source != agent.kind.herdr_source() {
                 continue;
             }
-            let Some(argv) = resume_argv(&session_id, &agent.args) else {
+            let Some(argv) = agent.kind.resume_argv(&session_id, &agent.args) else {
                 continue;
             };
             if state.resume_reported.get(&live.pane_id) == Some(&argv) {
@@ -894,6 +881,7 @@ fn swarm_json(state: &State, swarm: &Swarm) -> Value {
             json!({
                 "key": agent.key,
                 "role": agent.role.as_str(),
+                "kind": agent.kind.as_str(),
                 "herdr_name": agent.herdr_name,
                 "model": agent.model,
                 "pane_id": live.map(|l| l.pane_id.clone()).or_else(|| agent.pane_id.clone()),
@@ -948,6 +936,18 @@ fn identify(state: &State, args: &Value) -> Result<Sender, String> {
             key: agent.key.clone(),
             role: Some(agent.role),
         });
+    }
+    // No pane id at all: the caller's environment was scrubbed (Codex runs shell commands
+    // without HERDR_PANE_ID). Every agent works in its own folder, so its cwd identifies it.
+    // Never used when a pane id was given, so a human cd'd into an agent folder stays human.
+    if arg(args, "from_pane").is_none() && arg(args, "context_pane").is_none() {
+        if let Some((swarm, agent)) = arg(args, "cwd").and_then(|cwd| state.agent_in_dir(cwd)) {
+            return Ok(Sender {
+                swarm: Some(swarm.slug.clone()),
+                key: agent.key.clone(),
+                role: Some(agent.role),
+            });
+        }
     }
     Ok(Sender::human())
 }
@@ -1358,36 +1358,26 @@ mod tests {
     }
 
     #[test]
-    fn resume_command_keeps_launch_flags_and_drops_old_resume_flags() {
-        let args: Vec<String> = [
-            "--chrome",
-            "--dangerously-skip-permissions",
-            "--model",
-            "sonnet",
-            "--add-dir",
-            "/r",
-            "--continue",
-            "--resume",
-            "old",
-            "--session-id=x",
-        ]
-        .map(String::from)
-        .to_vec();
-        assert_eq!(
-            resume_argv("abc", &args).unwrap(),
-            [
-                "claude",
-                "--resume",
-                "abc",
-                "--chrome",
-                "--dangerously-skip-permissions",
-                "--model",
-                "sonnet",
-                "--add-dir",
-                "/r"
-            ]
-        );
-        assert!(resume_argv("abc", &["--add-dir".into(), "/it's".into()]).is_none());
+    fn agents_without_a_pane_id_are_identified_by_their_folder() {
+        let root = temp_swarm("cwd");
+        std::fs::create_dir_all(root.join("scout/src")).unwrap();
+        let mut state = state_with(&[&root]);
+        let sent = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "critic", "text": "hi", "cwd": root.join("scout/src")}),
+        )
+        .unwrap();
+        assert_eq!(sent["from"], "cwd/scout");
+        // A pane id that isn't an agent (the human's shell) wins over the folder.
+        let human = run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "cwd/critic", "text": "hi", "cwd": root.join("scout"), "from_pane": "w9:p9"}),
+        )
+        .unwrap();
+        assert_eq!(human["from"], "human");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -43,6 +43,21 @@ class Transcripts(unittest.TestCase):
             self.assertEqual(dashboard.scan_transcript(str(path), state), 115 + 130)
             self.assertEqual(dashboard.scan_transcript(str(path) + ".missing", {}), 0)
 
+    def test_codex_rollout_keeps_the_latest_running_total(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rollout-x.jsonl"
+
+            def event(total):
+                info = {"total_token_usage": {"total_tokens": total}}
+                return json.dumps({"type": "event_msg", "payload": {"type": "token_count", "info": info}}) + "\n"
+
+            path.write_text('{"type": "session_meta", "payload": {}}\n' + event(100) + event(250))
+            state = {}
+            self.assertEqual(dashboard.scan_codex_rollout(str(path), state), 250)
+            with open(path, "a") as f:
+                f.write(event(400))
+            self.assertEqual(dashboard.scan_codex_rollout(str(path), state), 400)
+
     def test_recent_messages_skip_receipts_and_copies(self):
         with tempfile.TemporaryDirectory() as tmp:
             bus = Path(tmp) / "bus.jsonl"

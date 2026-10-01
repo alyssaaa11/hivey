@@ -37,6 +37,10 @@ const ACTIVE_PANE_ENV_VAR: &str = "HERDR_ACTIVE_PANE_ID";
 
 fn call(op: &str, mut args: Value) -> std::io::Result<Value> {
     if let Some(object) = args.as_object_mut() {
+        // Fallback identity when the environment was scrubbed (see engine::identify).
+        if let Ok(cwd) = std::env::current_dir() {
+            object.entry("cwd").or_insert(json!(cwd));
+        }
         // The caller's own pane identifies the sender; the focused pane only picks the swarm.
         if let Ok(pane) = std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR) {
             object

@@ -14,6 +14,7 @@ use super::{
     agent_args, api, import, manifest_path, open_addons, save_manifest, split, start_agent, Addon,
     Options, DEFAULT_CLAUDE_ARGS,
 };
+use crate::swarm::adapter::{strip_session_args, AgentKind};
 
 pub(in crate::cli::swarm) const HELP: &str = "\
 usage: hiver swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons | --addons-only] [--kickoff TEXT]
@@ -75,8 +76,56 @@ fn parse(args: &[String]) -> Result<Request, String> {
     Ok(request)
 }
 
+/// Whether the CLI has an earlier conversation started in `dir` to continue.
+fn has_conversation(dir: &Path, kind: AgentKind) -> bool {
+    match kind {
+        AgentKind::Claude => has_claude_conversation(dir),
+        AgentKind::Codex => has_codex_conversation(dir),
+    }
+}
+
+/// Codex logs sessions as ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl; the first line
+/// (`session_meta`) records the working directory.
+fn has_codex_conversation(dir: &Path) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let wanted = dir.to_string_lossy().to_string();
+    let walk = |path: PathBuf| -> Vec<PathBuf> {
+        std::fs::read_dir(path)
+            .map(|entries| entries.flatten().map(|e| e.path()).collect())
+            .unwrap_or_default()
+    };
+    let sessions = PathBuf::from(home).join(".codex").join("sessions");
+    for year in walk(sessions) {
+        for month in walk(year) {
+            for day in walk(month) {
+                for file in walk(day) {
+                    if file.extension().is_none_or(|ext| ext != "jsonl") {
+                        continue;
+                    }
+                    let first = std::fs::File::open(&file).ok().and_then(|f| {
+                        use std::io::BufRead;
+                        std::io::BufReader::new(f).lines().next()?.ok()
+                    });
+                    let cwd = first
+                        .and_then(|line| serde_json::from_str::<Value>(&line).ok())
+                        .and_then(|meta| meta["payload"]["cwd"].as_str().map(str::to_string));
+                    if cwd.is_some_and(|cwd| {
+                        cwd == wanted || std::fs::canonicalize(&cwd).is_ok_and(|c| c == dir)
+                    }) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
 /// Claude Code keeps transcripts per working directory in ~/.claude/projects/<mangled cwd>/.
-fn has_conversation(dir: &Path) -> bool {
+fn has_claude_conversation(dir: &Path) -> bool {
     let Some(home) = std::env::var_os("HOME") else {
         return false;
     };
@@ -232,6 +281,24 @@ fn relaunch(request: &Request) -> Result<usize, String> {
             ))
         })
         .collect();
+    let manifest_args = |field: &str| -> Option<Vec<String>> {
+        manifest[field].as_array().map(|args| {
+            args.iter()
+                .filter_map(|a| a.as_str().map(str::to_string))
+                .collect()
+        })
+    };
+    let codex_args = manifest_args("codex_args")
+        .unwrap_or_else(|| super::split_args(AgentKind::Codex.default_args()));
+    let kinds: BTreeMap<String, AgentKind> = agents
+        .iter()
+        .filter_map(|agent| {
+            Some((
+                agent["key"].as_str()?.to_string(),
+                AgentKind::parse(agent["kind"].as_str()?)?,
+            ))
+        })
+        .collect();
     let opts = Options {
         root: root.clone(),
         slug: request.slug.clone(),
@@ -239,6 +306,8 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         channel: None,
         models,
         claude_args,
+        codex_args,
+        kinds,
         kickoff: String::new(),
         budget_min: None,
         master_pane: None,
@@ -275,12 +344,15 @@ fn relaunch(request: &Request) -> Result<usize, String> {
                 continue;
             }
         };
-        let mut args = agent_args(&opts, &root, key);
-        let resume = !request.fresh && has_conversation(&home);
-        if resume {
-            args.push("--continue".into());
-        }
-        let status = start_agent(&name, &pane, &args);
+        let kind = opts.kind(key);
+        let launch_args = agent_args(&opts, &root, key);
+        let resume = !request.fresh && has_conversation(&home, kind);
+        let args = if resume {
+            kind.continue_args(&launch_args)
+        } else {
+            launch_args.clone()
+        };
+        let status = start_agent(&name, &pane, &args, kind);
         let status = if status == "ready" {
             let prompt = request
                 .kickoff
@@ -295,8 +367,8 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         if is_master {
             manifest["coordinator_pane_id"] = json!(pane);
         } else if manifest["agents"][key].is_object() {
-            let launch_args: Vec<&String> = args.iter().filter(|a| *a != "--continue").collect();
-            manifest["agents"][key]["args"] = json!(launch_args);
+            manifest["agents"][key]["args"] = json!(strip_session_args(&launch_args));
+            manifest["agents"][key]["kind"] = json!(kind.as_str());
             manifest["agents"][key]["pane_id"] = json!(pane);
             manifest["agents"][key]["status"] = json!(status);
         }
@@ -437,9 +509,18 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
         let previous = std::env::var_os("HOME");
         std::env::set_var("HOME", &home);
-        assert!(!has_conversation(&work));
+        assert!(!has_conversation(&work, AgentKind::Claude));
+        assert!(!has_conversation(&work, AgentKind::Codex));
         std::fs::write(project.join("abc.jsonl"), "{}\n").unwrap();
-        assert!(has_conversation(&work));
+        assert!(has_conversation(&work, AgentKind::Claude));
+        let day = home.join(".codex/sessions/2026/10/01");
+        std::fs::create_dir_all(&day).unwrap();
+        let meta = format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":{:?}}}}}\n",
+            canonical.to_string_lossy()
+        );
+        std::fs::write(day.join("rollout-x.jsonl"), meta).unwrap();
+        assert!(has_conversation(&work, AgentKind::Codex));
         match previous {
             Some(value) => std::env::set_var("HOME", value),
             None => std::env::remove_var("HOME"),

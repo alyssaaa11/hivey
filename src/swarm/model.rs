@@ -85,9 +85,11 @@ pub(crate) struct SwarmAgent {
     pub model: Option<String>,
     /// Pane recorded at launch; live panes are resolved by herdr name first.
     pub pane_id: Option<String>,
-    /// Claude arguments the agent was launched with (manifest `args`), re-applied when
-    /// hiver resumes the agent after a restart.
+    /// Arguments the agent was launched with (manifest `args`), re-applied when hiver
+    /// resumes the agent after a restart.
     pub args: Vec<String>,
+    /// Which CLI runs the agent (manifest `kind`: claude, codex).
+    pub kind: super::adapter::AgentKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -141,6 +143,7 @@ impl Swarm {
                         .and_then(Value::as_str)
                         .map(str::to_string),
                     args: Vec::new(),
+                    kind: Default::default(),
                 });
             }
         }
@@ -153,6 +156,7 @@ impl Swarm {
                     model: None,
                     pane_id: Some(pane.to_string()),
                     args: Vec::new(),
+                    kind: Default::default(),
                 });
             }
         }
@@ -183,6 +187,7 @@ impl Swarm {
                     .and_then(Value::as_str)
                     .map(str::to_string),
                 args: Vec::new(),
+                kind: Default::default(),
             });
         }
         agents.sort_by_key(|agent| agent.role.rank());
@@ -239,6 +244,10 @@ fn agent_from_entry(key: &str, entry: &Value) -> SwarmAgent {
                     .filter_map(|a| a.as_str().map(str::to_string))
                     .collect()
             })
+            .unwrap_or_default(),
+        kind: text("kind")
+            .as_deref()
+            .and_then(super::adapter::AgentKind::parse)
             .unwrap_or_default(),
     }
 }

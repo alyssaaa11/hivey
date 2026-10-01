@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 PROJECTS = Path.home() / ".claude" / "projects"
+CODEX_SESSIONS = Path.home() / ".codex" / "sessions"
 FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 REFRESH_S = 3
 TOKENS_EVERY_S = 10
@@ -97,6 +98,40 @@ def scan_transcript(path, state):
     return state.get("total", 0)
 
 
+def scan_codex_rollout(path, state):
+    """Codex rollouts carry a running total in `token_count` events; keep the latest."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            f.seek(state.get("offset", 0))
+            while True:
+                line = f.readline()
+                if not line.endswith("\n"):
+                    break
+                state["offset"] = f.tell()
+                if '"token_count"' not in line:
+                    continue
+                try:
+                    payload = json.loads(line).get("payload") or {}
+                except json.JSONDecodeError:
+                    continue
+                usage = ((payload.get("info") or {}).get("total_token_usage") or {})
+                if usage.get("total_tokens") is not None:
+                    state["total"] = int(usage["total_tokens"])
+    except FileNotFoundError:
+        pass
+    return state.get("total", 0)
+
+
+def session_files(session):
+    """Usage files for one recorded session: "codex:<id>" or a Claude session id."""
+    if session.startswith("codex:"):
+        sid = session[len("codex:"):]
+        return [(p, scan_codex_rollout) for p in glob.glob(str(CODEX_SESSIONS / "*" / "*" / "*" / f"*{sid}.jsonl"))]
+    files = glob.glob(str(PROJECTS / "*" / f"{session}.jsonl"))
+    files += glob.glob(str(PROJECTS / "*" / session / "subagents" / "*.jsonl"))
+    return [(p, scan_transcript) for p in files]
+
+
 def recent_messages(bus_path, limit):
     try:
         with open(bus_path, "rb") as f:
@@ -146,9 +181,14 @@ class Collector:
         return next((s for s in listing.get("swarms", []) if s.get("slug") == slug), None)
 
     def refresh_tokens(self, swarm):
-        """Map agents to Claude sessions (by pane), then sum their transcripts."""
+        """Map agents to their Claude Code / Codex sessions (by pane), then sum usage."""
         agents = self.hiver("agent", "list").get("result", {}).get("agents", [])
-        session_by_pane = {a["pane_id"]: (a.get("agent_session") or {}).get("value") for a in agents}
+        session_by_pane = {}
+        for a in agents:
+            session = a.get("agent_session") or {}
+            if session.get("value"):
+                prefix = "codex:" if session.get("source") == "herdr:codex" else ""
+                session_by_pane[a["pane_id"]] = prefix + session["value"]
         for agent in swarm.get("agents", []):
             sid = session_by_pane.get(agent.get("pane_id"))
             known = self.cache["sessions"].setdefault(agent["key"], [])
@@ -158,10 +198,8 @@ class Collector:
         for key, sessions in self.cache["sessions"].items():
             total = 0
             for sid in sessions:
-                files = glob.glob(str(PROJECTS / "*" / f"{sid}.jsonl"))
-                files += glob.glob(str(PROJECTS / "*" / sid / "subagents" / "*.jsonl"))
-                for path in files:
-                    total += scan_transcript(path, self.cache["files"].setdefault(path, {}))
+                for path, scan in session_files(sid):
+                    total += scan(path, self.cache["files"].setdefault(path, {}))
             tokens[key] = total
         tmp = self.cache_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.cache))
@@ -286,7 +324,7 @@ def draw(win, snap, slug):
         put(win, y, x, f"{key[:16]:<16}", color(ROLE_COLOR.get(role, 7), role == "master"))
         state_text = status if role == "script" else f"{status} {duration(snap['now'] - seen)}"
         put(win, y, 21, f"{state_text:<16}", color(STATE_COLOR.get(status, 7), status == "blocked"))
-        put(win, y, 38, f"{(agent.get('model') or '')[:8]:<8}", color(7))
+        put(win, y, 38, f"{(agent.get('model') or agent.get('kind') or '')[:8]:<8}", color(7))
         queued = agent.get("queued", 0)
         put(win, y, 47, f"{queued if queued else '':>2}", color(4, True))
         if role != "script":

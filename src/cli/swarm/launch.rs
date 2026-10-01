@@ -13,6 +13,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::{api, canonical_pane_id};
+use crate::swarm::adapter::AgentKind;
 
 pub(super) mod relaunch;
 
@@ -31,7 +32,8 @@ const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
 
 pub(super) const HELP: &str = "\
 usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
-         [--claude-args \"...\"] [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
+         [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
+         [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
          [--addon PLUGIN[:ENTRYPOINT]]...
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
@@ -47,6 +49,10 @@ struct Options {
     channel: Option<String>,
     models: BTreeMap<String, String>,
     claude_args: Vec<String>,
+    /// Arguments for Codex agents (`--kinds a=codex`).
+    codex_args: Vec<String>,
+    /// Which CLI runs each agent; default Claude Code.
+    kinds: BTreeMap<String, AgentKind>,
     kickoff: String,
     budget_min: Option<u64>,
     master_pane: Option<String>,
@@ -54,6 +60,12 @@ struct Options {
     /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays);
     /// no entrypoint means the plugin's first pane.
     addons: Vec<Addon>,
+}
+
+impl Options {
+    fn kind(&self, agent: &str) -> AgentKind {
+        self.kinds.get(agent).copied().unwrap_or_default()
+    }
 }
 
 fn valid_name(name: &str) -> bool {
@@ -134,6 +146,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
         channel: None,
         models: BTreeMap::new(),
         claude_args: split_args(DEFAULT_CLAUDE_ARGS),
+        codex_args: split_args(AgentKind::Codex.default_args()),
+        kinds: BTreeMap::new(),
         kickoff: DEFAULT_KICKOFF.to_string(),
         budget_min: None,
         master_pane: None,
@@ -152,6 +166,17 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--channel" => opts.channel = Some(value("--channel")?),
             "--kickoff" => opts.kickoff = value("--kickoff")?,
             "--claude-args" => opts.claude_args = split_args(&value("--claude-args")?),
+            "--codex-args" => opts.codex_args = split_args(&value("--codex-args")?),
+            "--kinds" => {
+                for pair in value("--kinds")?.split(',').filter(|p| !p.is_empty()) {
+                    let (agent, kind) = pair
+                        .split_once('=')
+                        .ok_or_else(|| format!("--kinds entry {pair:?} is not agent=kind"))?;
+                    let kind = AgentKind::parse(kind)
+                        .ok_or_else(|| format!("--kinds {pair:?}: kind must be claude or codex"))?;
+                    opts.kinds.insert(agent.to_string(), kind);
+                }
+            }
             "--master-pane" => opts.master_pane = Some(value("--master-pane")?),
             "--no-move" => opts.move_master = false,
             "--addon" | "--relay" => opts.addons.push(parse_addon(&value(arg)?)?),
@@ -186,6 +211,29 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(opts)
 }
 
+/// Every agent needs its CLI's brief. The /swarm skill writes CLAUDE.md; a Codex agent reads
+/// AGENTS.md, so link AGENTS.md -> CLAUDE.md when only the latter exists.
+fn ensure_brief(home: &Path, kind: AgentKind) -> Result<(), String> {
+    let brief = home.join(kind.brief_file());
+    if brief.is_file() {
+        return Ok(());
+    }
+    let claude_md = home.join("CLAUDE.md");
+    if kind == AgentKind::Codex && claude_md.is_file() {
+        #[cfg(unix)]
+        return std::os::unix::fs::symlink("CLAUDE.md", &brief)
+            .map_err(|err| format!("cannot link {} to CLAUDE.md: {err}", brief.display()));
+        #[cfg(not(unix))]
+        return std::fs::copy(&claude_md, &brief)
+            .map(|_| ())
+            .map_err(|err| format!("cannot copy CLAUDE.md to {}: {err}", brief.display()));
+    }
+    Err(format!(
+        "missing {} — write it before launching",
+        brief.display()
+    ))
+}
+
 fn check(opts: &Options, root: &Path) -> Result<(), String> {
     let coordinator = format!("{}-coordinator", opts.slug);
     for name in
@@ -199,13 +247,7 @@ fn check(opts: &Options, root: &Path) -> Result<(), String> {
         }
     }
     for agent in &opts.agents {
-        let brief = root.join(agent).join("CLAUDE.md");
-        if !brief.is_file() {
-            return Err(format!(
-                "missing {} — write it before launching",
-                brief.display()
-            ));
-        }
+        ensure_brief(&root.join(agent), opts.kind(agent))?;
     }
     let live = api("agent.list", json!({}))?;
     let clash: Vec<String> = live["agents"]
@@ -367,7 +409,10 @@ fn tile_workers(
 }
 
 fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
-    let mut args = opts.claude_args.clone();
+    let mut args = match opts.kind(agent) {
+        AgentKind::Claude => opts.claude_args.clone(),
+        AgentKind::Codex => opts.codex_args.clone(),
+    };
     if let Some(model) = opts.models.get(agent) {
         match args.iter().position(|arg| arg == "--model") {
             Some(index) if index + 1 < args.len() => args[index + 1] = model.clone(),
@@ -398,7 +443,7 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
 /// Starts Claude and accepts its folder-trust dialog (the coordinator created the folder).
 /// Runs hiver's own `agent start`, which retries while a new pane's shell initializes and
 /// waits until the agent can take input, so the kickoff prompt isn't lost.
-fn start_agent(name: &str, pane: &str, args: &[String]) -> String {
+fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> String {
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hiver"));
     let output = std::process::Command::new(exe)
         .args([
@@ -406,7 +451,7 @@ fn start_agent(name: &str, pane: &str, args: &[String]) -> String {
             "start",
             name,
             "--kind",
-            "claude",
+            kind.as_str(),
             "--pane",
             pane,
             "--timeout",
@@ -442,12 +487,13 @@ fn start_agent(name: &str, pane: &str, args: &[String]) -> String {
             .ok()
             .and_then(|read| read["read"]["text"].as_str().map(str::to_string))
             .unwrap_or_default();
-        if !screen.contains("trust this folder") {
+        // Claude Code: "…trust this folder"; Codex: "Trust this folder?".
+        if !screen.to_lowercase().contains("trust this folder") {
             break;
         }
         let _ = api(
             "agent.send_keys",
-            json!({ "target": name, "keys": ["down", "enter"] }),
+            json!({ "target": name, "keys": kind.trust_keys() }),
         );
         std::thread::sleep(Duration::from_secs(4));
     }
@@ -511,7 +557,8 @@ fn launch(opts: &Options) -> Result<Value, String> {
             agent.clone(),
             json!({ "herdr_name": format!("{}-{agent}", opts.slug), "pane_id": pane, "status": "starting",
                     "model": model_of(&agent_args(opts, &root, agent)),
-                    "args": agent_args(opts, &root, agent) }),
+                    "args": agent_args(opts, &root, agent),
+                    "kind": opts.kind(agent).as_str() }),
         );
     }
     let mut manifest = new_manifest(opts, &root, &master, agents);
@@ -532,7 +579,7 @@ fn launch(opts: &Options) -> Result<Value, String> {
     for (agent, pane) in &panes {
         let name = format!("{}-{agent}", opts.slug);
         let args = agent_args(opts, &root, agent);
-        let mut status = start_agent(&name, pane, &args);
+        let mut status = start_agent(&name, pane, &args, opts.kind(agent));
         if status == "ready" {
             let _ = api(
                 "agent.prompt",
@@ -602,6 +649,7 @@ fn new_manifest(
         ("budget_minutes", json!(opts.budget_min)),
         ("launch_dir", json!(std::env::current_dir().ok())),
         ("claude_args", json!(opts.claude_args)),
+        ("codex_args", json!(opts.codex_args)),
     ] {
         manifest[key] = value;
     }
