@@ -291,6 +291,9 @@ def draw(win, snap, slug):
     swarm, manifest, tokens = snap["swarm"], snap["manifest"], snap["tokens"]
     agents = swarm.get("agents", [])
     total = sum(tokens.values())
+    if height < len([a for a in agents if a.get("role") != "script"]) + 4:
+        draw_compact(win, snap, slug)
+        return
     y = 0
 
     # Header: swarm, agent count, budget bar, total tokens.
@@ -315,7 +318,7 @@ def draw(win, snap, slug):
     top = max(tokens.values(), default=0)
     bar_width = max(3, width - 51 - 9)  # leave room for the number after the bar
     for agent in agents:
-        if y >= height - 6:
+        if y >= height - 1:
             break
         key, role = agent.get("key", "?"), agent.get("role", "worker")
         status = agent.get("status", "?")
@@ -369,6 +372,42 @@ def draw(win, snap, slug):
         put(win, y, x, msg.get("text", "").replace("\n", " "), color(7))
         y += 1
     put(win, height - 1, 1, "q quit · r refresh", color(8))
+    win.refresh()
+
+
+def compact_parts(snap, slug):
+    """Short-pane summary as (text, color pair, bold) parts: swarm, budget, tokens per agent, total."""
+    manifest, tokens = snap["manifest"], snap["tokens"]
+    parts = [(f"◆ {slug}", 4, True)]
+    started, budget = manifest.get("launched_at"), manifest.get("budget_minutes")
+    if started:
+        elapsed = snap["now"] - started
+        if budget:
+            pct = elapsed / (budget * 60)
+            parts.append((f"  {duration(elapsed)}/{budget}m {int(pct * 100)}%",
+                          1 if pct >= 1 else 4 if pct >= 0.8 else 7, False))
+        else:
+            parts.append((f"  {duration(elapsed)}", 7, False))
+    parts.append(("  │", 8, False))
+    for agent in snap["swarm"].get("agents", []):
+        role = agent.get("role", "worker")
+        if role == "script":
+            continue
+        parts.append((f" {GLYPH.get(role, '●')} {agent.get('key', '?')} ", ROLE_COLOR.get(role, 7), role == "master"))
+        parts.append((human(tokens.get(agent.get("key"), 0)), 7, False))
+    parts.append(("  │ tokens ", 8, False))
+    parts.append((human(sum(tokens.values())), 3, True))
+    return parts
+
+
+def draw_compact(win, snap, slug):
+    """One or two rows: everything that matters, tokens per agent included."""
+    height, width = win.getmaxyx()
+    y, x = 0, 1
+    for text, pair, bold in compact_parts(snap, slug):
+        if x + len(text) >= width - 1 and y + 1 < height and x > 1:
+            y, x = y + 1, 3  # wrap onto the next row when there is one
+        x = put(win, y, x, text, color(pair, bold))
     win.refresh()
 
 

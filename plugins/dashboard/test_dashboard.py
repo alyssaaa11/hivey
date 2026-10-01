@@ -72,5 +72,25 @@ class Transcripts(unittest.TestCase):
             self.assertEqual(dashboard.recent_messages(Path(tmp) / "none", 5), [])
 
 
+class Compact(unittest.TestCase):
+    def test_short_pane_shows_tokens_per_agent_without_scripts(self):
+        snap = {
+            "swarm": {"agents": [
+                {"key": "coordinator", "role": "master"},
+                {"key": "scout", "role": "worker"},
+                {"key": "dashboard", "role": "script"},
+            ]},
+            "manifest": {"launched_at": 1000, "budget_minutes": 60},
+            "tokens": {"coordinator": 2_800_000, "scout": 1_900_000, "dashboard": 0},
+            "now": 1000 + 540,
+        }
+        line = "".join(text for text, _, _ in dashboard.compact_parts(snap, "news"))
+        self.assertIn("coordinator 2.8M", line)
+        self.assertIn("scout 1.9M", line)
+        self.assertIn("15%", line)
+        self.assertIn("tokens 4.7M", line)
+        self.assertNotIn("dashboard", line)
+
+
 if __name__ == "__main__":
     unittest.main()
