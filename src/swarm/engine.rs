@@ -32,10 +32,10 @@ const PAIR_WINDOW: Duration = Duration::from_secs(300);
 const METADATA_SOURCE: &str = "hiver:swarm";
 /// How often due schedules are looked for.
 const SCHEDULE_CHECK: Duration = Duration::from_secs(30);
+/// Default monitoring task; a setup provider can pass its own (`--heartbeat-task`).
 pub(crate) const HEARTBEAT_TASK: &str = "Monitoring pass. Check `hiver swarm list` (who is idle, \
-blocked or gone), `hiver msg log --limit 20` and the task board. Answer questions, unblock or \
-nudge agents, review finished work, re-plan if needed, and keep the wiki current. Message the \
-user only if something needs them.";
+blocked or gone) and `hiver msg log --limit 20`. Answer questions, unblock or nudge agents, \
+review finished work and re-plan if needed. Message the user only if something needs them.";
 
 struct Engine {
     state: Mutex<State>,
@@ -705,29 +705,15 @@ fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
 }
 
 /// Lines that describe a swarm (`hiver swarm info`, the sidebar hover card): master, agents,
-/// Slack channel, Obsidian vault, addons, budget, tasks, GitHub, folder. Facts come from the
-/// manifest, the /swarm skill's `.swarm/README.md`, `tasks.json` and live agent states.
+/// the setup provider's own facts (manifest `info`, e.g. Slack channel, memory vault), addons,
+/// budget, tasks, schedules, GitHub, folder. hiver knows no provider's files: a provider shows
+/// anything extra by writing `"info": {"Slack": "#swarm-x (C0…)", "vault": "…"}` (or a list
+/// of `[label, value]` pairs) into `.swarm/agents.json`.
 fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
     let manifest: Value = std::fs::read_to_string(super::model::manifest_path(&swarm.root))
         .ok()
         .and_then(|text| serde_json::from_str(&text).ok())
         .unwrap_or(Value::Null);
-    let readme =
-        std::fs::read_to_string(swarm.root.join(".swarm").join("README.md")).unwrap_or_default();
-    // `**Slack:** `#swarm-x` (`C0…`)` → ["#swarm-x", "C0…"]
-    let quoted = |needle: &str| -> Vec<String> {
-        readme
-            .lines()
-            .find(|line| line.contains(needle))
-            .map(|line| {
-                line.split('`')
-                    .skip(1)
-                    .step_by(2)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
     let status = |agent: &SwarmAgent| match state.live(agent) {
         Some(live) => status_str(live.status),
         None if agent.role == Role::Script => "script",
@@ -752,19 +738,18 @@ fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
     if !agents.is_empty() {
         lines.push(format!("agents      {}", agents.join(", ")));
     }
-    let slack = quoted("**Slack:**");
-    let channel_id = manifest["channel_id"]
-        .as_str()
-        .filter(|c| !c.is_empty())
-        .or_else(|| slack.get(1).map(String::as_str));
-    match (slack.first(), channel_id) {
-        (Some(name), Some(id)) => lines.push(format!("Slack       {name} ({id})")),
-        (None, Some(id)) => lines.push(format!("Slack       {id}")),
-        (Some(name), None) => lines.push(format!("Slack       {name}")),
-        (None, None) => {}
+    let extra = provider_info(&manifest);
+    // The relay channel is part of hiver's manifest; show it unless the provider already does.
+    if let Some(channel) = manifest["channel_id"].as_str().filter(|c| !c.is_empty()) {
+        if !extra.iter().any(|(_, value)| value.contains(channel)) {
+            lines.push(format!("channel     {channel}"));
+        }
     }
-    if let Some(vault) = quoted("Obsidian vault").first() {
-        lines.push(format!("vault       {vault}"));
+    for (label, value) in extra {
+        lines.push(format!(
+            "{:<11} {value}",
+            label.chars().take(11).collect::<String>()
+        ));
     }
     let addons: Vec<String> = manifest["addons"]
         .as_array()
@@ -823,6 +808,23 @@ fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
     }
     lines.push(format!("folder      {}", swarm.root.display()));
     lines
+}
+
+/// The setup provider's facts: manifest `info` as an object (in key order) or `[label, value]`
+/// pairs.
+fn provider_info(manifest: &Value) -> Vec<(String, String)> {
+    let text = |value: &Value| match value {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    match &manifest["info"] {
+        Value::Object(map) => map.iter().map(|(k, v)| (k.clone(), text(v))).collect(),
+        Value::Array(pairs) => pairs
+            .iter()
+            .filter_map(|pair| Some((pair.get(0)?.as_str()?.to_string(), text(pair.get(1)?))))
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 /// Info lines cut to herdr's 80-character token limit (long lists wrap onto more lines).
@@ -1344,7 +1346,7 @@ fn op_info(state: &State, args: &Value) -> Result<Value, String> {
     Ok(json!({ "swarm": slug, "lines": swarm_info(state, swarm) }))
 }
 
-/// Marks the manifest `state` (the same field the /swarm skill's swarm_ctl.py uses) and
+/// Marks the manifest `state` (setup providers may set the same field, e.g. on pause) and
 /// reloads, so deliveries stop or resume at once.
 fn op_set_paused(state: &mut State, args: &Value, paused: bool) -> Result<Value, String> {
     let slug = arg(args, "slug").ok_or("missing slug")?;
@@ -1940,12 +1942,13 @@ mod tests {
     #[test]
     fn swarm_info_reads_manifest_readme_and_wraps_for_tokens() {
         let root = temp_swarm("inf");
-        std::fs::write(
-            root.join(".swarm/README.md"),
-            "- **Slack:** `#swarm-inf` (`C123`) is the team channel.\n\
-             - **Obsidian vault (swarm memory):** `/v/swarm-inf-wiki/`. Each agent…\n",
+        let mut manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join(".swarm/agents.json")).unwrap(),
         )
         .unwrap();
+        manifest["channel_id"] = json!("C123");
+        manifest["info"] = json!({"Slack": "#swarm-inf (C123)", "vault": "/v/swarm-inf-wiki/"});
+        std::fs::write(root.join(".swarm/agents.json"), manifest.to_string()).unwrap();
         let mut state = state_with(&[&root]);
         state.update_live(vec![info("inf-scout", "w1:p2", AgentStatus::Working)]);
         let info = run_op(&mut state, "info", &json!({"swarm": "inf"})).unwrap();
@@ -1954,6 +1957,7 @@ mod tests {
         assert!(text.contains("◆ master    coordinator · gone"), "{text}");
         assert!(text.contains("● scout claude working"), "{text}");
         assert!(text.contains("Slack       #swarm-inf (C123)"), "{text}");
+        assert!(!text.contains("channel     C123"), "not repeated: {text}");
         assert!(text.contains("vault       /v/swarm-inf-wiki/"), "{text}");
         let long = vec![format!(
             "agents      {}",

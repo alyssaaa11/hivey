@@ -1,10 +1,10 @@
-//! `hiver swarm launch`: native replacement for the `/swarm` skill's `launch_swarm.py`.
+//! `hiver swarm launch`: start a designed swarm in hiver.
 //!
-//! Same arguments, defaults and manifest (`<root>/.swarm/agents.json`), but the swarm
-//! gets **its own space**: the calling pane (the coordinator, i.e. the master) moves into
-//! a new space named after the swarm and becomes pane 1; workers are tiled beside it.
-//! The swarm is then registered with the engine, which labels panes and runs the bus.
-//! The Slack relay and the dashboard stay with the skill.
+//! Takes a roster (agents, models, kinds), gives the swarm **its own space** (the calling
+//! pane, the master, moves in as pane 1; workers are tiled beside it), opens addons, starts
+//! the agents and writes `<root>/.swarm/agents.json`. Who designs the team and writes the
+//! briefs is up to a setup provider (e.g. the /swarm skill, see `hiver swarm new`); its
+//! arguments mirror that skill's launch_swarm.py so providers can hand off directly.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -18,13 +18,10 @@ use crate::swarm::adapter::AgentKind;
 pub(super) mod relaunch;
 
 const DEFAULT_CLAUDE_ARGS: &str = "--chrome --dangerously-skip-permissions --model opus";
-const DEFAULT_KICKOFF: &str =
-    "Read your CLAUDE.md carefully, then read the swarm wiki it points to \
-(index, overview, your agent page, relevant findings) — it is the swarm's source of truth. If your \
-Status section shows earlier work, you are resuming: open the files it lists, catch up with \
-`hiver msg inbox` and the Slack channel, post RESUMED, and continue from Next steps. Otherwise \
-announce yourself (command in CLAUDE.md) and start your mission. Keep the Status section current \
-as you work.";
+/// Neutral kickoff; a setup provider passes its own with `--kickoff`.
+const DEFAULT_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in your \
+folder) and start your mission. Talk to teammates with `hiver msg send <agent> \"…\"` (the master \
+is `coordinator`) and read waiting messages with `hiver msg inbox`.";
 /// Entrypoint used when `--addon` names none and the plugin declares no pane.
 const ADDON_ENTRYPOINT: &str = "relay";
 /// Workers stay silent; only the coordinator speaks (AGENTS Stop hook).
@@ -34,7 +31,7 @@ pub(super) const HELP: &str = "\
 usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
-         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m]
+         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]]
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
   (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
@@ -61,6 +58,8 @@ struct Options {
     move_master: bool,
     /// Interval of the master's monitoring wake-up (`--heartbeat 15m`), if any.
     heartbeat: Option<String>,
+    /// The provider's monitoring instructions (`--heartbeat-task`); default HEARTBEAT_TASK.
+    heartbeat_task: Option<String>,
     /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays);
     /// no entrypoint means the plugin's first pane.
     addons: Vec<Addon>,
@@ -158,6 +157,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         move_master: true,
         addons: Vec::new(),
         heartbeat: None,
+        heartbeat_task: None,
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -184,6 +184,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--master-pane" => opts.master_pane = Some(value("--master-pane")?),
             "--no-move" => opts.move_master = false,
+            "--heartbeat-task" => opts.heartbeat_task = Some(value("--heartbeat-task")?),
             "--heartbeat" => {
                 let every = value("--heartbeat")?;
                 crate::swarm::schedule::parse_every(&every)?;
@@ -221,7 +222,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(opts)
 }
 
-/// Every agent needs its CLI's brief. The /swarm skill writes CLAUDE.md; a Codex agent reads
+/// Every agent needs its CLI's brief. Providers usually write CLAUDE.md; a Codex agent reads
 /// AGENTS.md, so link AGENTS.md -> CLAUDE.md when only the latter exists.
 fn ensure_brief(home: &Path, kind: AgentKind) -> Result<(), String> {
     let brief = home.join(kind.brief_file());
@@ -607,7 +608,7 @@ fn launch(opts: &Options) -> Result<Value, String> {
         let added = super::call(
             "schedule.add",
             json!({ "swarm": opts.slug, "every": every, "id": "heartbeat",
-                    "task": crate::swarm::engine::HEARTBEAT_TASK }),
+                    "task": opts.heartbeat_task.as_deref().unwrap_or(crate::swarm::engine::HEARTBEAT_TASK) }),
         )
         .map_err(|err| err.to_string())?;
         match added.get("error") {

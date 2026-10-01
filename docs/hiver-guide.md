@@ -58,11 +58,17 @@ hv() { hiver --session "$(basename "$PWD" | command tr 'A-Z .' 'a-z--')" "$@"; }
 
 ## 3. Launch a swarm
 
-In the hiver pane, start Claude as you normally do for a coordinator and run:
+hiver doesn't decide how a team is designed: a **setup provider** does (a plugin; see
+[`../plugins/README.md`](../plugins/README.md#setup-providers)). Yours is the `/swarm` skill:
 
+```bash
+cd ~/projects/<some-project>
+hiver swarm new "<your task>"        # opens a Claude coordinator running /swarm <task>
+hiver swarm providers                # installed providers; --provider <id> --default picks one
 ```
-/swarm <your task>
-```
+
+Or, already in a hiver pane, start Claude as you normally do for a coordinator and run
+`/swarm <your task>`.
 
 Inside hiver (`HIVER_ENV=1`) the skill:
 

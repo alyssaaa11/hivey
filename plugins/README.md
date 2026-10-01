@@ -54,6 +54,40 @@ hiver swarm launch … --addon me.discord:bridge         # a pane entrypoint oth
 hiver records opened addons in the manifest (`"addons"`) and shows them as `▷` script panes;
 they never receive messages themselves.
 
+## Setup providers
+
+A **setup provider** designs a swarm (team, roles, briefs, memory, channels) and hands it to
+hiver. hiver doesn't hardcode one: any plugin with a pane entrypoint `setup` is a provider.
+
+```bash
+hiver swarm providers                          # installed providers (* = default)
+hiver swarm new "<task>"                       # the default (or only) provider
+hiver swarm new --provider my.crew --default "<task>"
+```
+
+`hiver swarm new` opens the provider's `setup` pane as a new tab in the current folder (creating
+a space for it if none is open), with `HIVER_SETUP_TASK` and `HIVER_SETUP_CWD` set. The provider
+then:
+
+1. writes each agent's brief into `<root>/<agent>/CLAUDE.md` (Codex agents read `AGENTS.md`;
+   hiver links it to `CLAUDE.md` when only that exists), and
+2. runs `hiver swarm launch <root> --slug … <agents…>` with whatever it chose: `--models`,
+   `--kinds a=codex`, `--channel`, `--addon …`, `--heartbeat 15m --heartbeat-task "…"`,
+   `--kickoff "…"`. Launch moves the provider's pane into the swarm's space as the master.
+
+The swarm manifest `<root>/.swarm/agents.json` is hiver's; a provider may add:
+
+| Field | Shown / used by hiver |
+|---|---|
+| `info` | `{"Slack": "#swarm-x (C0…)", "vault": "…"}` or `[[label, value], …]`: shown in the hover card and `hiver swarm info` |
+| `product_dir` | the product folder `hiver.github` publishes (default `app`) |
+| `state` | `"paused"` holds all deliveries (what `hiver swarm pause` sets) |
+| `.swarm/tasks.json` | `{"tasks": [{"status": "open\|in-progress\|review\|approved\|blocked"}]}`: task counts in info and the dashboard |
+
+Included: **`swarm.skill`** (`~/.claude/skills/swarm/hiver-setup`) opens a Claude coordinator
+running the `/swarm` skill. It writes its own kickoff and monitoring texts, and `info` with the
+swarm's Slack channel and Obsidian vault.
+
 ## Included
 
 - [`slack-relay`](slack-relay/) (`hiver.slack-relay`): Slack ↔ bus. Configure the token in

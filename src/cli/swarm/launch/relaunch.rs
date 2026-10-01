@@ -24,19 +24,19 @@ usage: hiver swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons | --addo
   and reopens addons whose pane is gone (--no-addons: leave them).";
 
 const RESUME_PROMPT: &str = "hiver restarted this swarm and you were relaunched. Catch up: \
-run `hiver msg inbox`, re-read the Status section of your CLAUDE.md, then continue from your \
-Next steps. Tell the coordinator you're back with `hiver msg send coordinator --fyi \"back\"`.";
-const FRESH_PROMPT: &str = "You were (re)started in a running swarm. Read your CLAUDE.md \
-carefully, including its Status section; if it shows earlier work you are resuming. Run \
-`hiver msg inbox`, then continue from your Next steps (or start your mission). Tell the \
-coordinator with `hiver msg send coordinator --fyi \"started\"`.";
+run `hiver msg inbox`, re-read your brief (CLAUDE.md or AGENTS.md) for where you were, then \
+continue. Tell the coordinator you're back with `hiver msg send coordinator --fyi \"back\"`.";
+const FRESH_PROMPT: &str = "You were (re)started in a running swarm. Read your brief \
+(CLAUDE.md or AGENTS.md) carefully; if it records earlier work, you are resuming. Run \
+`hiver msg inbox`, then continue (or start your mission). Tell the coordinator with \
+`hiver msg send coordinator --fyi \"started\"`.";
 
 struct Request {
     slug: String,
     only: Vec<String>,
     fresh: bool,
     addons: bool,
-    /// Only reopen addons; leave agents alone (e.g. the /swarm skill's restart).
+    /// Only reopen addons; leave agents alone (a provider restarting agents itself).
     addons_only: bool,
     kickoff: Option<String>,
     claude_args: Option<Vec<String>>,
@@ -317,6 +317,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         move_master: false,
         addons: Vec::new(),
         heartbeat: None,
+        heartbeat_task: None,
     };
 
     let mut relaunched = 0;

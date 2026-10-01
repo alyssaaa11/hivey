@@ -11,7 +11,10 @@ mod launch;
 
 const SWARM_HELP: &str = "\
 hiver swarm commands:
-  hiver swarm launch <root> --slug S <agent>...  start a swarm in its own space (see --help)
+  hiver swarm new [--provider ID] [--default] <task…>
+                                     design + launch a swarm with a setup provider (e.g. /swarm)
+  hiver swarm providers              installed setup providers (plugins with a setup pane)
+  hiver swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
   hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
   hiver swarm import <root>          register a swarm folder (<root>/.swarm/agents.json)
@@ -87,6 +90,181 @@ fn api(method: &str, params: Value) -> Result<Value, String> {
         return Err(error["message"].as_str().unwrap_or("error").to_string());
     }
     Ok(response.get("result").cloned().unwrap_or(Value::Null))
+}
+
+/// Pane entrypoint that makes a plugin a swarm setup provider.
+const SETUP_ENTRYPOINT: &str = "setup";
+
+fn providers() -> Result<Vec<(String, String)>, String> {
+    let list = api("plugin.list", json!({}))?;
+    Ok(list["plugins"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|plugin| plugin["enabled"] != false)
+        .filter(|plugin| {
+            plugin["panes"]
+                .as_array()
+                .is_some_and(|panes| panes.iter().any(|pane| pane["id"] == SETUP_ENTRYPOINT))
+        })
+        .filter_map(|plugin| {
+            Some((
+                plugin["plugin_id"].as_str()?.to_string(),
+                plugin["description"].as_str().unwrap_or("").to_string(),
+            ))
+        })
+        .collect())
+}
+
+fn default_provider_path() -> std::path::PathBuf {
+    crate::config::config_dir().join("swarm-setup.json")
+}
+
+fn default_provider() -> Option<String> {
+    std::fs::read_to_string(default_provider_path())
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|value| value["provider"].as_str().map(str::to_string))
+}
+
+fn list_providers() -> std::io::Result<i32> {
+    let found = match providers() {
+        Ok(found) => found,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return Ok(1);
+        }
+    };
+    if found.is_empty() {
+        println!(
+            "no setup providers installed (a provider is a plugin with a \"setup\" pane;\n\
+                  e.g. hiver plugin link ~/.claude/skills/swarm/hiver-setup)"
+        );
+        return Ok(0);
+    }
+    let default = default_provider();
+    for (id, description) in found {
+        let mark = if default.as_deref() == Some(id.as_str()) {
+            "*"
+        } else {
+            " "
+        };
+        println!("{mark} {id:<24} {description}");
+    }
+    Ok(0)
+}
+
+/// `hiver swarm new`: hand a task to a setup provider. The provider's "setup" pane opens as a
+/// new tab in the current folder with HIVER_SETUP_TASK set; it designs the team, writes the
+/// briefs and calls `hiver swarm launch`, which moves that pane into the swarm's own space.
+fn new_swarm(args: &[String]) -> std::io::Result<i32> {
+    let mut rest: Vec<String> = args.to_vec();
+    let make_default = take_flag(&mut rest, "--default");
+    let chosen = match take_value(&mut rest, "--provider") {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return Ok(2);
+        }
+    };
+    let task = rest.join(" ");
+    let found = match providers() {
+        Ok(found) => found,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return Ok(1);
+        }
+    };
+    let ids: Vec<&str> = found.iter().map(|(id, _)| id.as_str()).collect();
+    let provider = match chosen.or_else(default_provider) {
+        Some(id) if ids.contains(&id.as_str()) => id,
+        Some(id) => {
+            eprintln!("error: setup provider {id:?} is not installed (hiver swarm providers)");
+            return Ok(1);
+        }
+        None if ids.len() == 1 => ids[0].to_string(),
+        None if ids.is_empty() => {
+            eprintln!("error: no setup provider installed (hiver swarm providers)");
+            return Ok(1);
+        }
+        None => {
+            eprintln!(
+                "error: several setup providers; pick one with --provider ({})",
+                ids.join(", ")
+            );
+            return Ok(2);
+        }
+    };
+    if make_default {
+        let text =
+            serde_json::to_string_pretty(&json!({ "provider": provider })).unwrap_or_default();
+        std::fs::write(default_provider_path(), text + "\n")?;
+        println!("default setup provider: {provider}");
+    }
+    let cwd = std::env::current_dir()?;
+    let mut params = json!({
+        "plugin_id": provider,
+        "entrypoint": SETUP_ENTRYPOINT,
+        "placement": "tab",
+        "cwd": cwd,
+        "focus": true,
+        "env": { "HIVER_SETUP_TASK": task, "HIVER_SETUP_CWD": cwd },
+    });
+    // Open it in the caller's space, else the focused one, else a new space for this folder.
+    let caller = std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR)
+        .or_else(|_| std::env::var(ACTIVE_PANE_ENV_VAR))
+        .ok()
+        .and_then(|pane| api("pane.get", json!({ "pane_id": pane })).ok())
+        .and_then(|info| info["pane"]["workspace_id"].as_str().map(str::to_string));
+    let focused = || {
+        api("workspace.list", json!({})).ok().and_then(|list| {
+            list["workspaces"]
+                .as_array()?
+                .iter()
+                .find(|w| w["focused"] == true)?["workspace_id"]
+                .as_str()
+                .map(str::to_string)
+        })
+    };
+    let workspace = match caller.or_else(focused) {
+        Some(id) => id,
+        None => {
+            let label = cwd
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| "swarm".into());
+            match api(
+                "workspace.create",
+                json!({ "cwd": cwd, "label": label, "focus": true }),
+            ) {
+                Ok(created) => created["workspace"]["workspace_id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                Err(err) => {
+                    eprintln!("error: cannot create a space for the setup: {err}");
+                    return Ok(1);
+                }
+            }
+        }
+    };
+    params["workspace_id"] = json!(workspace);
+    match api("plugin.pane.open", params) {
+        Ok(result) => {
+            println!(
+                "{provider} is setting up the swarm in {} ({})",
+                result["plugin_pane"]["pane"]["pane_id"]
+                    .as_str()
+                    .unwrap_or("?"),
+                cwd.display()
+            );
+            Ok(0)
+        }
+        Err(err) => {
+            eprintln!("error: cannot open {provider}'s setup pane: {err}");
+            Ok(1)
+        }
+    }
 }
 
 const SCHEDULE_HELP: &str = "\
@@ -336,6 +514,8 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
             Ok(0)
         }
         Some("schedule") => schedule_command(&args[1..]),
+        Some("new") => new_swarm(&args[1..]),
+        Some("providers") => list_providers(),
         Some("pick") => pick_master(),
         Some("setup" | "install-keys") => install_keys(),
         Some("help" | "--help" | "-h") => {

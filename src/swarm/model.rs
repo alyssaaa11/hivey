@@ -1,4 +1,5 @@
-//! Swarm roster loaded from `<root>/.swarm/agents.json` (the `/swarm` skill's manifest).
+//! Swarm roster loaded from `<root>/.swarm/agents.json`, hiver's swarm manifest (written by
+//! `hiver swarm launch` or a setup provider; format in plugins/README.md).
 //!
 //! The manifest format is owned by the skill; hiver only reads it and accepts a few
 //! optional additions (`role` per agent, `command` for script entries).
