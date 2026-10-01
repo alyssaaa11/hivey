@@ -560,6 +560,19 @@ impl ClientShellState {
             ));
             frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
         }
+        // hiver: swarm info card while hovering a swarm row, drawn over the panes.
+        if let Some(card) = super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot)
+        {
+            if let Some(mut composed) = frame.to_ratatui_buffer() {
+                let cursor = frame.cursor.clone();
+                occlusion.cover(super::swarm_sidebar::render_hover_card(
+                    &mut composed,
+                    &card,
+                    &self.config,
+                ));
+                frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
+            }
+        }
         self.hits.popup = None;
         if let Some(popup) = surface.popup.as_deref() {
             let width = popup.width.map(client_popup_size);

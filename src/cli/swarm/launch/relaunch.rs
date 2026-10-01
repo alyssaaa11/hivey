@@ -255,11 +255,14 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         })
         .collect();
 
-    // Where new panes go: beside any live pane of the swarm, else its recorded master pane.
+    // Where new panes go: beside any live pane of the swarm, else its recorded master pane,
+    // else any restored pane working inside the swarm's folder (after a restart).
     let workspace = manifest["workspace_id"].as_str().map(str::to_string);
     let beside = live_agent_pane(&agents)
         .or(manifest["coordinator_pane_id"].as_str())
         .map(str::to_string)
+        .filter(|pane| api("pane.get", json!({ "pane_id": pane })).is_ok())
+        .or_else(|| pane_in_folder(&root))
         .ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hiver swarm launch`")?;
 
     let claude_args = request.claude_args.clone().unwrap_or_else(|| {
@@ -418,6 +421,18 @@ fn runs_a_program(pane: &str) -> bool {
                 !name.is_empty() && !SHELLS.contains(&name)
             })
         })
+}
+
+/// Any pane whose working folder is inside `root` (a restored shell after a restart).
+fn pane_in_folder(root: &Path) -> Option<String> {
+    let root = std::fs::canonicalize(root).ok()?;
+    let panes = api("pane.list", json!({})).ok()?;
+    panes["panes"].as_array()?.iter().find_map(|pane| {
+        let cwd = std::fs::canonicalize(pane["cwd"].as_str()?).ok()?;
+        cwd.starts_with(&root)
+            .then(|| pane["pane_id"].as_str().map(str::to_string))
+            .flatten()
+    })
 }
 
 /// The pane of a running agent (never a script/addon pane, which may be about to close).

@@ -11,10 +11,12 @@ def norm(text):
     return re.sub(r"\s+", " ", text)
 
 
-def edit(rel, old, new, count=1, required=True):
+def edit(rel, old, new, count=1, required=True, marker=None):
+    """Replace `old` with `new` once. Already applied when `new` (whitespace-insensitive) or
+    `marker` is present; use a marker for hooks rustfmt may reflow beyond whitespace."""
     p = ROOT / rel
     s = p.read_text()
-    if new in s or norm(new) in norm(s):
+    if (marker and marker in s) or new in s or norm(new) in norm(s):
         return
     if old not in s:
         if required:
@@ -309,3 +311,224 @@ edit("src/ui/panes.rs",
         buf.set_stringn(
             start_x,""")
 print("border color hooks applied")
+
+# ---------------------------------------------------------------------------
+# Sidebar: "swarms" list, no agents panel, swarm summary row, click focuses master
+# ---------------------------------------------------------------------------
+edit("src/client/shell/sidebar.rs",
+     """    let (workspace_area, detail_area) =
+        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
+    hits.sidebar_section_divider =
+        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+    put_text(
+        buffer,
+        workspace_area.x,
+        workspace_area.y,
+        workspace_area.width,
+        " spaces",""",
+     """    // hiver: with ui.swarm_sidebar the list is titled "swarms" and uses the full height; the
+    // agents panel is hidden (agents are the panes on the right).
+    let (workspace_area, detail_area) = if config.swarm_sidebar {
+        (
+            Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height),
+            Rect::default(),
+        )
+    } else {
+        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split)
+    };
+    hits.sidebar_section_divider = if config.swarm_sidebar {
+        Rect::default()
+    } else {
+        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split)
+    };
+    put_text(
+        buffer,
+        workspace_area.x,
+        workspace_area.y,
+        workspace_area.width,
+        if config.swarm_sidebar { " swarms" } else { " spaces" }, // hiver""")
+edit("src/config/sidebar.rs",
+     """            rows: vec![
+                vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
+                vec![SpaceSidebarToken::Branch, SpaceSidebarToken::GitStatus],
+            ],
+            row_gap: DEFAULT_SIDEBAR_ROW_GAP,""",
+     """            rows: vec![
+                vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
+                // hiver: `$swarm` is the swarm summary (●working/total ⚠ ✉ ⏸) the engine reports.
+                vec![
+                    SpaceSidebarToken::Custom("swarm".into()),
+                    SpaceSidebarToken::Branch,
+                    SpaceSidebarToken::GitStatus,
+                ],
+            ],
+            row_gap: DEFAULT_SIDEBAR_ROW_GAP,""")
+edit("src/config/sidebar.rs",
+     """        assert_eq!(
+            config.spaces.rows,
+            vec![
+                vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
+                vec![SpaceSidebarToken::Branch, SpaceSidebarToken::GitStatus],
+            ]
+        );""",
+     """        assert_eq!(
+            config.spaces.rows,
+            vec![
+                vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
+                vec![
+                    SpaceSidebarToken::Custom("swarm".into()),
+                    SpaceSidebarToken::Branch,
+                    SpaceSidebarToken::GitStatus,
+                ],
+            ]
+        );""")
+edit("src/client/shell/endpoint_navigation.rs",
+     """        outcome: &mut ClientShellInput,
+    ) {
+        self.focus_or_activate(
+            press.endpoint_id,
+            ClientEndpointFocusTarget::Workspace(press.workspace_id),
+            outcome,
+        );
+    }""",
+     """        outcome: &mut ClientShellInput,
+    ) {
+        // hiver: clicking a swarm's space focuses its master, ready to talk to.
+        if let Some(pane_id) = self.swarm_master_pane(&press.endpoint_id, &press.workspace_id) {
+            self.push_endpoint_method(
+                crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget { pane_id }),
+                outcome,
+            );
+            return;
+        }
+        self.focus_or_activate(
+            press.endpoint_id,
+            ClientEndpointFocusTarget::Workspace(press.workspace_id),
+            outcome,
+        );
+    }
+
+    /// hiver: the master pane the swarm engine reports on a swarm's space.
+    fn swarm_master_pane(&self, endpoint_id: &ClientEndpointId, workspace_id: &str) -> Option<String> {
+        if !endpoint_id.is_local() {
+            return None;
+        }
+        self.endpoints
+            .iter()
+            .find(|endpoint| &endpoint.endpoint_id == endpoint_id)?
+            .snapshot
+            .as_deref()?
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == workspace_id)?
+            .tokens
+            .iter()
+            .find(|(key, _)| key == "master_pane")
+            .map(|(_, value)| value.clone())
+    }""", marker="fn swarm_master_pane")
+print("swarm list sidebar hooks applied")
+
+# ui.swarm_sidebar setting (default off: herdr behavior; `hiver swarm setup` turns it on)
+edit("src/config/model.rs",
+     """    /// Agent sidebar ordering. Saved values are "spaces" or "priority". Default: "spaces".
+    pub agent_panel_sort: AgentPanelSortConfig,""",
+     """    /// Agent sidebar ordering. Saved values are "spaces" or "priority". Default: "spaces".
+    pub agent_panel_sort: AgentPanelSortConfig,
+    /// hiver: swarm-style sidebar. The space list is titled "swarms" and fills the sidebar;
+    /// the agents panel is hidden (agents are the panes). Default: false.
+    pub swarm_sidebar: bool,""")
+edit("src/config/model.rs",
+     """            agent_panel_sort: AgentPanelSortConfig::Spaces,
+""",
+     """            agent_panel_sort: AgentPanelSortConfig::Spaces,
+            swarm_sidebar: false, // hiver
+""")
+edit("src/client/shell/state.rs",
+     """    pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
+""",
+     """    pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
+    pub(super) swarm_sidebar: bool, // hiver
+""")
+edit("src/client/shell/config.rs",
+     """            agent_panel_sort: config.ui.agent_panel_sort,
+""",
+     """            agent_panel_sort: config.ui.agent_panel_sort,
+            swarm_sidebar: config.ui.swarm_sidebar, // hiver
+""")
+edit("src/client/shell/config.rs",
+     """                self.agent_panel_sort = ui.agent_panel_sort;
+""",
+     """                self.agent_panel_sort = ui.agent_panel_sort;
+                self.swarm_sidebar = ui.swarm_sidebar; // hiver
+""")
+print("swarm sidebar setting hooks applied")
+
+# Swarm info card while hovering a swarm row (swarm_sidebar::hover_card)
+edit("src/client/shell/mouse.rs",
+     """        self.update_link_hover(mouse, outcome);
+        let point = (mouse.column, mouse.row);""",
+     """        self.update_link_hover(mouse, outcome);
+        let point = (mouse.column, mouse.row);
+        // hiver: hovering a swarm row shows its info card.
+        if mouse.kind == MouseEventKind::Moved {
+            let hovered = self
+                .hits
+                .workspaces
+                .iter()
+                .find(|hit| super::contains(hit.rect, point))
+                .map(|hit| hit.workspace_id.clone());
+            if self.swarm_tree.set_hover(hovered) {
+                outcome.repaint = true;
+            }
+        }""", marker="self.swarm_tree.set_hover(hovered)")
+edit("src/client/shell/composition.rs",
+     """            frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
+        }
+        self.hits.popup = None;""",
+     """            frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
+        }
+        // hiver: swarm info card while hovering a swarm row, drawn over the panes.
+        if let Some(card) = super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot) {
+            if let Some(mut composed) = frame.to_ratatui_buffer() {
+                let cursor = frame.cursor.clone();
+                occlusion.cover(super::swarm_sidebar::render_hover_card(&mut composed, &card, &self.config));
+                frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
+            }
+        }
+        self.hits.popup = None;""", marker="swarm_sidebar::hover_card(")
+print("swarm info hover card hooks applied")
+
+# Double-click a pane's title bar: zoom it to full size, and back
+edit("src/client/shell/mouse.rs",
+     """            if self.swarm_tree.set_hover(hovered) {
+                outcome.repaint = true;
+            }
+        }""",
+     """            if self.swarm_tree.set_hover(hovered) {
+                outcome.repaint = true;
+            }
+        }
+        // hiver: double-click a pane's title bar (its top border) to zoom it, and back.
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+            let title_bar = self.hits.panes.iter().find(|hit| {
+                !hit.popup
+                    && point.1 == hit.rect.y
+                    && point.0 >= hit.rect.x
+                    && point.0 < hit.rect.right()
+                    && !super::contains(hit.inner_rect, point)
+            });
+            if let Some(pane_id) = title_bar.map(|hit| hit.pane_id.clone()) {
+                if self.swarm_tree.title_double_click(&pane_id) {
+                    self.push_endpoint_method(
+                        crate::api::schema::Method::PaneZoom(crate::api::schema::PaneZoomParams {
+                            pane_id: Some(pane_id),
+                            mode: crate::api::schema::PaneZoomMode::Toggle,
+                        }),
+                        outcome,
+                    );
+                    outcome.repaint = true;
+                    return;
+                }
+            }
+        }""", marker="self.swarm_tree.title_double_click(")
+print("title-bar double-click zoom hooks applied")

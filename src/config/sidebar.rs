@@ -468,7 +468,12 @@ impl Default for SpacesSidebarConfig {
         Self {
             rows: vec![
                 vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
-                vec![SpaceSidebarToken::Branch, SpaceSidebarToken::GitStatus],
+                // hiver: `$swarm` is the swarm summary (●working/total ⚠ ✉ ⏸) the engine reports.
+                vec![
+                    SpaceSidebarToken::Custom("swarm".into()),
+                    SpaceSidebarToken::Branch,
+                    SpaceSidebarToken::GitStatus,
+                ],
             ],
             row_gap: DEFAULT_SIDEBAR_ROW_GAP,
         }
@@ -507,7 +512,11 @@ mod tests {
             config.spaces.rows,
             vec![
                 vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
-                vec![SpaceSidebarToken::Branch, SpaceSidebarToken::GitStatus],
+                vec![
+                    SpaceSidebarToken::Custom("swarm".into()),
+                    SpaceSidebarToken::Branch,
+                    SpaceSidebarToken::GitStatus,
+                ],
             ]
         );
         assert_eq!(config.spaces.row_gap, 0);

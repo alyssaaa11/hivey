@@ -35,11 +35,42 @@ impl ClientShellState {
         press: ClientWorkspacePress,
         outcome: &mut ClientShellInput,
     ) {
+        // hiver: clicking a swarm's space focuses its master, ready to talk to.
+        if let Some(pane_id) = self.swarm_master_pane(&press.endpoint_id, &press.workspace_id) {
+            self.push_endpoint_method(
+                crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget { pane_id }),
+                outcome,
+            );
+            return;
+        }
         self.focus_or_activate(
             press.endpoint_id,
             ClientEndpointFocusTarget::Workspace(press.workspace_id),
             outcome,
         );
+    }
+
+    /// hiver: the master pane the swarm engine reports on a swarm's space.
+    fn swarm_master_pane(
+        &self,
+        endpoint_id: &ClientEndpointId,
+        workspace_id: &str,
+    ) -> Option<String> {
+        if !endpoint_id.is_local() {
+            return None;
+        }
+        self.endpoints
+            .iter()
+            .find(|endpoint| &endpoint.endpoint_id == endpoint_id)?
+            .snapshot
+            .as_deref()?
+            .workspaces
+            .iter()
+            .find(|workspace| workspace.workspace_id == workspace_id)?
+            .tokens
+            .iter()
+            .find(|(key, _)| key == "master_pane")
+            .map(|(_, value)| value.clone())
     }
 
     pub(super) fn handle_endpoint_machine_click(

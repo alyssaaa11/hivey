@@ -679,6 +679,41 @@ impl ClientShellState {
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent, outcome: &mut ClientShellInput) {
         self.update_link_hover(mouse, outcome);
         let point = (mouse.column, mouse.row);
+        // hiver: hovering a swarm row shows its info card.
+        if mouse.kind == MouseEventKind::Moved {
+            let hovered = self
+                .hits
+                .workspaces
+                .iter()
+                .find(|hit| super::contains(hit.rect, point))
+                .map(|hit| hit.workspace_id.clone());
+            if self.swarm_tree.set_hover(hovered) {
+                outcome.repaint = true;
+            }
+        }
+        // hiver: double-click a pane's title bar (its top border) to zoom it, and back.
+        if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+            let title_bar = self.hits.panes.iter().find(|hit| {
+                !hit.popup
+                    && point.1 == hit.rect.y
+                    && point.0 >= hit.rect.x
+                    && point.0 < hit.rect.right()
+                    && !super::contains(hit.inner_rect, point)
+            });
+            if let Some(pane_id) = title_bar.map(|hit| hit.pane_id.clone()) {
+                if self.swarm_tree.title_double_click(&pane_id) {
+                    self.push_endpoint_method(
+                        crate::api::schema::Method::PaneZoom(crate::api::schema::PaneZoomParams {
+                            pane_id: Some(pane_id),
+                            mode: crate::api::schema::PaneZoomMode::Toggle,
+                        }),
+                        outcome,
+                    );
+                    outcome.repaint = true;
+                    return;
+                }
+            }
+        }
         if self.mode == ClientShellMode::Navigate
             && self.workspace_preview_action_blocked()
             && self.overlay.is_none()

@@ -17,7 +17,7 @@ use super::bus::{self, Decision, Kind, Message, Presence, Record, Sender};
 use super::model::{Role, Swarm, SwarmAgent};
 use crate::api::schema::{
     AgentInfo, AgentPromptParams, AgentStatus, EmptyParams, Method, PaneReportAgentSessionParams,
-    PaneReportMetadataParams, Request,
+    PaneReportMetadataParams, Request, WorkspaceReportMetadataParams,
 };
 use crate::api::ApiRequestSender;
 
@@ -42,6 +42,7 @@ static ENGINE: OnceLock<Engine> = OnceLock::new();
 struct Live {
     name: Option<String>,
     pane_id: String,
+    workspace_id: String,
     status: AgentStatus,
     since: Instant,
     /// `(source, agent, session id)` herdr stores for the pane's agent.
@@ -64,6 +65,10 @@ struct State {
     reported: HashMap<String, String>,
     /// Last resume command reported per pane (session id + argv).
     resume_reported: HashMap<String, Vec<String>>,
+    /// Last swarm tokens reported per workspace (summary, master pane, info lines).
+    workspace_reported: HashMap<String, (String, String, Vec<String>)>,
+    /// Info lines per swarm (hover card / `hiver swarm info`), refreshed every RELOAD_EVERY.
+    info_cache: HashMap<String, (Instant, Vec<String>)>,
     sent_at: HashMap<String, VecDeque<Instant>>,
     /// Wake-up messages per agent pair (sorted labels), for `PAIR_LIMIT`.
     pair_wakes: HashMap<(String, String), VecDeque<Instant>>,
@@ -250,6 +255,7 @@ impl State {
                         .agent_session
                         .as_ref()
                         .map(|s| (s.source.clone(), s.agent.clone(), s.value.clone())),
+                    workspace_id: info.workspace_id.clone(),
                     pane_id: info.pane_id,
                     status,
                     since,
@@ -394,7 +400,7 @@ fn tick(api_tx: &ApiRequestSender) {
         .and_then(|result| result.get("agents").cloned())
         .and_then(|agents| serde_json::from_value::<Vec<AgentInfo>>(agents).ok());
 
-    let (deliveries, metadata, resumes) = {
+    let (deliveries, metadata, resumes, spaces) = {
         let Ok(mut state) = engine.state.lock() else {
             return;
         };
@@ -405,6 +411,7 @@ fn tick(api_tx: &ApiRequestSender) {
             deliveries,
             plan_metadata(&mut state),
             plan_resume(&mut state),
+            plan_workspace_tokens(&mut state),
         )
     };
 
@@ -432,6 +439,14 @@ fn tick(api_tx: &ApiRequestSender) {
             tracing::warn!(%pane_id, %err, "hiver: resume command not recorded; will retry");
             if let Ok(mut state) = engine.state.lock() {
                 state.resume_reported.remove(&pane_id);
+            }
+        }
+    }
+    for params in spaces {
+        let workspace_id = params.workspace_id.clone();
+        if dispatch(api_tx, Method::WorkspaceReportMetadata(params)).is_err() {
+            if let Ok(mut state) = engine.state.lock() {
+                state.workspace_reported.remove(&workspace_id);
             }
         }
     }
@@ -675,6 +690,257 @@ fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
     out
 }
 
+/// Lines that describe a swarm (`hiver swarm info`, the sidebar hover card): master, agents,
+/// Slack channel, Obsidian vault, addons, budget, tasks, GitHub, folder. Facts come from the
+/// manifest, the /swarm skill's `.swarm/README.md`, `tasks.json` and live agent states.
+fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
+    let manifest: Value = std::fs::read_to_string(super::model::manifest_path(&swarm.root))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or(Value::Null);
+    let readme =
+        std::fs::read_to_string(swarm.root.join(".swarm").join("README.md")).unwrap_or_default();
+    // `**Slack:** `#swarm-x` (`C0…`)` → ["#swarm-x", "C0…"]
+    let quoted = |needle: &str| -> Vec<String> {
+        readme
+            .lines()
+            .find(|line| line.contains(needle))
+            .map(|line| {
+                line.split('`')
+                    .skip(1)
+                    .step_by(2)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let status = |agent: &SwarmAgent| match state.live(agent) {
+        Some(live) => status_str(live.status),
+        None if agent.role == Role::Script => "script",
+        None => "gone",
+    };
+    let mut lines = Vec::new();
+    if let Some(master) = swarm.master() {
+        lines.push(format!("◆ master    {} · {}", master.key, status(master)));
+    }
+    let agents: Vec<String> = swarm
+        .agents
+        .iter()
+        .filter(|a| !matches!(a.role, Role::Master | Role::Script))
+        .map(|a| {
+            let what = match &a.model {
+                Some(model) => format!("{}/{model}", a.kind.as_str()),
+                None => a.kind.as_str().to_string(),
+            };
+            format!("{} {} {what} {}", a.role.glyph(), a.key, status(a))
+        })
+        .collect();
+    if !agents.is_empty() {
+        lines.push(format!("agents      {}", agents.join(", ")));
+    }
+    let slack = quoted("**Slack:**");
+    let channel_id = manifest["channel_id"]
+        .as_str()
+        .filter(|c| !c.is_empty())
+        .or_else(|| slack.get(1).map(String::as_str));
+    match (slack.first(), channel_id) {
+        (Some(name), Some(id)) => lines.push(format!("Slack       {name} ({id})")),
+        (None, Some(id)) => lines.push(format!("Slack       {id}")),
+        (Some(name), None) => lines.push(format!("Slack       {name}")),
+        (None, None) => {}
+    }
+    if let Some(vault) = quoted("Obsidian vault").first() {
+        lines.push(format!("vault       {vault}"));
+    }
+    let addons: Vec<String> = manifest["addons"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|addon| addon["plugin"].as_str())
+        .map(|plugin| plugin.rsplit('.').next().unwrap_or(plugin).to_string())
+        .collect();
+    if !addons.is_empty() {
+        lines.push(format!("addons      {}", addons.join(", ")));
+    }
+    let elapsed = manifest["launched_at"].as_f64().map(|start| {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(start);
+        ((now - start) / 60.0).max(0.0) as u64
+    });
+    match (elapsed, manifest["budget_minutes"].as_u64()) {
+        (Some(used), Some(budget)) => lines.push(format!("budget      {used}m of {budget}m")),
+        (Some(used), None) => lines.push(format!("running     {used}m")),
+        _ => {}
+    }
+    if swarm.paused {
+        lines.push("state       ⏸ paused (hiver swarm resume)".to_string());
+    }
+    let tasks: Vec<Value> = std::fs::read_to_string(swarm.root.join(".swarm").join("tasks.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|board| board["tasks"].as_array().cloned())
+        .unwrap_or_default();
+    if !tasks.is_empty() {
+        let count = |status: &str| tasks.iter().filter(|t| t["status"] == status).count();
+        lines.push(format!(
+            "tasks       {}/{} approved · {} in progress · {} blocked",
+            count("approved"),
+            tasks.len(),
+            count("in-progress"),
+            count("blocked")
+        ));
+    }
+    let github: Vec<&str> = ["product", "swarm"]
+        .iter()
+        .filter_map(|key| manifest["github"][key].as_str())
+        .collect();
+    if !github.is_empty() {
+        lines.push(format!("GitHub      {}", github.join(" · ")));
+    }
+    lines.push(format!("folder      {}", swarm.root.display()));
+    lines
+}
+
+/// Info lines cut to herdr's 80-character token limit (long lists wrap onto more lines).
+fn info_token_lines(lines: &[String]) -> Vec<String> {
+    const WIDTH: usize = 78;
+    let mut out = Vec::new();
+    for line in lines {
+        let mut rest = line.as_str();
+        let mut first = true;
+        while !rest.is_empty() {
+            let indent = if first { "" } else { "            " };
+            let room = WIDTH - indent.chars().count();
+            let cut = if rest.chars().count() <= room {
+                rest.len()
+            } else {
+                let limit = rest.char_indices().nth(room).map_or(rest.len(), |(i, _)| i);
+                rest[..limit].rfind(", ").map_or(limit, |i| i + 2)
+            };
+            out.push(format!("{indent}{}", rest[..cut].trim_end()));
+            rest = &rest[cut..];
+            first = false;
+        }
+    }
+    out.truncate(MAX_INFO_LINES);
+    out
+}
+
+const MAX_INFO_LINES: usize = 12;
+
+/// One line per swarm for its space row (`●2/3 ⚠1 ✉2 ⏸`).
+fn swarm_summary(state: &State, swarm: &Swarm) -> String {
+    let members: Vec<&SwarmAgent> = swarm
+        .agents
+        .iter()
+        .filter(|a| a.role != Role::Script)
+        .collect();
+    let status = |agent: &SwarmAgent| state.live(agent).map(|live| live.status);
+    let working = members
+        .iter()
+        .filter(|a| status(a) == Some(AgentStatus::Working))
+        .count();
+    let attention = members
+        .iter()
+        .filter(|a| matches!(status(a), Some(AgentStatus::Blocked | AgentStatus::Done)))
+        .count();
+    let queued: usize = state
+        .queues
+        .iter()
+        .filter(|((slug, _), _)| *slug == swarm.slug)
+        .map(|(_, queue)| queue.len())
+        .sum();
+    let mut summary = format!("●{working}/{}", members.len());
+    if attention > 0 {
+        summary.push_str(&format!(" ⚠{attention}"));
+    }
+    if queued > 0 {
+        summary.push_str(&format!(" ✉{queued}"));
+    }
+    if swarm.paused {
+        summary.push_str(" ⏸");
+    }
+    summary
+}
+
+/// Tokens on each swarm's space: `swarm` (the summary shown on its sidebar row) and
+/// `master_pane` (clicking the space focuses the master).
+fn plan_workspace_tokens(state: &mut State) -> Vec<WorkspaceReportMetadataParams> {
+    let mut out = Vec::new();
+    for swarm in &state.swarms {
+        let master = swarm.master().and_then(|m| state.live(m));
+        let workspace = master.map(|live| live.workspace_id.clone()).or_else(|| {
+            swarm
+                .agents
+                .iter()
+                .filter(|a| a.role != Role::Script)
+                .find_map(|a| state.live(a).map(|live| live.workspace_id.clone()))
+        });
+        let Some(workspace_id) = workspace else {
+            continue;
+        };
+        let summary = swarm_summary(state, swarm);
+        let master_pane = master.map(|live| live.pane_id.clone()).unwrap_or_default();
+        let info = match state.info_cache.get(&swarm.slug) {
+            Some((at, lines)) if at.elapsed() < RELOAD_EVERY => lines.clone(),
+            _ => info_token_lines(&swarm_info(state, swarm)),
+        };
+        let signature = (summary.clone(), master_pane.clone(), info.clone());
+        if state.workspace_reported.get(&workspace_id) == Some(&signature) {
+            continue;
+        }
+        let mut tokens = HashMap::new();
+        tokens.insert("swarm".to_string(), Some(summary));
+        tokens.insert(
+            "master_pane".to_string(),
+            (!master_pane.is_empty()).then_some(master_pane),
+        );
+        // info1..info12 (unused ones cleared) for the sidebar hover card.
+        for index in 0..MAX_INFO_LINES {
+            tokens.insert(format!("info{}", index + 1), info.get(index).cloned());
+        }
+        out.push(WorkspaceReportMetadataParams {
+            workspace_id,
+            source: METADATA_SOURCE.into(),
+            tokens,
+            seq: None,
+            ttl_ms: None,
+        });
+    }
+    for params in &out {
+        let token = |key: &str| params.tokens.get(key).cloned().flatten();
+        let info: Vec<String> = (1..=MAX_INFO_LINES)
+            .filter_map(|i| token(&format!("info{i}")))
+            .collect();
+        state.workspace_reported.insert(
+            params.workspace_id.clone(),
+            (
+                token("swarm").unwrap_or_default(),
+                token("master_pane").unwrap_or_default(),
+                info,
+            ),
+        );
+    }
+    // Cache the info lines per swarm so files are read at most every RELOAD_EVERY.
+    let now = Instant::now();
+    let slugs: Vec<String> = state.swarms.iter().map(|s| s.slug.clone()).collect();
+    for slug in slugs {
+        if state
+            .info_cache
+            .get(&slug)
+            .is_none_or(|(at, _)| at.elapsed() >= RELOAD_EVERY)
+        {
+            if let Some(swarm) = state.swarm(&slug).cloned() {
+                let lines = info_token_lines(&swarm_info(state, &swarm));
+                state.info_cache.insert(slug, (now, lines));
+            }
+        }
+    }
+    out
+}
+
 fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
     let mut out = Vec::new();
     for swarm in &state.swarms {
@@ -778,6 +1044,7 @@ fn run_op(state: &mut State, op: &str, args: &Value) -> Result<Value, String> {
     match op {
         "import" => op_import(state, args),
         "forget" => op_forget(state, args),
+        "info" => op_info(state, args),
         "pause" => op_set_paused(state, args, true),
         "resume" => op_set_paused(state, args, false),
         "list" => Ok(op_list(state)),
@@ -812,6 +1079,19 @@ fn op_import(state: &mut State, args: &Value) -> Result<Value, String> {
     state.reload();
     state.rebuild_queues();
     Ok(json!({ "swarm": swarm_json(state, state.swarm(&swarm.slug).ok_or("import failed")?) }))
+}
+
+fn op_info(state: &State, args: &Value) -> Result<Value, String> {
+    let slug = match arg(args, "swarm") {
+        Some(slug) => slug.to_string(),
+        None => match context_swarm(state, args) {
+            Some(slug) => slug,
+            None if state.swarms.len() == 1 => state.swarms[0].slug.clone(),
+            None => return Err("which swarm? pass a swarm slug".into()),
+        },
+    };
+    let swarm = state.swarm(&slug).ok_or(format!("no swarm {slug:?}"))?;
+    Ok(json!({ "swarm": slug, "lines": swarm_info(state, swarm) }))
 }
 
 /// Marks the manifest `state` (the same field the /swarm skill's swarm_ctl.py uses) and
@@ -1377,6 +1657,63 @@ mod tests {
         )
         .unwrap();
         assert_eq!(human["from"], "human");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn swarm_spaces_get_a_summary_and_their_master_pane() {
+        let root = temp_swarm("sum");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![
+            info("sum-coordinator", "w1:p1", AgentStatus::Idle),
+            info("sum-scout", "w1:p2", AgentStatus::Working),
+            info("sum-critic", "w1:p3", AgentStatus::Blocked),
+        ]);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "sum/scout", "text": "x"}),
+        )
+        .unwrap();
+        let reports = plan_workspace_tokens(&mut state);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].workspace_id, "w1");
+        assert_eq!(reports[0].tokens["swarm"].as_deref(), Some("●1/3 ⚠1 ✉1"));
+        assert_eq!(reports[0].tokens["master_pane"].as_deref(), Some("w1:p1"));
+        assert!(
+            plan_workspace_tokens(&mut state).is_empty(),
+            "only on change"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn swarm_info_reads_manifest_readme_and_wraps_for_tokens() {
+        let root = temp_swarm("inf");
+        std::fs::write(
+            root.join(".swarm/README.md"),
+            "- **Slack:** `#swarm-inf` (`C123`) is the team channel.\n\
+             - **Obsidian vault (swarm memory):** `/v/swarm-inf-wiki/`. Each agent…\n",
+        )
+        .unwrap();
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![info("inf-scout", "w1:p2", AgentStatus::Working)]);
+        let info = run_op(&mut state, "info", &json!({"swarm": "inf"})).unwrap();
+        let text: Vec<String> = serde_json::from_value(info["lines"].clone()).unwrap();
+        let text = text.join("\n");
+        assert!(text.contains("◆ master    coordinator · gone"), "{text}");
+        assert!(text.contains("● scout claude working"), "{text}");
+        assert!(text.contains("Slack       #swarm-inf (C123)"), "{text}");
+        assert!(text.contains("vault       /v/swarm-inf-wiki/"), "{text}");
+        let long = vec![format!(
+            "agents      {}",
+            vec!["● agent-name claude/sonnet idle"; 6].join(", ")
+        )];
+        let wrapped = info_token_lines(&long);
+        assert!(
+            wrapped.len() > 1 && wrapped.iter().all(|l| l.chars().count() <= 80),
+            "{wrapped:?}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

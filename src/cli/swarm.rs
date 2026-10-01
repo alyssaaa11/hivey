@@ -18,8 +18,9 @@ hiver swarm commands:
   hiver swarm list [--json]          swarms, agents, roles, states and queued messages
   hiver swarm master [<slug>] [--focus]
                                      show (or focus) a swarm's master; default: your swarm
+  hiver swarm info [<slug>]          agents, Slack channel, vault, addons, budget, tasks, repos
   hiver swarm pick                   choose a swarm and jump to its master (interactive)
-  hiver swarm install-keys           add hiver keybindings to config.toml and reload
+  hiver swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥F ⌥Q)
   hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)
   hiver swarm forget <slug>          unregister (files are kept)";
 
@@ -212,8 +213,26 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
         Some("launch") => launch::run(&args[1..]),
         Some("addon") => launch::run_addon(&args[1..]),
         Some("relaunch") => launch::relaunch::run(&args[1..]),
+        Some("info") => {
+            let args = match rest.first() {
+                Some(slug) => json!({ "swarm": slug }),
+                None => json!({}),
+            };
+            let response = call("info", args)?;
+            let Some(result) = result(&response) else {
+                return Ok(1);
+            };
+            println!(
+                "hiver · swarm {}\n",
+                result["swarm"].as_str().unwrap_or("?")
+            );
+            for line in result["lines"].as_array().into_iter().flatten() {
+                println!("  {}", line.as_str().unwrap_or(""));
+            }
+            Ok(0)
+        }
         Some("pick") => pick_master(),
-        Some("install-keys") => install_keys(),
+        Some("setup" | "install-keys") => install_keys(),
         Some("help" | "--help" | "-h") => {
             println!("{SWARM_HELP}");
             Ok(0)
@@ -598,19 +617,26 @@ fn compose() -> std::io::Result<i32> {
 }
 
 const KEYS_MARKER: &str = "# hiver: swarm keybindings";
+const KEYS_END: &str = "# end hiver swarm keybindings";
+
+/// One-press Option (Alt) keys; the terminal must send Option as Alt (iTerm: "Use Option as
+/// Meta"; Ghostty: macos-option-as-alt = true). Cmd keys never reach terminal programs.
+const KEYS: &[(&str, &str)] = &[
+    ("⌥S", "pick a swarm and jump to its master"),
+    ("⌥M", "jump to this swarm's master"),
+    ("⌥A", "send a message"),
+    ("⌥I", "swarm info (agents, Slack, vault, addons)"),
+    ("⌥L", "message log"),
+    ("⌥F", "zoom this pane to full size and back"),
+    ("⌥Q", "quit (detach; everything keeps running)"),
+];
 
 fn keybindings_toml() -> String {
     format!(
         r#"
-{KEYS_MARKER} (hiver swarm install-keys)
+{KEYS_MARKER} v2 (hiver swarm setup)
 [[keys.command]]
-key = "prefix+m"
-type = "shell"
-command = "\"$HERDR_BIN_PATH\" swarm master --focus"
-description = "hiver: jump to this swarm's master"
-
-[[keys.command]]
-key = "prefix+shift+m"
+key = "alt+s"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" swarm pick"
 description = "hiver: pick a swarm and jump to its master"
@@ -618,7 +644,13 @@ width = "70%"
 height = "50%"
 
 [[keys.command]]
-key = "prefix+a"
+key = "alt+m"
+type = "shell"
+command = "\"$HERDR_BIN_PATH\" swarm master --focus"
+description = "hiver: jump to this swarm's master"
+
+[[keys.command]]
+key = "alt+a"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" msg compose"
 description = "hiver: send a message to an agent"
@@ -626,45 +658,123 @@ width = "80%"
 height = "50%"
 
 [[keys.command]]
-key = "prefix+i"
+key = "alt+i"
+type = "popup"
+command = "\"$HERDR_BIN_PATH\" swarm info; printf '\\n(enter to close) '; read _"
+description = "hiver: this swarm's agents, Slack, vault, addons"
+width = "80%"
+height = "80%"
+
+[[keys.command]]
+key = "alt+l"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" msg log --limit 60; printf '\\n(enter to close) '; read _"
 description = "hiver: message log of this swarm"
 width = "90%"
 height = "80%"
+{KEYS_END}
 "#
     )
 }
 
+/// Removes an earlier hiver keybinding block (v1 had no end marker; it ended with the
+/// message-log command).
+fn strip_keybindings(content: &str) -> String {
+    let Some(marker) = content.find(KEYS_MARKER) else {
+        return content.to_string();
+    };
+    let start = content[..marker].rfind('\n').map_or(0, |i| i + 1);
+    let end = if let Some(end) = content[marker..].find(KEYS_END) {
+        marker + end + KEYS_END.len()
+    } else {
+        let log = content[marker..]
+            .find("description = \"hiver: message log of this swarm\"")
+            .map(|i| marker + i);
+        match log.and_then(|i| content[i..].find("height = \"80%\"").map(|j| i + j)) {
+            Some(i) => i + "height = \"80%\"".len(),
+            None => return content.to_string(),
+        }
+    };
+    let end = content[end..]
+        .find('\n')
+        .map_or(content.len(), |i| end + i + 1);
+    let mut out = content[..start].trim_end_matches('\n').to_string();
+    out.push('\n');
+    out.push_str(&content[end..]);
+    out
+}
+
+/// `hiver swarm setup`: swarm sidebar, Option keys, and ⌥Q / ⌥F for quit and zoom.
 fn install_keys() -> std::io::Result<i32> {
     let path = crate::config::config_path();
     let current = std::fs::read_to_string(&path).unwrap_or_default();
-    if current.contains(KEYS_MARKER) {
-        println!("hiver keybindings already in {}", path.display());
-    } else {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)?;
-        file.write_all(keybindings_toml().as_bytes())?;
-        println!("added hiver keybindings to {}", path.display());
+    let mut content = strip_keybindings(&current);
+    content = crate::config::upsert_section_bool(&content, "ui", "swarm_sidebar", true);
+    content = crate::config::upsert_section_value(&content, "keys", "detach", "\"alt+q\"");
+    content = crate::config::upsert_section_value(&content, "keys", "zoom", "\"alt+f\"");
+    content.push_str(&keybindings_toml());
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
     }
-    println!(
-        "  prefix+m        jump to this swarm's master\n  \
-         prefix+shift+m  pick a swarm\n  \
-         prefix+a        send a message\n  \
-         prefix+i        message log"
-    );
+    std::fs::write(&path, content)?;
+    println!("hiver swarm setup written to {}", path.display());
+    println!("  swarm sidebar on (ui.swarm_sidebar = true)");
+    for (key, what) in KEYS {
+        println!("  {key}  {what}");
+    }
+    println!("  (Option must act as Alt in your terminal: iTerm \"Use Option as Meta\", Ghostty macos-option-as-alt = true)");
     let response = super::send_request(&Request {
-        id: "cli:swarm:install-keys:reload".into(),
+        id: "cli:swarm:setup:reload".into(),
         method: Method::ServerReloadConfig(crate::api::schema::EmptyParams::default()),
     });
     match response {
-        Ok(response) if result(&response).is_some() => println!("config reloaded"),
-        _ => println!("start or reload hiver to use them (hiver server reload-config)"),
+        Ok(response) => match result(&response) {
+            Some(result)
+                if result["diagnostics"]
+                    .as_array()
+                    .is_some_and(|d| !d.is_empty()) =>
+            {
+                println!("config reloaded with warnings: {}", result["diagnostics"]);
+            }
+            Some(_) => println!("config reloaded"),
+            None => {}
+        },
+        Err(_) => println!("start or reload hiver to use them (hiver server reload-config)"),
     }
     Ok(0)
+}
+
+#[cfg(test)]
+mod keys_tests {
+    use super::*;
+
+    #[test]
+    fn setup_replaces_the_v1_block_and_keeps_user_config() {
+        let v1 = "[ui]\nsidebar_width = 30\n\n# hiver: swarm keybindings (hiver swarm install-keys)\n\
+                  [[keys.command]]\nkey = \"prefix+m\"\n\n[[keys.command]]\nkey = \"prefix+i\"\n\
+                  description = \"hiver: message log of this swarm\"\nwidth = \"90%\"\nheight = \"80%\"\n\
+                  \n[[keys.command]]\nkey = \"ctrl+x\"\ndescription = \"mine\"\n";
+        let stripped = strip_keybindings(v1);
+        assert!(!stripped.contains("prefix+m"), "{stripped}");
+        assert!(
+            stripped.contains("sidebar_width = 30") && stripped.contains("ctrl+x"),
+            "{stripped}"
+        );
+        let v2 = format!("{stripped}{}", keybindings_toml());
+        let again = strip_keybindings(&v2);
+        assert_eq!(
+            again.trim_end(),
+            stripped.trim_end(),
+            "v2 block is removable"
+        );
+    }
+
+    #[test]
+    fn setup_config_parses() {
+        let content = crate::config::upsert_section_bool("", "ui", "swarm_sidebar", true);
+        let content = crate::config::upsert_section_value(&content, "keys", "detach", "\"alt+q\"");
+        let content = format!("{content}{}", keybindings_toml());
+        let config: crate::config::Config = toml::from_str(&content).expect("valid config");
+        assert!(config.ui.swarm_sidebar);
+    }
 }

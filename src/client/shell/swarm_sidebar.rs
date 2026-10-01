@@ -23,9 +23,38 @@ use crate::api::schema::AgentStatus;
 #[derive(Debug, Default, Clone)]
 pub(crate) struct SwarmTreeState {
     overrides: HashMap<String, bool>,
+    /// Space whose swarm info card is shown (mouse over its sidebar row).
+    hover: Option<String>,
+    /// Last click on a pane's title bar, to detect a double-click (zoom toggle).
+    last_title_click: Option<(String, std::time::Instant)>,
 }
 
 impl SwarmTreeState {
+    /// Records a click on `pane_id`'s title bar; true when it completes a double-click.
+    pub(super) fn title_double_click(&mut self, pane_id: &str) -> bool {
+        const WINDOW: std::time::Duration = std::time::Duration::from_millis(450);
+        let now = std::time::Instant::now();
+        let double = self
+            .last_title_click
+            .as_ref()
+            .is_some_and(|(pane, at)| pane == pane_id && now.duration_since(*at) <= WINDOW);
+        self.last_title_click = if double {
+            None
+        } else {
+            Some((pane_id.to_string(), now))
+        };
+        double
+    }
+
+    /// Returns whether the hovered space changed (the card must be redrawn).
+    pub(super) fn set_hover(&mut self, workspace_id: Option<String>) -> bool {
+        if self.hover == workspace_id {
+            return false;
+        }
+        self.hover = workspace_id;
+        true
+    }
+
     pub(super) fn set_expanded(&mut self, slug: &str, expanded: bool) {
         self.overrides.insert(slug.to_string(), expanded);
     }
@@ -432,6 +461,94 @@ fn render_member(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &Client
     }
 }
 
+/// The swarm info card for the hovered sidebar row: lines the swarm engine reports as
+/// `info1..info12` tokens on the swarm's space (agents, Slack, vault, addons, budget…).
+pub(super) struct HoverCard {
+    anchor: Rect,
+    title: String,
+    lines: Vec<String>,
+}
+
+pub(super) fn hover_card(
+    tree: &SwarmTreeState,
+    hits: &ShellHitMap,
+    snapshot: &ClientShellSnapshot,
+) -> Option<HoverCard> {
+    let workspace_id = tree.hover.as_ref()?;
+    let hit = hits
+        .workspaces
+        .iter()
+        .find(|hit| &hit.workspace_id == workspace_id && hit.endpoint_id.is_local())?;
+    let workspace = snapshot
+        .workspaces
+        .iter()
+        .find(|workspace| &workspace.workspace_id == workspace_id)?;
+    let token = |name: &str| {
+        workspace
+            .tokens
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.clone())
+    };
+    let lines: Vec<String> = (1..=12)
+        .filter_map(|i| token(&format!("info{i}")))
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    Some(HoverCard {
+        anchor: hit.rect,
+        title: workspace.label.clone(),
+        lines,
+    })
+}
+
+/// Draws the card just right of the hovered row, over the panes; returns its area.
+pub(super) fn render_hover_card(
+    buffer: &mut Buffer,
+    card: &HoverCard,
+    config: &ClientShellConfig,
+) -> Rect {
+    use ratatui::widgets::{Block, Clear, Widget};
+    let area = buffer.area;
+    let palette = &config.palette;
+    let text_width = card
+        .lines
+        .iter()
+        .map(|line| UnicodeWidthStr::width(line.as_str()))
+        .max()
+        .unwrap_or(0) as u16;
+    let x = card.anchor.right();
+    let width = text_width
+        .saturating_add(4)
+        .min(area.right().saturating_sub(x));
+    let height = (card.lines.len() as u16).saturating_add(2).min(area.height);
+    if width < 12 || height < 3 {
+        return Rect::default();
+    }
+    let y = card.anchor.y.min(area.bottom().saturating_sub(height));
+    let rect = Rect::new(x, y, width, height);
+    Clear.render(rect, buffer);
+    let body = Style::default().fg(palette.text).bg(palette.surface0);
+    let block = Block::bordered()
+        .title(format!(" ◆ {} ", card.title))
+        .border_style(Style::default().fg(palette.yellow).bg(palette.surface0))
+        .style(body);
+    let inner = block.inner(rect);
+    block.render(rect, buffer);
+    for (row, line) in card.lines.iter().enumerate().take(inner.height as usize) {
+        put_text(
+            buffer,
+            inner.x.saturating_add(1),
+            inner.y + row as u16,
+            inner.width.saturating_sub(1),
+            line,
+            body,
+        );
+    }
+    rect
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -485,6 +602,22 @@ mod tests {
         snapshot.agent_order.clear();
         let config = ClientShellConfig::from_config(&crate::config::Config::default());
         tree_rows(&snapshot, &config, tree)
+    }
+
+    #[test]
+    fn title_double_click_needs_the_same_pane_quickly() {
+        let mut tree = SwarmTreeState::default();
+        assert!(!tree.title_double_click("w1:p1"));
+        assert!(
+            tree.title_double_click("w1:p1"),
+            "second click on the same title"
+        );
+        assert!(
+            !tree.title_double_click("w1:p1"),
+            "a third click starts over"
+        );
+        assert!(!tree.title_double_click("w1:p2"));
+        assert!(!tree.title_double_click("w1:p1"), "another pane in between");
     }
 
     #[test]

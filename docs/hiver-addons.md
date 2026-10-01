@@ -5,7 +5,7 @@ Status: proposal · 2026-09-30
 **Idea:** hiver's core is small. It holds the swarm model (roster, roles), the message bus
 with its delivery policy, the launcher, and the addon host. Everything else is an addon,
 **including the terminal runtime** (herdr today), so hiver can run swarms on other
-terminal multiplexers too.
+terminal multiplexers too (tmux, cmux, …).
 
 ## What exists today
 
@@ -22,7 +22,7 @@ installable from any GitHub repo (`hiver plugin install owner/repo/path`).
 
 | # | Part (today) | Addon | Why it should be swappable |
 |---|---|---|---|
-| 1 | **Terminal runtime** (herdr core, compiled in) | **runtime driver**: `herdr` (native), `tmux`, `zellij`, `wezterm`, `kitty` | Use hiver with the multiplexer you already run; herdr stays the richest driver (tree sidebar, colored titles). |
+| 1 | **Terminal runtime** (herdr core, compiled in) | **runtime driver**: `herdr` (native, today), `tmux`, `cmux`, `zellij`, `wezterm`, `kitty` | Use hiver with the multiplexer you already run; herdr stays the richest driver (tree sidebar, colored titles). |
 | 2 | Claude-specific code in the launcher and dashboard (start args, folder-trust dialog, transcript token counting) | **agent adapters**: `claude`, `codex`, `opencode`, `gemini`, … | Mixed swarms (a Codex builder beside a Claude critic); each adapter knows how to start, unblock, and meter its agent. |
 | 3 | Slack relay | more **relays**: Discord, Telegram, email, webhook | Done for Slack; the contract already fits others. |
 | 4 | Watcher in the skill's `swarm_relay.py` (idle / stall / budget alerts) | **supervisor** addon | Alerting policy varies per team (quiet hours, escalate to phone, auto-nudge). |

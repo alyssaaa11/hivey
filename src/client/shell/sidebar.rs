@@ -211,16 +211,31 @@ pub(crate) fn render_sidebar(
     } else {
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
-    let (workspace_area, detail_area) =
-        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split);
-    hits.sidebar_section_divider =
-        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split);
+    // hiver: with ui.swarm_sidebar the list is titled "swarms" and uses the full height; the
+    // agents panel is hidden (agents are the panes on the right).
+    let (workspace_area, detail_area) = if config.swarm_sidebar {
+        (
+            Rect::new(area.x, area.y, area.width.saturating_sub(1), area.height),
+            Rect::default(),
+        )
+    } else {
+        crate::ui::expanded_sidebar_sections(area, state.sidebar_section_split)
+    };
+    hits.sidebar_section_divider = if config.swarm_sidebar {
+        Rect::default()
+    } else {
+        crate::ui::sidebar_section_divider_rect(area, state.sidebar_section_split)
+    };
     put_text(
         buffer,
         workspace_area.x,
         workspace_area.y,
         workspace_area.width,
-        " spaces",
+        if config.swarm_sidebar {
+            " swarms"
+        } else {
+            " spaces"
+        }, // hiver
         Style::default()
             .fg(palette.overlay0)
             .add_modifier(Modifier::BOLD),
