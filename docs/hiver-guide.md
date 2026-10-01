@@ -67,6 +67,10 @@ hiver swarm new "<your task>"        # opens a Claude coordinator running /swarm
 hiver swarm providers                # installed providers; --provider <id> --default picks one
 ```
 
+To write your own provider (a different way of designing teams), see
+[`hiver-providers.md`](hiver-providers.md); the flow is drawn in
+[`diagrams/hiver-new-swarm.html`](diagrams/hiver-new-swarm.html).
+
 Or, already in a hiver pane, start Claude as you normally do for a coordinator and run
 `/swarm <your task>`.
 

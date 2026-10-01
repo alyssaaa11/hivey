@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "hiver swarm new: from a task to a running swarm",
+    "output": "docs/diagrams/hiver-new-swarm.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1080,
+      680
+    ],
+    "repository": {
+      "url": "git@github.com:jcsancho/hiver.git",
+      "link_mode": "local-only",
+      "revision": "e2854864f34f8e5992b58aa8307fc33b0cf5dee2"
+    }
+  },
+  "participants": [
+    {
+      "id": "you",
+      "type": "external",
+      "label": "You",
+      "sublabel": "in a project folder"
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "hiver CLI",
+      "sublabel": "swarm new / launch",
+      "sources": [
+        {
+          "path": "src/cli/swarm.rs",
+          "line": 146,
+          "end_line": 170,
+          "label": "find setup providers"
+        },
+        {
+          "path": "src/cli/swarm.rs",
+          "line": 208,
+          "end_line": 317,
+          "label": "hiver swarm new"
+        },
+        {
+          "path": "src/cli/swarm/launch.rs",
+          "line": 556,
+          "end_line": 620,
+          "label": "hiver swarm launch"
+        }
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "hiver server",
+      "sublabel": "runtime + swarm engine",
+      "sources": [
+        {
+          "path": "src/cli/swarm/launch.rs",
+          "line": 711,
+          "end_line": 756,
+          "label": "addon panes"
+        },
+        {
+          "path": "src/swarm/engine.rs",
+          "line": 477,
+          "end_line": 553,
+          "label": "deliver when idle"
+        },
+        {
+          "path": "src/swarm/engine.rs",
+          "line": 858,
+          "end_line": 890,
+          "label": "scheduled wake-ups"
+        }
+      ]
+    },
+    {
+      "id": "provider",
+      "type": "cloud",
+      "label": "Setup provider",
+      "sublabel": "your plugin's setup pane",
+      "sources": [
+        {
+          "path": "plugins/team-template/herdr-plugin.toml",
+          "line": 11,
+          "end_line": 15,
+          "label": "the setup pane"
+        },
+        {
+          "path": "plugins/team-template/setup.py",
+          "line": 32,
+          "end_line": 101,
+          "label": "design + briefs"
+        },
+        {
+          "path": "plugins/team-template/setup.py",
+          "line": 103,
+          "end_line": 131,
+          "label": "launch, then master"
+        }
+      ]
+    },
+    {
+      "id": "addons",
+      "type": "cloud",
+      "label": "Addons",
+      "sublabel": "relay · dashboard",
+      "sources": [
+        {
+          "path": "plugins/slack-relay/relay.py",
+          "line": 242,
+          "end_line": 272,
+          "label": "Slack → bus"
+        }
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "backend",
+      "label": "Agents",
+      "sublabel": "Claude Code · Codex",
+      "sources": [
+        {
+          "path": "src/cli/swarm/launch.rs",
+          "line": 457,
+          "end_line": 525,
+          "label": "start + trust prompt"
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 155,
+      "to": 232,
+      "label": "1 · Start"
+    },
+    {
+      "from": 242,
+      "to": 292,
+      "label": "2 · Design (your plugin)"
+    },
+    {
+      "from": 302,
+      "to": 436,
+      "label": "3 · Launch"
+    },
+    {
+      "from": 446,
+      "to": 580,
+      "label": "4 · Run"
+    }
+  ],
+  "messages": [
+    {
+      "id": "new",
+      "from": "you",
+      "to": "cli",
+      "y": 168,
+      "label": "hiver swarm new \"task\"",
+      "variant": "emphasis"
+    },
+    {
+      "id": "open",
+      "from": "cli",
+      "to": "server",
+      "y": 196,
+      "label": "find a setup provider, open its pane"
+    },
+    {
+      "id": "start-pane",
+      "from": "server",
+      "to": "provider",
+      "y": 224,
+      "label": "setup pane in your folder"
+    },
+    {
+      "id": "plan",
+      "from": "provider",
+      "to": "you",
+      "y": 256,
+      "label": "team plan, confirm?",
+      "variant": "dashed"
+    },
+    {
+      "id": "confirm",
+      "from": "you",
+      "to": "provider",
+      "y": 284,
+      "label": "yes",
+      "variant": "return"
+    },
+    {
+      "id": "launch",
+      "from": "provider",
+      "to": "cli",
+      "y": 316,
+      "label": "briefs written → swarm launch",
+      "variant": "emphasis"
+    },
+    {
+      "id": "space",
+      "from": "cli",
+      "to": "server",
+      "y": 344,
+      "label": "own space; master = this pane"
+    },
+    {
+      "id": "open-addons",
+      "from": "server",
+      "to": "addons",
+      "y": 372,
+      "label": "open addon panes",
+      "variant": "dashed"
+    },
+    {
+      "id": "start-agents",
+      "from": "server",
+      "to": "agents",
+      "y": 400,
+      "label": "start agents + kickoff",
+      "variant": "emphasis"
+    },
+    {
+      "id": "register",
+      "from": "cli",
+      "to": "server",
+      "y": 428,
+      "label": "register swarm + schedules"
+    },
+    {
+      "id": "master-send",
+      "from": "provider",
+      "to": "server",
+      "y": 460,
+      "label": "master: msg send builder",
+      "variant": "emphasis"
+    },
+    {
+      "id": "deliver",
+      "from": "server",
+      "to": "agents",
+      "y": 488,
+      "label": "deliver when idle"
+    },
+    {
+      "id": "agent-reply",
+      "from": "agents",
+      "to": "server",
+      "y": 516,
+      "label": "msg send coordinator DONE",
+      "variant": "return"
+    },
+    {
+      "id": "wake-master",
+      "from": "server",
+      "to": "provider",
+      "y": 544,
+      "label": "replies + scheduled checks",
+      "variant": "return"
+    },
+    {
+      "id": "slack-in",
+      "from": "addons",
+      "to": "server",
+      "y": 572,
+      "label": "Slack @mentions → bus",
+      "variant": "dashed"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "cli",
+      "from": 168,
+      "to": 204,
+      "type": "frontend"
+    },
+    {
+      "participant": "provider",
+      "from": 224,
+      "to": 322,
+      "type": "cloud"
+    },
+    {
+      "participant": "cli",
+      "from": 316,
+      "to": 433,
+      "type": "frontend"
+    },
+    {
+      "participant": "server",
+      "from": 344,
+      "to": 433,
+      "type": "backend"
+    },
+    {
+      "participant": "agents",
+      "from": 400,
+      "to": 578,
+      "type": "backend"
+    },
+    {
+      "participant": "provider",
+      "from": 440,
+      "to": 578,
+      "type": "cloud"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "What hiver does",
+      "items": [
+        "Finds providers: any plugin with a pane named setup",
+        "Opens it in your folder with HIVER_SETUP_TASK",
+        "swarm launch: own space, addons, agents, schedules",
+        "Then runs the swarm: bus, idle delivery, wake-ups"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "What your plugin does",
+      "items": [
+        "1 Design the team for the task (and confirm)",
+        "2 Write each agent's CLAUDE.md (Codex: AGENTS.md)",
+        "3 Run hiver swarm launch with its choices",
+        "4 Become the master (e.g. exec claude)"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Included providers",
+      "items": [
+        "swarm.skill: a Claude coordinator runs /swarm",
+        "hiver.team-template: builder + critic, copy it",
+        "Write your own: plugins/team-template is 140 lines"
+      ]
+    }
+  ]
+}
