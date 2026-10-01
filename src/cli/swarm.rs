@@ -1038,14 +1038,18 @@ fn strip_keybindings(content: &str) -> String {
     out
 }
 
-/// `hiver swarm setup`: swarm sidebar, Option keys, and ⌥Q / ⌥F for quit and zoom.
+/// `hiver swarm setup`: swarm sidebar, Option keys, and ⌥Q / ⌥F for quit and zoom (the
+/// prefix keys ctrl+b q / ctrl+b z keep working too).
+const DETACH_KEYS: &str = "[\"alt+q\", \"prefix+q\"]";
+const ZOOM_KEYS: &str = "[\"alt+f\", \"prefix+z\"]";
+
 fn install_keys() -> std::io::Result<i32> {
     let path = crate::config::config_path();
     let current = std::fs::read_to_string(&path).unwrap_or_default();
     let mut content = strip_keybindings(&current);
     content = crate::config::upsert_section_bool(&content, "ui", "swarm_sidebar", true);
-    content = crate::config::upsert_section_value(&content, "keys", "detach", "\"alt+q\"");
-    content = crate::config::upsert_section_value(&content, "keys", "zoom", "\"alt+f\"");
+    content = crate::config::upsert_section_value(&content, "keys", "detach", DETACH_KEYS);
+    content = crate::config::upsert_section_value(&content, "keys", "zoom", ZOOM_KEYS);
     content.push_str(&keybindings_toml());
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
@@ -1106,7 +1110,9 @@ mod keys_tests {
     #[test]
     fn setup_config_parses() {
         let content = crate::config::upsert_section_bool("", "ui", "swarm_sidebar", true);
-        let content = crate::config::upsert_section_value(&content, "keys", "detach", "\"alt+q\"");
+        let content = crate::config::upsert_section_value(&content, "keys", "detach", DETACH_KEYS);
+        let content = crate::config::upsert_section_value(&content, "keys", "zoom", ZOOM_KEYS);
+        assert!(content.contains(r#"detach = ["alt+q", "prefix+q"]"#));
         let content = format!("{content}{}", keybindings_toml());
         let config: crate::config::Config = toml::from_str(&content).expect("valid config");
         assert!(config.ui.swarm_sidebar);

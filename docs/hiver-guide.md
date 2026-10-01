@@ -108,9 +108,11 @@ macOS terminals keep them and never pass them to programs.
 | `⌥I` | swarm info: agents, Slack channel, Obsidian vault, addons, budget, tasks, repos |
 | `⌥L` | this swarm's message log |
 | `⌥F` | zoom the focused pane to full size, and back |
-| `⌥Q` | quit (detach; everything keeps running; `hiver` reattaches) |
+| `⌥Q` (or `ctrl+b` `q`) | quit (detach; everything keeps running; `hiver` reattaches) |
 
-`⌥F` replaces the shell's "forward word" inside hiver. herdr's `ctrl+b` prefix keys still work.
+`⌥F` replaces the shell's "forward word" inside hiver. herdr's `ctrl+b` prefix keys still work, including `ctrl+b q` (quit) and `ctrl+b z` (zoom).
+If `⌥` keys type symbols (œ, ƒ…), set your terminal to use Option as Meta (Terminal.app:
+Profiles → Keyboard → "Use Option as Meta key"; iTerm2: Profiles → Keys → Left Option = Esc+).
 
 ### Mouse
 
