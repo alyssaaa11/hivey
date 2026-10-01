@@ -718,7 +718,7 @@ fn main() -> io::Result<()> {
 
     if args.iter().any(|a| a == "--version" || a == "-V") {
         platform::begin_cli_output();
-        println!("hiver {} (herdr fork)", crate::build_info::version());
+        println!("hiver {}", crate::build_info::version());
         return Ok(());
     }
 

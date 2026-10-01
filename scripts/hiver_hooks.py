@@ -69,7 +69,7 @@ edit("src/main.rs", 'pub(crate) const HERDR_ENV_VALUE: &str = "1";\n',
 edit("src/main.rs", "fn main() -> io::Result<()> {\n    let raw_args",
      "fn main() -> io::Result<()> {\n    hiver::isolate_from_parent_herdr();\n    let raw_args")
 edit("src/main.rs", 'println!("herdr {}", crate::build_info::version());',
-     'println!("hiver {} (herdr fork)", crate::build_info::version());')
+     'println!("hiver {}", crate::build_info::version());')
 edit("src/main.rs", 'println!("herdr — terminal workspace manager for AI coding agents");',
      'println!("hiver — terminal workspace for swarms of AI coding agents (fork of herdr)");')
 
