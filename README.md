@@ -3,7 +3,7 @@
 **hiver** is a fork of [herdr](https://github.com/herdrdev/herdr) built for swarms of agents:
 one swarm per space, a master you can always find, and a built-in message bus
 (delivery when the agent is idle, a queue and inbox, `@all` / `@role:` / `@masters` addressing, a full log).
-Design: [`docs/hiver-design.md`](docs/hiver-design.md). Everything below is herdr's original README.
+**Start here:** [`docs/hiver-guide.md`](docs/hiver-guide.md) · Architecture: [`docs/diagrams/hiver-architecture.html`](docs/diagrams/hiver-architecture.html) · Design: [`docs/hiver-design.md`](docs/hiver-design.md). Everything below is herdr's original README.
 
 ---
 
