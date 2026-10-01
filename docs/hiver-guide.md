@@ -33,7 +33,13 @@ hiver plugin link ~/projects/swarmAgents/hiver/plugins/slack-relay
 hiver plugin link ~/projects/swarmAgents/hiver/plugins/dashboard
 hiver plugin link ~/projects/swarmAgents/hiver/plugins/github
 hiver swarm setup                        # swarm sidebar + Option keys (see section 4)
+                                         # + the hiver skill for Claude Code and Codex
 ```
+
+The **hiver skill** teaches Claude Code and Codex to run hiver for you (sessions, swarms,
+plugins, writing new plugins). It ships inside the binary, source in [`../skills/hiver/`](../skills/hiver/).
+`hiver skill install` (re)installs it into `~/.claude/skills/hiver` and `~/.codex/skills/hiver`
+(`--claude`, `--codex` or `--dir DIR` to choose); run it again after upgrading hiver.
 
 The `/swarm` skill links its own `swarm.watcher` addon the first time it launches in hiver.
 The Slack relay's token comes from `~/.config/hiver/plugins/config/hiver.slack-relay/config.json`

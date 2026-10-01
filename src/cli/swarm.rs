@@ -8,6 +8,8 @@ use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
 mod launch;
+mod skill;
+pub(super) use skill::run_skill_command;
 
 const SWARM_HELP: &str = "\
 hiver swarm commands:
@@ -1061,6 +1063,16 @@ fn install_keys() -> std::io::Result<i32> {
         println!("  {key}  {what}");
     }
     println!("  (Option must act as Alt in your terminal: iTerm \"Use Option as Meta\", Ghostty macos-option-as-alt = true)");
+    // The hiver skill for Claude Code / Codex (`hiver skill install`).
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
+    for (label, dir) in skill::default_targets(&home) {
+        match skill::install_into(&dir) {
+            Ok(status) => println!("  hiver skill for {label}: {status}"),
+            Err(err) => eprintln!("  hiver skill for {label}: {err}"),
+        }
+    }
     let response = super::send_request(&Request {
         id: "cli:swarm:setup:reload".into(),
         method: Method::ServerReloadConfig(crate::api::schema::EmptyParams::default()),
