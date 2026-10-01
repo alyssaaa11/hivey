@@ -1,0 +1,15 @@
+id = "hiver.team-template"
+name = "Team template"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Example setup provider: a fixed builder + critic team (copy it to write your own)"
+platforms = ["linux", "macos"]
+
+# A setup provider is any plugin with a pane entrypoint "setup".
+# `hiver swarm new --provider hiver.team-template "<task>"` opens it with HIVER_SETUP_TASK
+# and HIVER_SETUP_CWD set, in the folder you ran the command from.
+[[panes]]
+id = "setup"
+title = "team template"
+placement = "tab"
+command = ["sh", "-c", "exec python3 \"$HERDR_PLUGIN_ROOT/setup.py\""]

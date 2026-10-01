@@ -14,6 +14,8 @@ hiver swarm commands:
   hiver swarm new [--provider ID] [--default] <task…>
                                      design + launch a swarm with a setup provider (e.g. /swarm)
   hiver swarm providers              installed setup providers (plugins with a setup pane)
+  hiver swarm accept-trust [--pane P] [--kind claude|codex] [--timeout 60]
+                                     answer an agent CLI's folder-trust prompt in a pane (providers)
   hiver swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
   hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
@@ -90,6 +92,52 @@ fn api(method: &str, params: Value) -> Result<Value, String> {
         return Err(error["message"].as_str().unwrap_or("error").to_string());
     }
     Ok(response.get("result").cloned().unwrap_or(Value::Null))
+}
+
+/// `hiver swarm accept-trust`: wait for an agent CLI's "trust this folder" prompt in a pane and
+/// answer it. For setup providers that start the master themselves in a new folder (launch
+/// already does this for the agents it starts). Run it in the background, then exec the CLI.
+fn accept_trust(args: &[String]) -> std::io::Result<i32> {
+    let mut rest = args.to_vec();
+    let parsed = (|| -> Result<(String, crate::swarm::adapter::AgentKind, u64), String> {
+        let pane = take_value(&mut rest, "--pane")?
+            .or_else(|| std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR).ok())
+            .ok_or("no pane: pass --pane or run inside hiver")?;
+        let kind = match take_value(&mut rest, "--kind")? {
+            Some(kind) => crate::swarm::adapter::AgentKind::parse(&kind)
+                .ok_or_else(|| format!("--kind must be claude or codex, not {kind:?}"))?,
+            None => crate::swarm::adapter::AgentKind::Claude,
+        };
+        let timeout = match take_value(&mut rest, "--timeout")? {
+            Some(secs) => secs.parse().map_err(|_| "--timeout is seconds")?,
+            None => 60,
+        };
+        Ok((pane, kind, timeout))
+    })();
+    let (pane, kind, timeout) = match parsed {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return Ok(2);
+        }
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    while std::time::Instant::now() < deadline {
+        let pane = canonical_pane_id(&pane);
+        let screen = api("pane.read", json!({ "pane_id": pane, "source": "visible" }))
+            .ok()
+            .and_then(|read| read["read"]["text"].as_str().map(str::to_lowercase))
+            .unwrap_or_default();
+        if screen.contains("trust this folder") {
+            let keys: Vec<&str> = kind.trust_keys().to_vec();
+            let _ = api("pane.send_keys", json!({ "pane_id": pane, "keys": keys }));
+            println!("accepted the folder-trust prompt in {pane}");
+            return Ok(0);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+    println!("no trust prompt appeared within {timeout}s");
+    Ok(0)
 }
 
 /// Pane entrypoint that makes a plugin a swarm setup provider.
@@ -515,6 +563,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
         }
         Some("schedule") => schedule_command(&args[1..]),
         Some("new") => new_swarm(&args[1..]),
+        Some("accept-trust") => accept_trust(&args[1..]),
         Some("providers") => list_providers(),
         Some("pick") => pick_master(),
         Some("setup" | "install-keys") => install_keys(),
