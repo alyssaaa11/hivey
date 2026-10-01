@@ -21,7 +21,13 @@ const DEFAULT_CLAUDE_ARGS: &str = "--chrome --dangerously-skip-permissions --mod
 /// Neutral kickoff; a setup provider passes its own with `--kickoff`.
 const DEFAULT_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in your \
 folder) and start your mission. Talk to teammates with `hiver msg send <agent> \"…\"` (the master \
-is `coordinator`) and read waiting messages with `hiver msg inbox`.";
+is `coordinator`) and read waiting messages with `hiver msg inbox`. Other swarms and agents are \
+listed in `hiver swarm directory`: never send them work without asking the user first.";
+/// Kickoff of a solo agent (`--solo`): no teammates to talk to.
+const SOLO_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in this \
+folder) and start your mission. If it has a Status section, resume from it. Read waiting \
+messages with `hiver msg inbox`. Other swarms and agents are listed in `hiver swarm directory`: \
+never send them work without asking the user first, and don't disturb one that is working.";
 /// Entrypoint used when `--addon` names none and the plugin declares no pane.
 const ADDON_ENTRYPOINT: &str = "relay";
 /// Workers stay silent; only the coordinator speaks (AGENTS Stop hook).
@@ -32,6 +38,8 @@ usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
          [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
          [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]]
+       hiver swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex] [options]
+         [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hiver swarm directory)
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
   (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
@@ -39,7 +47,10 @@ usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
   before the agents start, with HIVER_SWARM_ROOT, HIVER_SWARM_SLUG and HIVER_SWARM_CHANNEL set:
   e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.
   --heartbeat 15m wakes the master every 15 min with a monitoring task and a status
-  snapshot (hiver swarm schedule … adds more, e.g. a daily report at 09:00).";
+  snapshot (hiver swarm schedule … adds more, e.g. a daily report at 09:00).
+  --solo: a single agent, no workers. It runs in <root> itself (CLAUDE.md or AGENTS.md there)
+  as agent <slug>, in a new space <slug>, and is its own master (messages, schedules and
+  heartbeats go to it). The calling pane stays where it is.";
 
 struct Options {
     root: PathBuf,
@@ -63,11 +74,24 @@ struct Options {
     /// `(plugin id, pane entrypoint)` addons opened in the swarm's space (e.g. relays);
     /// no entrypoint means the plugin's first pane.
     addons: Vec<Addon>,
+    /// One agent working in `root` itself, as its own master (`--solo`).
+    solo: bool,
+    /// Directory entry (`--description`, `--skills`, `--tools`); kept when not given.
+    profile: serde_json::Map<String, Value>,
 }
 
 impl Options {
     fn kind(&self, agent: &str) -> AgentKind {
         self.kinds.get(agent).copied().unwrap_or_default()
+    }
+
+    /// Where an agent works: its own folder, or the root for a solo agent.
+    fn home(&self, root: &Path, agent: &str) -> PathBuf {
+        if self.solo {
+            root.to_path_buf()
+        } else {
+            root.join(agent)
+        }
     }
 }
 
@@ -105,6 +129,15 @@ fn split_args(line: &str) -> Vec<String> {
         args.push(current);
     }
     args
+}
+
+/// `a, b,c` -> `["a", "b", "c"]`.
+pub(super) fn split_list(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 type Addon = (String, Option<String>);
@@ -158,7 +191,12 @@ fn parse(args: &[String]) -> Result<Options, String> {
         addons: Vec::new(),
         heartbeat: None,
         heartbeat_task: None,
+        solo: false,
+        profile: serde_json::Map::new(),
     };
+    // `--model` / `--kind` (solo agent), keyed by slug once it is known.
+    let mut solo_model = None;
+    let mut solo_kind = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         let mut value = |flag: &str| {
@@ -184,6 +222,20 @@ fn parse(args: &[String]) -> Result<Options, String> {
             }
             "--master-pane" => opts.master_pane = Some(value("--master-pane")?),
             "--no-move" => opts.move_master = false,
+            "--solo" => opts.solo = true,
+            "--description" => {
+                opts.profile
+                    .insert("description".into(), json!(value("--description")?));
+            }
+            flag @ ("--skills" | "--tools") => {
+                opts.profile
+                    .insert(flag[2..].to_string(), json!(split_list(&value(flag)?)));
+            }
+            "--model" => solo_model = Some(value("--model")?),
+            "--kind" => {
+                let kind = value("--kind")?;
+                solo_kind = Some(AgentKind::parse(&kind).ok_or("--kind must be claude or codex")?);
+            }
             "--heartbeat-task" => opts.heartbeat_task = Some(value("--heartbeat-task")?),
             "--heartbeat" => {
                 let every = value("--heartbeat")?;
@@ -216,8 +268,23 @@ fn parse(args: &[String]) -> Result<Options, String> {
     if opts.slug.is_empty() {
         return Err("missing --slug".into());
     }
-    if opts.agents.is_empty() {
-        return Err("name at least one agent".into());
+    if opts.solo {
+        if !opts.agents.is_empty() {
+            return Err("--solo takes no agent names (the agent is <root> itself)".into());
+        }
+        if opts.kickoff == DEFAULT_KICKOFF {
+            opts.kickoff = SOLO_KICKOFF.to_string();
+        }
+        if let Some(model) = solo_model {
+            opts.models.insert(opts.slug.clone(), model);
+        }
+        if let Some(kind) = solo_kind {
+            opts.kinds.insert(opts.slug.clone(), kind);
+        }
+    } else if solo_model.is_some() || solo_kind.is_some() {
+        return Err("--model and --kind are for --solo; use --models / --kinds".into());
+    } else if opts.agents.is_empty() {
+        return Err("name at least one agent (or use --solo)".into());
     }
     Ok(opts)
 }
@@ -246,6 +313,9 @@ fn ensure_brief(home: &Path, kind: AgentKind) -> Result<(), String> {
 }
 
 fn check(opts: &Options, root: &Path) -> Result<(), String> {
+    if opts.solo {
+        return check_solo(opts, root);
+    }
     let coordinator = format!("{}-coordinator", opts.slug);
     for name in
         std::iter::once(coordinator).chain(opts.agents.iter().map(|a| format!("{}-{a}", opts.slug)))
@@ -276,6 +346,29 @@ fn check(opts: &Options, root: &Path) -> Result<(), String> {
     if !clash.is_empty() {
         return Err(format!(
             "agent names already live: {clash:?} — pick another slug"
+        ));
+    }
+    Ok(())
+}
+
+fn check_solo(opts: &Options, root: &Path) -> Result<(), String> {
+    if !valid_name(&opts.slug) {
+        return Err(format!(
+            "slug {:?} is invalid (max 32 chars, [a-z0-9_-], starts with a letter)",
+            opts.slug
+        ));
+    }
+    ensure_brief(root, opts.kind(&opts.slug))?;
+    let live = api("agent.list", json!({}))?;
+    let taken = live["agents"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|agent| agent["name"].as_str() == Some(opts.slug.as_str()));
+    if taken {
+        return Err(format!(
+            "agent {:?} is already live — pick another slug, or `hiver swarm relaunch {}`",
+            opts.slug, opts.slug
         ));
     }
     Ok(())
@@ -431,7 +524,7 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
         }
     }
     // --add-dir too: settings.json additionalDirectories is ignored until the folder is trusted.
-    let settings = root.join(agent).join(".claude").join("settings.json");
+    let settings = opts.home(root, agent).join(".claude").join("settings.json");
     let dirs: Vec<String> = std::fs::read_to_string(&settings)
         .ok()
         .and_then(|text| serde_json::from_str::<Value>(&text).ok())
@@ -557,6 +650,9 @@ fn launch(opts: &Options) -> Result<Value, String> {
     let root = std::fs::canonicalize(&opts.root)
         .map_err(|err| format!("{}: {err}", opts.root.display()))?;
     check(opts, &root)?;
+    if opts.solo {
+        return launch_solo(opts, &root);
+    }
     let master = place_master(opts, &root)?;
     let panes = tile_workers(opts, &root, &master)?;
 
@@ -603,20 +699,96 @@ fn launch(opts: &Options) -> Result<Value, String> {
     }
     save_manifest(&root, &manifest)?;
     import(&root)?;
-    if let Some(every) = &opts.heartbeat {
-        // The master's monitoring pass (replaces a /loop heartbeat inside the coordinator).
-        let added = super::call(
-            "schedule.add",
-            json!({ "swarm": opts.slug, "every": every, "id": "heartbeat",
-                    "task": opts.heartbeat_task.as_deref().unwrap_or(crate::swarm::engine::HEARTBEAT_TASK) }),
-        )
-        .map_err(|err| err.to_string())?;
-        match added.get("error") {
-            Some(error) => eprintln!("  heartbeat not scheduled: {}", error["message"]),
-            None => eprintln!("  heartbeat: master checks the swarm every {every}"),
+    schedule_heartbeat(opts)?;
+    Ok(manifest)
+}
+
+/// `--solo`: the agent runs in `root` in a new space and is the swarm's only member.
+fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
+    let slug = &opts.slug;
+    let created = api(
+        "workspace.create",
+        json!({ "cwd": root, "label": slug, "focus": true }),
+    )?;
+    let pane = created["root_pane"]["pane_id"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or("workspace.create returned no pane")?;
+    let args = agent_args(opts, root, slug);
+    let kind = opts.kind(slug);
+    let mut agents = serde_json::Map::new();
+    agents.insert(
+        slug.clone(),
+        json!({ "herdr_name": slug, "role": "master", "pane_id": pane, "status": "starting",
+                "model": model_of(&args), "args": args, "kind": kind.as_str() }),
+    );
+    let mut manifest = new_manifest(opts, root, &pane, agents);
+    manifest["solo"] = json!(true);
+    manifest["coordinator"] = json!(slug);
+    manifest["launch_dir"] = json!(root);
+    // Relaunch reads the master's CLI flags from here.
+    manifest[match kind {
+        AgentKind::Claude => "claude_args",
+        AgentKind::Codex => "codex_args",
+    }] = json!(strip_model(&args));
+    save_manifest(root, &manifest)?;
+    import(root)?;
+
+    let channel = manifest["channel_id"].as_str().unwrap_or("").to_string();
+    let addons = open_addons(&opts.addons, slug, root, &channel, &pane);
+    if !addons.is_empty() {
+        manifest["addons"] = json!(addons);
+        save_manifest(root, &manifest)?;
+    }
+
+    let mut status = start_agent(slug, &pane, &args, kind);
+    if status == "ready" {
+        let _ = api(
+            "agent.prompt",
+            json!({ "target": slug, "text": opts.kickoff }),
+        );
+        status = "started".into();
+    }
+    eprintln!("  {slug}: {status}");
+    manifest["agents"][slug.as_str()]["status"] = json!(status);
+    save_manifest(root, &manifest)?;
+    import(root)?;
+    schedule_heartbeat(opts)?;
+    Ok(manifest)
+}
+
+/// The launch flags without `--model` (models are kept per agent) or `--add-dir`
+/// (re-read from settings.json on every start).
+fn strip_model(args: &[String]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--model" || arg == "--add-dir" {
+            iter.next();
+        } else {
+            out.push(arg.clone());
         }
     }
-    Ok(manifest)
+    out
+}
+
+fn schedule_heartbeat(opts: &Options) -> Result<(), String> {
+    let Some(every) = &opts.heartbeat else {
+        return Ok(());
+    };
+    // The master's monitoring pass (replaces a /loop heartbeat inside the coordinator).
+    let added = super::call(
+        "schedule.add",
+        json!({ "swarm": opts.slug, "every": every, "id": "heartbeat",
+                "task": opts.heartbeat_task.as_deref().unwrap_or(crate::swarm::engine::HEARTBEAT_TASK) }),
+    )
+    .map_err(|err| err.to_string())?;
+    match added.get("error") {
+        Some(error) => eprintln!("  heartbeat not scheduled: {}", error["message"]),
+        None if opts.solo => eprintln!("  heartbeat: {} wakes every {every}", opts.slug),
+        None => eprintln!("  heartbeat: master checks the swarm every {every}"),
+    }
+    Ok(())
 }
 
 fn model_of(args: &[String]) -> Option<String> {
@@ -679,6 +851,14 @@ fn new_manifest(
     }
     if let Some(object) = manifest.as_object_mut() {
         object.remove("addons");
+    }
+    if !opts.profile.is_empty() {
+        if !manifest["profile"].is_object() {
+            manifest["profile"] = json!({});
+        }
+        for (key, value) in &opts.profile {
+            manifest["profile"][key] = value.clone();
+        }
     }
     manifest
 }

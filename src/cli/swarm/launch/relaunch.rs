@@ -30,6 +30,12 @@ const FRESH_PROMPT: &str = "You were (re)started in a running swarm. Read your b
 (CLAUDE.md or AGENTS.md) carefully; if it records earlier work, you are resuming. Run \
 `hiver msg inbox`, then continue (or start your mission). Tell the coordinator with \
 `hiver msg send coordinator --fyi \"started\"`.";
+const SOLO_RESUME_PROMPT: &str = "hiver restarted and you were relaunched. Catch up: run \
+`hiver msg inbox`, re-read your brief (CLAUDE.md or AGENTS.md) and its Status section for \
+where you were, then continue.";
+const SOLO_FRESH_PROMPT: &str = "You were (re)started. Read your brief (CLAUDE.md or \
+AGENTS.md) carefully; if its Status section records earlier work, resume from it. Run \
+`hiver msg inbox`, then continue (or start your mission).";
 
 struct Request {
     slug: String,
@@ -157,7 +163,12 @@ fn find_pane(
     home: &Path,
     beside: &str,
 ) -> Result<String, String> {
-    let free = |pane: &Value| pane["agent"].is_null() && pane["agent_status"] != "working";
+    // A bare shell: no agent, and not an addon (a solo agent shares its folder with them).
+    let free = |pane: &Value| {
+        pane["agent"].is_null()
+            && pane["agent_status"] != "working"
+            && !pane["pane_id"].as_str().is_some_and(runs_a_program)
+    };
     if let Some(pane) = recorded.and_then(|id| api("pane.get", json!({ "pane_id": id })).ok()) {
         if free(&pane["pane"]) {
             return Ok(pane["pane"]["pane_id"]
@@ -166,8 +177,10 @@ fn find_pane(
                 .to_string());
         }
     }
-    if let Some(workspace) = workspace {
-        let panes = api("pane.list", json!({ "workspace_id": workspace }))?;
+    // The recorded space may be gone (closed); then split beside a live pane.
+    if let Some(panes) =
+        workspace.and_then(|workspace| api("pane.list", json!({ "workspace_id": workspace })).ok())
+    {
         let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
         let found = panes["panes"]
             .as_array()
@@ -184,6 +197,16 @@ fn find_pane(
             });
         if let Some(pane) = found {
             return Ok(pane["pane_id"].as_str().unwrap_or_default().to_string());
+        }
+    }
+    // A shell left in the agent's folder (e.g. a solo agent's restored space): reuse it.
+    if let Ok(pane) = api("pane.get", json!({ "pane_id": beside })) {
+        let cwd = pane["pane"]["cwd"].as_str().map(PathBuf::from);
+        let home = std::fs::canonicalize(home).unwrap_or_else(|_| home.to_path_buf());
+        if free(&pane["pane"])
+            && cwd.is_some_and(|cwd| std::fs::canonicalize(&cwd).unwrap_or(cwd) == home)
+        {
+            return Ok(beside.to_string());
         }
     }
     split(beside, "down", home)
@@ -225,6 +248,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         .and_then(|text| serde_json::from_str(&text).ok())
         .ok_or_else(|| format!("cannot read {}", manifest_path(&root).display()))?;
     let agents: Vec<Value> = swarm["agents"].as_array().cloned().unwrap_or_default();
+    let solo = manifest["solo"] == true;
     for name in &request.only {
         if !agents.iter().any(|agent| agent["key"] == name.as_str()) {
             return Err(format!("swarm {:?} has no agent {name:?}", request.slug));
@@ -237,8 +261,9 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         .filter(|agent| {
             let key = agent["key"].as_str().unwrap_or_default();
             if request.only.is_empty() {
-                // The master is the user's own session: only relaunched when named.
-                agent["role"] != "master" && agent["status"] == "gone"
+                // The master is the user's own session: only relaunched when named
+                // (a solo agent's master is the agent itself).
+                (solo || agent["role"] != "master") && agent["status"] == "gone"
             } else if request.only.iter().any(|name| name == key) {
                 // A running agent keeps running: a second Claude would clash on the name.
                 if agent["status"] != "gone" {
@@ -258,12 +283,18 @@ fn relaunch(request: &Request) -> Result<usize, String> {
     // Where new panes go: beside any live pane of the swarm, else its recorded master pane,
     // else any restored pane working inside the swarm's folder (after a restart).
     let workspace = manifest["workspace_id"].as_str().map(str::to_string);
-    let beside = live_agent_pane(&agents)
+    let mut beside = live_agent_pane(&agents)
         .or(manifest["coordinator_pane_id"].as_str())
         .map(str::to_string)
         .filter(|pane| api("pane.get", json!({ "pane_id": pane })).is_ok())
-        .or_else(|| pane_in_folder(&root))
-        .ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hiver swarm launch`")?;
+        .or_else(|| pane_in_folder(&root));
+    // A solo agent with nothing left gets a new space; its first pane is the agent's.
+    let mut fresh_space = None;
+    if beside.is_none() && solo && !targets.is_empty() {
+        fresh_space = new_space(&request.slug, &root);
+        beside = fresh_space.clone();
+    }
+    let beside = beside.ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hiver swarm launch`")?;
 
     let claude_args = request.claude_args.clone().unwrap_or_else(|| {
         manifest["claude_args"]
@@ -318,6 +349,8 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         addons: Vec::new(),
         heartbeat: None,
         heartbeat_task: None,
+        solo,
+        profile: serde_json::Map::new(),
     };
 
     let mut relaunched = 0;
@@ -342,7 +375,11 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         } else {
             manifest["agents"][key]["pane_id"].as_str()
         };
-        let pane = match find_pane(recorded, workspace.as_deref(), &home, &beside) {
+        let found = match fresh_space.take() {
+            Some(pane) => Ok(pane),
+            None => find_pane(recorded, workspace.as_deref(), &home, &beside),
+        };
+        let pane = match found {
             Ok(pane) => pane,
             Err(err) => {
                 eprintln!("  {name}: no pane ({err})");
@@ -359,10 +396,15 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         };
         let status = start_agent(&name, &pane, &args, kind);
         let status = if status == "ready" {
-            let prompt = request
-                .kickoff
-                .clone()
-                .unwrap_or_else(|| (if resume { RESUME_PROMPT } else { FRESH_PROMPT }).to_string());
+            let prompt = request.kickoff.clone().unwrap_or_else(|| {
+                match (solo, resume) {
+                    (true, true) => SOLO_RESUME_PROMPT,
+                    (true, false) => SOLO_FRESH_PROMPT,
+                    (false, true) => RESUME_PROMPT,
+                    (false, false) => FRESH_PROMPT,
+                }
+                .to_string()
+            });
             let _ = api("agent.prompt", json!({ "target": name, "text": prompt }));
             if resume { "resumed" } else { "restarted" }.to_string()
         } else {
@@ -371,7 +413,17 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         eprintln!("  {name}: {status} in {pane}");
         if is_master {
             manifest["coordinator_pane_id"] = json!(pane);
-        } else if manifest["agents"][key].is_object() {
+            if solo {
+                // It may live in a new space now.
+                if let Some(workspace) = api("pane.get", json!({ "pane_id": pane }))
+                    .ok()
+                    .and_then(|got| got["pane"]["workspace_id"].as_str().map(str::to_string))
+                {
+                    manifest["workspace_id"] = json!(workspace);
+                }
+            }
+        }
+        if (solo || !is_master) && manifest["agents"][key].is_object() {
             manifest["agents"][key]["args"] = json!(strip_session_args(&launch_args));
             manifest["agents"][key]["kind"] = json!(kind.as_str());
             manifest["agents"][key]["pane_id"] = json!(pane);
@@ -426,6 +478,16 @@ fn runs_a_program(pane: &str) -> bool {
 }
 
 /// Any pane whose working folder is inside `root` (a restored shell after a restart).
+/// A new space for a solo agent whose panes are all gone; returns its pane.
+fn new_space(slug: &str, root: &Path) -> Option<String> {
+    let created = api(
+        "workspace.create",
+        json!({ "cwd": root, "label": slug, "focus": false }),
+    )
+    .ok()?;
+    created["root_pane"]["pane_id"].as_str().map(str::to_string)
+}
+
 fn pane_in_folder(root: &Path) -> Option<String> {
     let root = std::fs::canonicalize(root).ok()?;
     let panes = api("pane.list", json!({})).ok()?;

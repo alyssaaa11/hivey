@@ -61,7 +61,10 @@ hiver swarm master [<slug>] [--focus]         # the master pane (focus it)
 hiver swarm pause|resume <slug>               # hold / release message delivery
 hiver swarm relaunch <slug> [<agent>...]      # restart agents (resume conversations) + dead addons
 hiver swarm relaunch <slug> --addons-only     # only reopen addons; --fresh: new conversations
-hiver swarm import <root> | forget <slug>     # register / unregister (files kept)
+hiver swarm register <root> | unregister <slug>  # (alias import / forget; files kept)
+hiver swarm directory [--json]                # every swarm + solo agent: what it does, skills,
+                                              # tools, busy/idle, address (<slug>/master)
+hiver swarm profile <slug> --description "…" --skills a,b --tools x,y   # set its entry
 ```
 
 Lower level (what providers call): `hiver swarm launch <root> --slug S <agent>... [--models a=sonnet]
@@ -107,6 +110,20 @@ Included (in `~/projects/swarmAgents/hiver/plugins/`):
 | `hiver.team-template` | example setup provider (builder + critic); copy it |
 | `swarm.watcher` | /swarm skill addon: stalled-agent and budget alerts to the master |
 | `swarm.skill` | /swarm skill as a setup provider |
+| `agent.creator` | /agent-creator skill: one solo agent in the current folder |
+
+## Solo agents
+
+A solo agent is a swarm with one member that is its own master: own space, ★ teal row in the
+sidebar, messages, schedules and heartbeats like a master. Create one from the folder it will
+live in: `cd <folder> && hiver swarm new --provider agent.creator "<task>"` (the designer pane
+stays; close it once the agent runs). Lower level: `hiver swarm launch <folder> --slug S --solo
+[--model M] [--kind codex] [--description … --skills … --tools …]`. Relaunch with
+`hiver swarm relaunch <slug>` (new space if its pane is gone).
+
+**Talking across swarms/agents:** only masters (and solo agents) may message another swarm,
+`hiver msg send <slug>/master "…"`. Agents check `hiver swarm directory` first, **ask the user
+before sending any work**, and don't disturb entries marked busy.
 
 An addon whose process exits (e.g. `q` in the dashboard) is reopened with
 `hiver swarm addon <slug> <id>` or `hiver swarm relaunch <slug> --addons-only`. Plugin code

@@ -7,6 +7,7 @@ use std::io::{BufRead, Write};
 use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
+mod directory;
 mod launch;
 mod skill;
 pub(super) use skill::run_skill_command;
@@ -19,9 +20,16 @@ hiver swarm commands:
   hiver swarm accept-trust [--pane P] [--kind claude|codex] [--timeout 60]
                                      answer an agent CLI's folder-trust prompt in a pane (providers)
   hiver swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
+  hiver swarm launch <root> --slug S --solo [--model M]  start one agent in <root> (its own master)
   hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
-  hiver swarm import <root>          register a swarm folder (<root>/.swarm/agents.json)
+  hiver swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
+                                     alias: import
+  hiver swarm unregister <slug>      remove it from hiver (files are kept); alias: forget
+  hiver swarm directory [--json]     every swarm and solo agent: what it does, skills, tools,
+                                     busy or idle, address (ask the user before sending work)
+  hiver swarm profile <slug> [--description T] [--skills a,b] [--tools x,y]
+                                     set (or show) a directory entry
   hiver swarm list [--json]          swarms, agents, roles, states and queued messages
   hiver swarm master [<slug>] [--focus]
                                      show (or focus) a swarm's master; default: your swarm
@@ -31,8 +39,7 @@ hiver swarm commands:
   hiver swarm schedule list|remove|run [<swarm>] [<id>]
   hiver swarm pick                   choose a swarm and jump to its master (interactive)
   hiver swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥F ⌥Q)
-  hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)
-  hiver swarm forget <slug>          unregister (files are kept)";
+  hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)";
 
 const MSG_HELP: &str = "\
 hiver msg commands:
@@ -468,7 +475,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
     let json_out = take_flag(&mut rest, "--json");
     match args.first().map(String::as_str) {
-        Some("import") if rest.len() == 1 => {
+        Some("import" | "register") if rest.len() == 1 => {
             let response = call("import", json!({ "root": rest[0] }))?;
             let Some(result) = result(&response) else {
                 return Ok(1);
@@ -494,7 +501,9 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
             );
             Ok(0)
         }
-        Some("forget") if rest.len() == 1 => {
+        Some("directory" | "dir") => directory::directory(json_out),
+        Some("profile") => directory::profile(&rest),
+        Some("forget" | "unregister") if rest.len() == 1 => {
             let response = call("forget", json!({ "slug": rest[0] }))?;
             Ok(if result(&response).is_some() { 0 } else { 1 })
         }
@@ -589,6 +598,7 @@ fn print_swarm(swarm: &Value) {
     for agent in swarm["agents"].as_array().into_iter().flatten() {
         let role = agent["role"].as_str().unwrap_or("worker");
         let glyph = match role {
+            "master" if swarm["solo"] == true => "★",
             "master" => "◆",
             "critic" => "✎",
             "script" => "▷",

@@ -99,6 +99,12 @@ pub(crate) struct Swarm {
     pub root: PathBuf,
     /// Manifest `"state": "paused"`: deliveries are held (still queued and logged).
     pub paused: bool,
+    /// Manifest `"solo": true`: a single agent (`hiver swarm launch --solo`) that is its own
+    /// master; shown as one row in the sidebar instead of a swarm tree.
+    pub solo: bool,
+    /// Manifest `"profile"`: what the swarm or agent does, for the directory other agents
+    /// read before asking for help (`description`, `skills`, `tools`).
+    pub profile: Value,
     /// Master first, then by role, then by key (manifest maps are key-sorted).
     pub agents: Vec<SwarmAgent>,
 }
@@ -196,6 +202,12 @@ impl Swarm {
             slug,
             root: root.to_path_buf(),
             paused: manifest.get("state").and_then(Value::as_str) == Some("paused"),
+            solo: manifest.get("solo").and_then(Value::as_bool) == Some(true),
+            profile: manifest
+                .get("profile")
+                .filter(|profile| profile.is_object())
+                .cloned()
+                .unwrap_or(Value::Null),
             agents,
         })
     }

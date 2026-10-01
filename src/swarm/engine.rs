@@ -30,6 +30,8 @@ const RATE_LIMIT: usize = 30;
 const PAIR_LIMIT: usize = 6;
 const PAIR_WINDOW: Duration = Duration::from_secs(300);
 const METADATA_SOURCE: &str = "hiver:swarm";
+/// Pane glyph of a solo agent (`"solo": true`), which is its own master.
+const SOLO_GLYPH: &str = "★";
 /// How often due schedules are looked for.
 const SCHEDULE_CHECK: Duration = Duration::from_secs(30);
 /// Default monitoring task; a setup provider can pass its own (`--heartbeat-task`).
@@ -721,7 +723,24 @@ fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
     };
     let mut lines = Vec::new();
     if let Some(master) = swarm.master() {
-        lines.push(format!("◆ master    {} · {}", master.key, status(master)));
+        if swarm.solo {
+            let what = match &master.model {
+                Some(model) => format!("{}/{model}", master.kind.as_str()),
+                None => master.kind.as_str().to_string(),
+            };
+            lines.push(format!(
+                "{SOLO_GLYPH} agent     {what} · {}",
+                status(master)
+            ));
+        } else {
+            lines.push(format!("◆ master    {} · {}", master.key, status(master)));
+        }
+    }
+    if let Some(about) = swarm.profile["description"]
+        .as_str()
+        .filter(|d| !d.is_empty())
+    {
+        lines.push(format!("about       {about}"));
     }
     let agents: Vec<String> = swarm
         .agents
@@ -1086,7 +1105,12 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
                 .queues
                 .get(&(swarm.slug.clone(), agent.key.clone()))
                 .map_or(0, Vec::len);
-            let mut title = format!("{} {} · {}", agent.role.glyph(), agent.key, swarm.slug);
+            let solo_master = swarm.solo && agent.role == Role::Master;
+            let mut title = if solo_master {
+                format!("{SOLO_GLYPH} {} · agent", swarm.slug)
+            } else {
+                format!("{} {} · {}", agent.role.glyph(), agent.key, swarm.slug)
+            };
             if let Some(model) = &agent.model {
                 title.push_str(&format!(" · {model}"));
             }
@@ -1103,6 +1127,7 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
             tokens.insert("role".to_string(), Some(agent.role.as_str().to_string()));
             tokens.insert("swarm".to_string(), Some(swarm.slug.clone()));
             tokens.insert("paused".to_string(), swarm.paused.then(|| "1".to_string()));
+            tokens.insert("solo".to_string(), swarm.solo.then(|| "1".to_string()));
             tokens.insert(
                 "queued".to_string(),
                 (queued > 0).then(|| queued.to_string()),
@@ -1115,7 +1140,11 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
                     agent: None,
                     applies_to_source: None,
                     title: Some(title.clone()),
-                    display_agent: Some(format!("{} {}", agent.role.glyph(), agent.key)),
+                    display_agent: Some(if solo_master {
+                        format!("{SOLO_GLYPH} {}", swarm.slug)
+                    } else {
+                        format!("{} {}", agent.role.glyph(), agent.key)
+                    }),
                     state_labels: HashMap::new(),
                     tokens,
                     clear_title: false,
@@ -1422,7 +1451,7 @@ fn swarm_json(state: &State, swarm: &Swarm) -> Value {
             })
         })
         .collect();
-    json!({ "slug": swarm.slug, "root": swarm.root, "paused": swarm.paused, "agents": agents })
+    json!({ "slug": swarm.slug, "root": swarm.root, "paused": swarm.paused, "solo": swarm.solo, "profile": swarm.profile, "agents": agents })
 }
 
 fn op_list(state: &State) -> Value {

@@ -39,6 +39,9 @@ you ── hiver swarm new "task" ──► hiver opens YOUR plugin's "setup" pa
 | `--heartbeat 15m --heartbeat-task "…"` | wake the master on a schedule with your monitoring instructions |
 | `--budget-min 120` | time budget shown in the dashboard and info |
 
+| `--description "…" --skills a,b --tools x,y` | the swarm's entry in `hiver swarm directory` (also `hiver swarm profile`) |
+| `--solo [--model M] [--kind codex]` | no workers: one agent runs in `<root>` itself, in a new space, as its own master; the calling pane stays put (see `agent.creator`) |
+
 More schedules after launch: `hiver swarm schedule add <slug> --at 09:00 "…"`.
 
 ## Walkthrough: the example provider

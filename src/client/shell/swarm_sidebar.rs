@@ -125,6 +125,15 @@ pub(super) enum TreeRow {
         name: String,
         queued: usize,
     },
+    /// A solo agent (`hiver swarm launch --solo`): one row, no tree.
+    Agent {
+        slug: String,
+        pane_id: String,
+        status: AgentStatus,
+        focused: bool,
+        queued: usize,
+        paused: bool,
+    },
     SoloHeader,
     Solo(super::agent_sidebar::AgentRow),
 }
@@ -181,6 +190,7 @@ pub(super) fn tree_rows(
         BTreeMap::new();
     let mut solo = Vec::new();
     let mut paused = std::collections::HashSet::new();
+    let mut solo_agents = std::collections::HashSet::new();
     for pane_id in &order {
         let Some(agent) = snapshot
             .agents
@@ -201,6 +211,9 @@ pub(super) fn tree_rows(
                 if token("paused").is_some() {
                     paused.insert(slug.to_string());
                 }
+                if token("solo").is_some() {
+                    solo_agents.insert(slug.to_string());
+                }
                 let queued = token("queued").and_then(|q| q.parse().ok()).unwrap_or(0);
                 swarms.entry(slug.to_string()).or_default().push((
                     agent,
@@ -217,6 +230,22 @@ pub(super) fn tree_rows(
 
     let mut rows = Vec::new();
     for (slug, mut members) in swarms {
+        if solo_agents.contains(&slug) {
+            // Addon panes stay out of the sidebar; the agent is the master.
+            if let Some((agent, _, queued)) =
+                members.iter().find(|(_, role, _)| *role == Role::Master)
+            {
+                rows.push(TreeRow::Agent {
+                    slug: slug.clone(),
+                    pane_id: agent.pane_id.clone(),
+                    status: agent.agent_status,
+                    focused: agent.focused,
+                    queued: *queued,
+                    paused: paused.contains(&slug),
+                });
+            }
+            continue;
+        }
         members.sort_by_key(|(agent, role, _)| {
             (*role, std::cmp::Reverse(severity(agent.agent_status)))
         });
@@ -304,6 +333,10 @@ pub(super) fn render_tree(
             TreeRow::Member { pane_id, .. } => {
                 hits.agents.push((rect, pane_id.clone()));
                 render_member(buffer, rect, row, config);
+            }
+            TreeRow::Agent { pane_id, .. } => {
+                hits.agents.push((rect, pane_id.clone()));
+                render_solo_agent(buffer, rect, row, config);
             }
             TreeRow::SoloHeader => {
                 put_text(
@@ -461,6 +494,56 @@ fn render_member(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &Client
     }
 }
 
+/// `   ● ★ slug` in teal, so solo agents stand apart from swarms (yellow masters).
+fn render_solo_agent(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &ClientShellConfig) {
+    let TreeRow::Agent {
+        slug,
+        status,
+        focused,
+        queued,
+        paused,
+        ..
+    } = row
+    else {
+        return;
+    };
+    let palette = &config.palette;
+    if *focused {
+        buffer.set_style(rect, Style::default().bg(palette.active_row_bg));
+    }
+    let mut x = rect.x;
+    x = put(buffer, x, rect, "   ", Style::default());
+    x = put(
+        buffer,
+        x,
+        rect,
+        status_icon(*status, config.status_indicators),
+        Style::default().fg(status_color(*status, palette)),
+    );
+    x = put(buffer, x, rect, " ★", Style::default().fg(palette.teal));
+    x = put(
+        buffer,
+        x,
+        rect,
+        &format!(" {slug}"),
+        Style::default()
+            .fg(palette.teal)
+            .add_modifier(Modifier::BOLD),
+    );
+    if *paused {
+        x = put(buffer, x, rect, " ⏸", Style::default().fg(palette.yellow));
+    }
+    if *queued > 0 {
+        put_right(
+            buffer,
+            rect,
+            x,
+            &format!("✉{queued}"),
+            Style::default().fg(palette.peach),
+        );
+    }
+}
+
 /// The swarm info card for the hovered sidebar row: lines the swarm engine reports as
 /// `info1..info12` tokens on the swarm's space (agents, Slack, vault, addons, budget…).
 pub(super) struct HoverCard {
@@ -590,6 +673,7 @@ mod tests {
                     format!("{}{slug}", if *expanded { "▾" } else { "▸" })
                 }
                 TreeRow::Member { name, .. } => format!("  {name}"),
+                TreeRow::Agent { slug, .. } => format!("★{slug}"),
                 TreeRow::SoloHeader => "solo".into(),
                 TreeRow::Solo(row) => format!("  {}", row.pane_id),
             })
@@ -686,6 +770,36 @@ mod tests {
                 "  solo:solo1",
             ]
         );
+    }
+
+    #[test]
+    fn solo_agents_are_one_row_without_their_addons() {
+        let mut lone = agent(
+            "coordinator",
+            Some("seo"),
+            "master",
+            AgentStatus::Working,
+            false,
+        );
+        lone.tokens.push(("solo".into(), "1".into()));
+        let mut addon = agent("dashboard", Some("seo"), "script", AgentStatus::Idle, false);
+        addon.tokens.push(("solo".into(), "1".into()));
+        let rows = rows_for(
+            vec![
+                lone,
+                addon,
+                agent(
+                    "coordinator",
+                    Some("ideas"),
+                    "master",
+                    AgentStatus::Idle,
+                    false,
+                ),
+            ],
+            &SwarmTreeState::default(),
+        )
+        .unwrap();
+        assert_eq!(names(&rows), ["▸ideas", "  coordinator", "★seo"]);
     }
 
     #[test]
