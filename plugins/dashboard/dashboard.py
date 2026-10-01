@@ -211,6 +211,23 @@ class Collector:
         self.last_total = swarm_total
         self.tokens = tokens
 
+    def track_active(self, launched_at, messages, working, now):
+        """Seconds the swarm has actually worked: the clock runs only while an agent is working.
+
+        Kept in the usage cache so it survives restarts. A dashboard started on an existing
+        swarm seeds it with launch → last message."""
+        if not launched_at:
+            return None
+        active = self.cache.get("active")
+        if active is None:
+            last = max((m.get("ts", 0) / 1000 for m in messages), default=launched_at)
+            active = self.cache["active"] = {"seconds": max(0, last - launched_at), "at": now}
+        if working:
+            # Count the time since the last refresh, but not a long gap (dashboard was closed).
+            active["seconds"] += min(max(0, now - active["at"]), REFRESH_S * 3)
+        active["at"] = now
+        return active["seconds"]
+
     def snapshot(self, slug, force_tokens=False):
         swarm = self.swarm(slug)
         if swarm is None:
@@ -233,11 +250,18 @@ class Collector:
             tasks = json.loads((self.root / ".swarm" / "tasks.json").read_text()).get("tasks", [])
         except (OSError, json.JSONDecodeError):
             pass
+        messages = recent_messages(self.root / ".swarm" / "bus.jsonl", 12)
+        working = any(a.get("status") == "working" for a in swarm.get("agents", [])
+                      if a.get("role") != "script")
+        active = self.track_active(manifest.get("launched_at"), messages, working, now)
         return {
             "swarm": swarm,
             "manifest": manifest,
             "tasks": tasks,
-            "messages": recent_messages(self.root / ".swarm" / "bus.jsonl", 12),
+            "messages": messages,
+            "active": active,
+            "working": working,
+            "done": bool(tasks) and all(t.get("status") == "approved" for t in tasks),
             "tokens": dict(self.tokens),
             "rate": list(self.rate),
             "since": dict(self.since),
@@ -299,16 +323,16 @@ def draw(win, snap, slug):
     # Header: swarm, agent count, budget bar, total tokens.
     x = put(win, y, 1, f"◆ {slug}", color(4, True))
     x = put(win, y, x, f"  {sum(1 for a in agents if a.get('role') != 'script')} agents", color(7))
-    started, budget = manifest.get("launched_at"), manifest.get("budget_minutes")
-    if started:
-        elapsed = snap["now"] - started
-        if budget:
-            pct = elapsed / (budget * 60)
-            x = put(win, y, x, f"  {duration(elapsed)}/{budget}m ", color(7))
-            x = put(win, y, x, bar(elapsed, budget * 60, 12), color(1 if pct >= 1 else 4 if pct >= 0.8 else 2))
-            x = put(win, y, x, f" {int(pct * 100)}%", color(7))
+    timing = clock(snap)
+    if timing:
+        label, active, pct = timing
+        if pct is None:
+            x = put(win, y, x, f"  {label}", color(7))
         else:
-            x = put(win, y, x, f"  running {duration(elapsed)}", color(7))
+            budget = manifest["budget_minutes"]
+            x = put(win, y, x, f"  {label}/{budget}m ", color(7))
+            x = put(win, y, x, bar(active, budget * 60, 12), color(budget_pair(pct)))
+            x = put(win, y, x, f" {int(pct * 100)}%", color(7))
     put(win, y, max(x + 2, width - 18), f"tokens {human(total):>7}", color(3, True))
     y += 2
 
@@ -320,6 +344,8 @@ def draw(win, snap, slug):
     for agent in agents:
         if y >= height - 1:
             break
+        if agent.get("role") == "script":
+            continue  # addons have their own panes and use no tokens
         key, role = agent.get("key", "?"), agent.get("role", "worker")
         status = agent.get("status", "?")
         seen = snap["since"].get(key, (status, snap["now"]))[1]
@@ -368,26 +394,43 @@ def draw(win, snap, slug):
         frm = msg.get("from", "?").split("/")[-1]
         kind = {"fyi": " fyi", "urgent": " URGENT"}.get(msg.get("kind"), "")
         x = put(win, y, 1, f"{when} ", color(8))
-        x = put(win, y, x, f"{frm} → {msg.get('to', '?')}{kind}: ", color(4 if kind == " URGENT" else 5))
+        x = put(win, y, x, f"{frm} → {msg.get('to', '?')}{kind}: ", color(4 if kind == " URGENT" else 3))
         put(win, y, x, msg.get("text", "").replace("\n", " "), color(7))
         y += 1
     put(win, height - 1, 1, "q quit · r refresh", color(8))
     win.refresh()
 
 
+def clock(snap):
+    """(label, active seconds, budget fraction or None): time counts only while agents work."""
+    active, budget = snap.get("active"), snap["manifest"].get("budget_minutes")
+    if active is None:
+        return None
+    if snap.get("done") and not snap.get("working"):
+        label = f"done in {duration(active)}"
+    elif snap.get("working"):
+        label = f"active {duration(active)}"
+    else:
+        label = f"idle · active {duration(active)}"
+    return label, active, (active / (budget * 60) if budget else None)
+
+
+def budget_pair(pct):
+    return 1 if pct >= 1 else 4 if pct >= 0.8 else 2
+
+
 def compact_parts(snap, slug):
     """Short-pane summary as (text, color pair, bold) parts: swarm, budget, tokens per agent, total."""
     manifest, tokens = snap["manifest"], snap["tokens"]
     parts = [(f"◆ {slug}", 4, True)]
-    started, budget = manifest.get("launched_at"), manifest.get("budget_minutes")
-    if started:
-        elapsed = snap["now"] - started
-        if budget:
-            pct = elapsed / (budget * 60)
-            parts.append((f"  {duration(elapsed)}/{budget}m {int(pct * 100)}%",
-                          1 if pct >= 1 else 4 if pct >= 0.8 else 7, False))
+    timing = clock(snap)
+    if timing:
+        label, _, pct = timing
+        if pct is None:
+            parts.append((f"  {label}", 7, False))
         else:
-            parts.append((f"  {duration(elapsed)}", 7, False))
+            parts.append((f"  {label}/{manifest['budget_minutes']}m {int(pct * 100)}%",
+                          7 if snap.get("done") else budget_pair(pct), False))
     parts.append(("  │", 8, False))
     for agent in snap["swarm"].get("agents", []):
         role = agent.get("role", "worker")

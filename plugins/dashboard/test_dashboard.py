@@ -82,14 +82,39 @@ class Compact(unittest.TestCase):
             ]},
             "manifest": {"launched_at": 1000, "budget_minutes": 60},
             "tokens": {"coordinator": 2_800_000, "scout": 1_900_000, "dashboard": 0},
-            "now": 1000 + 540,
+            "now": 1000 + 5400,
+            "active": 540,
+            "working": True,
         }
         line = "".join(text for text, _, _ in dashboard.compact_parts(snap, "news"))
         self.assertIn("coordinator 2.8M", line)
         self.assertIn("scout 1.9M", line)
-        self.assertIn("15%", line)
+        self.assertIn("active 9m/60m 15%", line)
         self.assertIn("tokens 4.7M", line)
         self.assertNotIn("dashboard", line)
+        snap.update(working=False, done=True)
+        self.assertEqual(dashboard.clock(snap)[0], "done in 9m")
+
+
+class ActiveTime(unittest.TestCase):
+    def collector(self):
+        c = dashboard.Collector.__new__(dashboard.Collector)
+        c.cache = {"sessions": {}, "files": {}}
+        return c
+
+    def test_clock_runs_only_while_an_agent_works(self):
+        c = self.collector()
+        self.assertEqual(c.track_active(1000, [], True, 1000), 0)
+        self.assertEqual(c.track_active(1000, [], True, 1003), 3)
+        self.assertEqual(c.track_active(1000, [], False, 1500), 3)  # idle: frozen
+        self.assertEqual(c.track_active(1000, [], True, 1503), 6)
+        # A long gap (dashboard closed) adds at most a few refreshes.
+        self.assertEqual(c.track_active(1000, [], True, 9000), 6 + dashboard.REFRESH_S * 3)
+
+    def test_an_existing_swarm_is_seeded_with_launch_to_last_message(self):
+        c = self.collector()
+        msgs = [{"ts": 1_000_000 + 360_000}]  # last message 6 min after launch
+        self.assertEqual(c.track_active(1000, msgs, False, 9999), 360)
 
 
 if __name__ == "__main__":
