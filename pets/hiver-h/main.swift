@@ -531,11 +531,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         voiceItem.target = self
         voiceItem.state = speakAloud ? .on : .off
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Assign work", action: #selector(assignWork), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Listen", action: #selector(listen), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Think", action: #selector(think), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Send message", action: #selector(sendMessage), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Task complete", action: #selector(taskDone), keyEquivalent: "").target = self
+        // Preview the pet's moves: they only animate the pet, nothing happens in hiver
+        let effects = NSMenu()
+        effects.addItem(withTitle: "Assign work", action: #selector(assignWork), keyEquivalent: "").target = self
+        effects.addItem(withTitle: "Listen", action: #selector(listen), keyEquivalent: "").target = self
+        effects.addItem(withTitle: "Think", action: #selector(think), keyEquivalent: "").target = self
+        effects.addItem(withTitle: "Send message", action: #selector(sendMessage), keyEquivalent: "").target = self
+        effects.addItem(withTitle: "Task complete", action: #selector(taskDone), keyEquivalent: "").target = self
+        let effectsItem = NSMenuItem(title: "Effects (preview only)", action: nil, keyEquivalent: "")
+        effectsItem.submenu = effects
+        menu.addItem(effectsItem)
         menu.addItem(.separator())
         switcher.addItems(to: menu)
         menu.addItem(withTitle: "Quit Hiver", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")

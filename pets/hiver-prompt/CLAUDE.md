@@ -37,7 +37,7 @@ A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face,
 ## Behavior
 - Click = chat box above the pet (`HiverChat`): Enter sends to the hiver agent (`hiver msg send hiver/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hiver repo (`pets/hiver-prompt/`). Built and installed by `hiver pet use hiver-prompt` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
-- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
+- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, Effects (preview only) ▸ (plays the pet's moves; nothing happens in hiver), Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 <app>/Contents/MacOS/<exe>` logs each look's events.
 - hiver → Hiver Prompt: swarm/agent starts → `work` · agents working → `keepWorking` (formation renewed; an `attend` gather is not interrupted) · agent needs you / message from the user → `attend` · message → `pulse()` between agents · agent finished → `complete`.
@@ -50,7 +50,7 @@ A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face,
 - Dispatch message: a pulse from Hiver to each agent.
 - Task complete: agents report back (pulses to Hiver), nod + brief glow, back to idle.
 - While speaking the `_` flickers like typing (no mouth).
-- Drag = move (autosaved as `HiverPromptPet`). Right-click: Give instructions, Start swarm, Dispatch message, Task complete, Quit.
+- Drag = move (autosaved as `HiverPromptPet`). Effects (preview only) ▸: Give instructions, Start swarm, Dispatch message, Task complete.
 - `"Hiver Prompt.app/Contents/MacOS/hiver-prompt" say "text"` makes it talk. One instance per Mac.
 - Window-only screenshots (`screencapture -l`) show the floor shadow wrongly light on dark backgrounds; it composites correctly on the real desktop.
 

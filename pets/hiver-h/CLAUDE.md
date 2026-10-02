@@ -41,7 +41,7 @@ A living, three-dimensional "H": the software conductor whose body shows how it 
 ## Behavior
 - Click = chat box above the pet (`HiverChat`): Enter sends to the hiver agent (`hiver msg send hiver/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hiver repo (`pets/hiver-h/`). Built and installed by `hiver pet use hiver-h` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
-- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
+- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, Effects (preview only) ▸ (plays the pet's moves; nothing happens in hiver), Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 <app>/Contents/MacOS/<exe>` logs each look's events.
 - Launch: fades in while the sections settle from open into a complete H, restrained nod + brief mint glow, says "Welcome. I'm Hiver." (bubble + voice). Always visible, floats above windows, on all Spaces.
@@ -51,7 +51,7 @@ A living, three-dimensional "H": the software conductor whose body shows how it 
 - Assign work (menu, 6s): sections spring outward, fine mint connections link bridge ↔ sections and top ↔ bottom halves; pulses run through the bridge and along the connections.
 - Send message: one pulse travels through the bridge.
 - Task complete: sections settle back into the H, restrained nod, brief mint glow.
-- Drag = move (autosaved as `HiverHPet`). Right-click: hiver status line, Watch hiver, Speak aloud, Assign work, Listen, Think, Send message, Task complete, Quit.
+- Drag = move (autosaved as `HiverHPet`). Effects (preview only) ▸: Assign work, Listen, Think, Send message, Task complete.
 - `"Hiver H.app/Contents/MacOS/hiver-h" say "text"` makes it talk. One instance per Mac.
 - Event CLI: `hiver-h assign|listen|think|message|complete ["text"]` plays that animation (and says the text) in the running pet, via a DistributedNotification (`com.hiver.h.event`, object `"<event>\n<text>"`). `hiver-h --help` lists it.
 - Watches hiver (menu "Watch hiver", on by default): every 2s it runs `hiver swarm list --json` and `hiver msg log --json` against the `default` session (finds `hiver` via `$HIVER_BIN`, `~/.local/bin`, Homebrew paths, `$PATH`; never starts a server; first look and reconnects replay nothing). The menu's first line shows `hiver: N agents, M working`.

@@ -551,9 +551,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         voiceItem.target = self
         voiceItem.state = speakAloud ? .on : .off
         menu.addItem(.separator())
-        menu.addItem(withTitle: "New agent", action: #selector(newAgent), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Swarm formation", action: #selector(swarm), keyEquivalent: "").target = self
-        menu.addItem(withTitle: "Task finished", action: #selector(taskDone), keyEquivalent: "").target = self
+        // Preview the pet's moves: they only animate the pet, nothing happens in hiver
+        let effects = NSMenu()
+        effects.addItem(withTitle: "New agent", action: #selector(newAgent), keyEquivalent: "").target = self
+        effects.addItem(withTitle: "Swarm formation", action: #selector(swarm), keyEquivalent: "").target = self
+        effects.addItem(withTitle: "Task finished", action: #selector(taskDone), keyEquivalent: "").target = self
+        let effectsItem = NSMenuItem(title: "Effects (preview only)", action: nil, keyEquivalent: "")
+        effectsItem.submenu = effects
+        menu.addItem(effectsItem)
         menu.addItem(.separator())
         switcher.addItems(to: menu)
         menu.addItem(withTitle: "Quit Hiver", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
