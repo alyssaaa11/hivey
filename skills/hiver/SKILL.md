@@ -9,7 +9,7 @@ hiver runs swarms of Claude Code / Codex agents: **one space per swarm, pane 1 =
 (coordinator)**, a message bus between agents (`hiver msg`), addons (plugins) in the swarm's space,
 and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hiver`.
 
-- Binary: `hiver` (`~/.local/bin/hiver`). Repo: `~/projects/swarmAgents/hiver`
+- Binary: `hiver` (`~/.local/bin/hiver`). Repo: the clone hiver was installed from (`hiver update` uses it; `HIVER_REPO` overrides)
   (guide `docs/hiver-guide.md`, plugins `plugins/`, provider guide `docs/hiver-providers.md`).
 - Config: `~/.config/hiver/config.toml`. Plugin configs: `hiver plugin config-dir <id>`.
 - The original `herdr` (separate binary and server) may also be running: never touch it.
@@ -100,7 +100,9 @@ hiver swarm addon <slug> <id>[:<pane>]...       # open addons in a running swarm
 hiver swarm launch … --addon <id>               # open them at launch
 ```
 
-Included (in `~/projects/swarmAgents/hiver/plugins/`):
+Bundled in the repo's `plugins/` (linked by `install.sh`): the four `hiver.*` ones. The others
+come with the /swarm and /agent-creator skills and are only there when those are installed;
+check `hiver plugin list` / `hiver swarm providers` before relying on them.
 
 | id | what |
 |---|---|

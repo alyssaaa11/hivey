@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use super::{launch, swarms, take_flag, take_value};
+use super::{launch, sub_help, swarms, take_flag, take_value, wants_help};
 use crate::swarm::home::{self as engine_home, SLUG};
 
 const HELP: &str = "\
@@ -28,6 +28,10 @@ const DEFAULT_MODEL: &str = "opus";
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    if let Some(sub) = args.first().filter(|_| wants_help(&rest)) {
+        println!("{}", sub_help(HELP, "hiver home", sub));
+        return Ok(0);
+    }
     let outcome = match args.first().map(String::as_str) {
         None | Some("status") => status(),
         Some("setup") => setup(&mut rest),

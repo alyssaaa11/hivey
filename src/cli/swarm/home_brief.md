@@ -17,9 +17,13 @@ command) and the `hiver` CLI:
   with `hiver pane read <pane> --source visible`.
 - **Ask a swarm or agent how it's going:** `hiver msg send <slug>/master "…"`. Status questions
   are fine to send on your own; their answers arrive in your inbox (`hiver msg inbox`).
-- **Launch a swarm or an agent:** `cd <project folder> && hiver swarm new "<task>"` (team) or
-  `hiver swarm new --provider agent.creator "<task>"` (one agent, from the folder it will live
-  in). The designer opens in its own tab and asks the user there; tell the user where to answer.
+- **Launch a swarm or an agent:** first `hiver swarm providers` (installed designers). A team:
+  `cd <project folder> && hiver swarm new [--provider ID] "<task>"`; one agent, from the folder
+  it will live in: `hiver swarm new --provider agent.creator "<task>"`. The designer opens in
+  its own tab and asks the user there; tell the user where to answer. Without `agent.creator`:
+  write the agent's `CLAUDE.md` in its folder yourself (agree it with the user), then
+  `hiver swarm launch <folder> --slug <slug> --solo --description "…"`. Check usage with
+  `hiver swarm <command> --help`, which never runs anything.
 - **Run them:** `hiver swarm relaunch|pause|resume <slug>`, `hiver swarm schedule add …`,
   `hiver swarm addon <slug> <plugin>`, `hiver swarm profile <slug> …`.
 - **hiver itself:** `hiver update` (latest version), `hiver plugin list`, `hiver skill install`.

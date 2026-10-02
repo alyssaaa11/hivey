@@ -442,6 +442,43 @@ fn result(response: &Value) -> Option<&Value> {
     response.get("result")
 }
 
+/// `--help` or `-h` after a subcommand shows its usage instead of running it: otherwise
+/// `hiver swarm new --help` starts a swarm whose task is "--help".
+fn wants_help(rest: &[String]) -> bool {
+    rest.iter().any(|arg| arg == "--help" || arg == "-h")
+}
+
+/// The usage of `command sub` from `help` (its line plus the indented lines under it), or all
+/// of `help` when it has no entry for `sub`.
+fn sub_help(help: &str, command: &str, sub: &str) -> String {
+    let sub = match sub {
+        "import" => "register",
+        "forget" => "unregister",
+        other => other,
+    };
+    let mut lines = Vec::new();
+    let mut in_entry = false;
+    for line in help.lines() {
+        let usage = line.trim_start().trim_start_matches("usage:").trim_start();
+        if let Some(after) = usage.strip_prefix(command) {
+            let word = after.split_whitespace().next().unwrap_or("");
+            in_entry = word.split('|').any(|name| name == sub);
+        }
+        if in_entry {
+            lines.push(line.trim_start_matches("usage:"));
+        }
+    }
+    if lines.is_empty() {
+        return help.to_string();
+    }
+    let indent = lines[0].len() - lines[0].trim_start().len();
+    let lines: Vec<&str> = lines
+        .iter()
+        .map(|line| line.get(indent..).unwrap_or(line.trim_start()))
+        .collect();
+    format!("usage: {}", lines.join("\n       "))
+}
+
 fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
     let before = args.len();
     args.retain(|arg| arg != flag);
@@ -475,6 +512,10 @@ fn ago(ms: u64) -> String {
 
 pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    if let Some(sub) = args.first().filter(|_| wants_help(&rest)) {
+        println!("{}", sub_help(SWARM_HELP, "hiver swarm", sub));
+        return Ok(0);
+    }
     let json_out = take_flag(&mut rest, "--json");
     match args.first().map(String::as_str) {
         Some("import" | "register") if rest.len() == 1 => {
@@ -625,6 +666,10 @@ fn print_swarm(swarm: &Value) {
 
 pub(super) fn run_msg_command(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
+    if let Some(sub) = args.first().filter(|_| wants_help(&rest)) {
+        println!("{}", sub_help(MSG_HELP, "hiver msg", sub));
+        return Ok(0);
+    }
     let json_out = take_flag(&mut rest, "--json");
     let parsed = (|| -> Result<(Value, Option<String>), String> {
         let mut params = json!({});
@@ -1105,6 +1150,36 @@ fn install_keys() -> std::io::Result<i32> {
         Err(_) => println!("start or reload hiver to use them (hiver server reload-config)"),
     }
     Ok(0)
+}
+
+#[cfg(test)]
+mod help_tests {
+    use super::*;
+
+    #[test]
+    fn help_after_a_subcommand_is_detected() {
+        let args = |list: &[&str]| list.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
+        assert!(wants_help(&args(&["--help"])));
+        assert!(wants_help(&args(&["--provider", "x", "-h"])));
+        assert!(!wants_help(&args(&["build", "a", "helpful", "tool"])));
+    }
+
+    #[test]
+    fn sub_help_shows_only_that_subcommand() {
+        let new = sub_help(SWARM_HELP, "hiver swarm", "new");
+        assert!(new.starts_with("usage: hiver swarm new [--provider ID]"));
+        assert!(new.contains("design + launch a swarm"));
+        assert!(!new.contains("providers"));
+
+        let launch = sub_help(SWARM_HELP, "hiver swarm", "launch");
+        assert_eq!(launch.matches("hiver swarm launch").count(), 2);
+
+        let resume = sub_help(SWARM_HELP, "hiver swarm", "resume");
+        assert!(resume.contains("pause|resume"));
+        assert!(sub_help(SWARM_HELP, "hiver swarm", "import").contains("alias: import"));
+        assert!(sub_help(MSG_HELP, "hiver msg", "send").contains("--urgent"));
+        assert_eq!(sub_help(SWARM_HELP, "hiver swarm", "nope"), SWARM_HELP);
+    }
 }
 
 #[cfg(test)]
