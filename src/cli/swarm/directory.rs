@@ -45,6 +45,7 @@ fn entry(swarm: &Value, own_pane: Option<&str>) -> Value {
     json!({
         "slug": slug,
         "kind": if swarm["solo"] == true { "agent" } else { "swarm" },
+        "home": swarm["home"] == true,
         "description": profile["description"].as_str().unwrap_or(""),
         "skills": list("skills"),
         "tools": list("tools"),
@@ -90,7 +91,11 @@ pub(super) fn directory(json_out: bool) -> std::io::Result<i32> {
 
 fn print_entry(entry: &Value) {
     let kind = entry["kind"].as_str().unwrap_or("swarm");
-    let glyph = if kind == "agent" { "★" } else { "◆" };
+    let glyph = match (entry["home"] == true, kind) {
+        (true, _) => "⬢",
+        (_, "agent") => "★",
+        _ => "◆",
+    };
     let status = entry["status"].as_str().unwrap_or("gone");
     let state = match (kind, entry["paused"] == true) {
         (_, true) => format!("{status}, paused"),

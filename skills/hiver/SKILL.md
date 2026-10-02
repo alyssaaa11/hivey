@@ -112,6 +112,20 @@ Included (in `~/projects/swarmAgents/hiver/plugins/`):
 | `swarm.skill` | /swarm skill as a setup provider |
 | `agent.creator` | /agent-creator skill: one solo agent in the current folder |
 
+## The hiver agent (`hiver home`)
+
+An always-on Claude in `~/.hiver/agent` (solo agent `hiver`, ⬢ mauve, first space): the user's
+main way into hiver, also from Slack `#hiver` (relay addon). It uses this skill to launch and
+check swarms and agents. While enabled, the server of its session restarts it when it's gone.
+```bash
+hiver home                       # status: running?, session, model, Slack channel
+hiver home setup [--slack] [--model M] [--force]   # create/refresh it in THIS session
+hiver home start | enable | disable
+hiver msg send hiver/master "…"  # talk to it from anywhere
+```
+Settings: `~/.hiver/config.json`; its brief: `~/.hiver/agent/CLAUDE.md` (kept on setup unless
+`--force`); hiver's config: `~/.hiver/config` → `~/.config/hiver`.
+
 ## Solo agents
 
 A solo agent is a swarm with one member that is its own master: own space, ★ teal row in the

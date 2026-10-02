@@ -6,7 +6,8 @@
 #
 # Builds hiver, installs it as ~/.local/bin/hiver (HIVER_BIN_DIR to change), installs the hiver
 # skill for Claude Code / Codex, links the bundled plugins (dashboard, Slack relay, GitHub,
-# team template) and turns on the swarm sidebar and Option keys (--no-setup to skip).
+# team template), turns on the swarm sidebar and Option keys, and sets up the hiver agent in
+# ~/.hiver/agent (needs Claude Code). --no-setup skips the last two.
 # Run it again any time; later updates are just `hiver update`.
 #
 # Needs: git, Rust (cargo, via https://rustup.rs), Zig 0.16.0 (https://ziglang.org/download,
@@ -94,6 +95,15 @@ if [ "$STARTED_SERVER" = 1 ]; then "$BIN" server stop >/dev/null 2>&1 || true; f
 if [ "$SETUP" = 1 ]; then
   say "swarm sidebar and keys"
   "$BIN" swarm setup
+
+  say "the hiver agent (~/.hiver/agent)"
+  if command -v claude >/dev/null; then
+    # Turned on for the default session; it starts with hiver (no Slack until --slack).
+    "$BIN" home setup --no-start
+    echo "Slack: once the hiver.slack-relay token is set, run: hiver home setup --slack"
+  else
+    echo "Claude Code not found: skipped (later: hiver home setup)"
+  fi
 fi
 
 say "done"

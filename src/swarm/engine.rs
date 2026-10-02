@@ -32,6 +32,8 @@ const PAIR_WINDOW: Duration = Duration::from_secs(300);
 const METADATA_SOURCE: &str = "hiver:swarm";
 /// Pane glyph of a solo agent (`"solo": true`), which is its own master.
 const SOLO_GLYPH: &str = "★";
+/// Pane glyph of the hiver agent (`"home": true`).
+const HOME_GLYPH: &str = "⬢";
 /// How often due schedules are looked for.
 const SCHEDULE_CHECK: Duration = Duration::from_secs(30);
 /// Default monitoring task; a setup provider can pass its own (`--heartbeat-task`).
@@ -83,6 +85,8 @@ struct State {
     pair_wakes: HashMap<(String, String), VecDeque<Instant>>,
     seq: u64,
     last_reload: Option<Instant>,
+    /// Keeps the hiver agent (`hiver home`) alive.
+    home_watch: super::home::Watch,
 }
 
 pub(crate) fn start(api_tx: ApiRequestSender) {
@@ -399,8 +403,9 @@ fn tick(api_tx: &ApiRequestSender) {
         {
             state.reload();
         }
-        // No swarms registered: stay completely idle.
+        // No swarms registered: stay idle (but bring the hiver agent back if it's enabled).
         if state.swarms.is_empty() {
+            super::home::watch(&mut state.home_watch, false);
             return;
         }
     }
@@ -415,6 +420,13 @@ fn tick(api_tx: &ApiRequestSender) {
         };
         let Some(agents) = agents else { return };
         state.update_live(agents);
+        let home_alive = state
+            .swarms
+            .iter()
+            .filter(|swarm| swarm.home)
+            .filter_map(Swarm::master)
+            .any(|master| state.live(master).is_some());
+        super::home::watch(&mut state.home_watch, home_alive);
         if state
             .last_schedule_check
             .is_none_or(|at| at.elapsed() >= SCHEDULE_CHECK)
@@ -1106,8 +1118,10 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
                 .get(&(swarm.slug.clone(), agent.key.clone()))
                 .map_or(0, Vec::len);
             let solo_master = swarm.solo && agent.role == Role::Master;
+            let glyph = if swarm.home { HOME_GLYPH } else { SOLO_GLYPH };
             let mut title = if solo_master {
-                format!("{SOLO_GLYPH} {} · agent", swarm.slug)
+                let what = if swarm.home { "hiver agent" } else { "agent" };
+                format!("{glyph} {} · {what}", swarm.slug)
             } else {
                 format!("{} {} · {}", agent.role.glyph(), agent.key, swarm.slug)
             };
@@ -1128,6 +1142,7 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
             tokens.insert("swarm".to_string(), Some(swarm.slug.clone()));
             tokens.insert("paused".to_string(), swarm.paused.then(|| "1".to_string()));
             tokens.insert("solo".to_string(), swarm.solo.then(|| "1".to_string()));
+            tokens.insert("home".to_string(), swarm.home.then(|| "1".to_string()));
             tokens.insert(
                 "queued".to_string(),
                 (queued > 0).then(|| queued.to_string()),
@@ -1141,7 +1156,7 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
                     applies_to_source: None,
                     title: Some(title.clone()),
                     display_agent: Some(if solo_master {
-                        format!("{SOLO_GLYPH} {}", swarm.slug)
+                        format!("{glyph} {}", swarm.slug)
                     } else {
                         format!("{} {}", agent.role.glyph(), agent.key)
                     }),
@@ -1451,7 +1466,7 @@ fn swarm_json(state: &State, swarm: &Swarm) -> Value {
             })
         })
         .collect();
-    json!({ "slug": swarm.slug, "root": swarm.root, "paused": swarm.paused, "solo": swarm.solo, "profile": swarm.profile, "agents": agents })
+    json!({ "slug": swarm.slug, "root": swarm.root, "paused": swarm.paused, "solo": swarm.solo, "home": swarm.home, "profile": swarm.profile, "agents": agents })
 }
 
 fn op_list(state: &State) -> Value {

@@ -129,6 +129,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "skill" => swarm::run_skill_command(&args[2..])?, // hiver
         "swarm" => swarm::run_swarm_command(&args[2..])?, // hiver
         "msg" => swarm::run_msg_command(&args[2..])?,     // hiver
+        "home" => swarm::run_home_command(&args[2..])?,   // hiver
         "terminal" => run_terminal_command(&args[2..])?,
         "pane" => pane::run_pane_command(&args[2..])?,
         "plugin" => plugin::run_plugin_command(&args[2..])?,

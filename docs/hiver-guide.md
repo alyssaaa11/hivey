@@ -36,6 +36,11 @@ live (agents keep running): `hiver updated: hiver 0.9.3 (fc6681b0) → hiver 0.9
 Maintainers use `hiver update --check`: it also merges new herdr commits, runs the tests and a
 smoke test, and asks before pushing and installing.
 
+**The hiver agent:** `install.sh` also sets up `~/.hiver/agent`, an always-on Claude that is
+your main way into hiver (⬢ `hiver`, the first space). Ask it to launch swarms, check on agents
+or ask a swarm's coordinator how it's going. `hiver home setup --slack` adds the Slack channel
+`#hiver`, so you can reach it from anywhere. `hiver home` shows its status.
+
 Check the install:
 
 ```bash

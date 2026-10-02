@@ -102,6 +102,8 @@ pub(crate) struct Swarm {
     /// Manifest `"solo": true`: a single agent (`hiver swarm launch --solo`) that is its own
     /// master; shown as one row in the sidebar instead of a swarm tree.
     pub solo: bool,
+    /// Manifest `"home": true`: the hiver agent (`hiver home`), kept alive by the server.
+    pub home: bool,
     /// Manifest `"profile"`: what the swarm or agent does, for the directory other agents
     /// read before asking for help (`description`, `skills`, `tools`).
     pub profile: Value,
@@ -203,6 +205,7 @@ impl Swarm {
             root: root.to_path_buf(),
             paused: manifest.get("state").and_then(Value::as_str) == Some("paused"),
             solo: manifest.get("solo").and_then(Value::as_bool) == Some(true),
+            home: manifest.get("home").and_then(Value::as_bool) == Some(true),
             profile: manifest
                 .get("profile")
                 .filter(|profile| profile.is_object())

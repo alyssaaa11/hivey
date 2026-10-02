@@ -350,6 +350,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         heartbeat: None,
         heartbeat_task: None,
         solo,
+        home: manifest["home"] == true,
         profile: serde_json::Map::new(),
     };
 
@@ -413,6 +414,9 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         eprintln!("  {name}: {status} in {pane}");
         if is_master {
             manifest["coordinator_pane_id"] = json!(pane);
+            if manifest["home"] == true {
+                super::pin_first_pane_space(&pane);
+            }
             if solo {
                 // It may live in a new space now.
                 if let Some(workspace) = api("pane.get", json!({ "pane_id": pane }))

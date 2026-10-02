@@ -8,8 +8,10 @@ use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
 mod directory;
+mod home;
 mod launch;
 mod skill;
+pub(super) use home::run as run_home_command;
 pub(super) use skill::run_skill_command;
 
 const SWARM_HELP: &str = "\
@@ -598,6 +600,7 @@ fn print_swarm(swarm: &Value) {
     for agent in swarm["agents"].as_array().into_iter().flatten() {
         let role = agent["role"].as_str().unwrap_or("worker");
         let glyph = match role {
+            "master" if swarm["home"] == true => "⬢",
             "master" if swarm["solo"] == true => "★",
             "master" => "◆",
             "critic" => "✎",

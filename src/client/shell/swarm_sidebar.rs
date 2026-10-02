@@ -133,6 +133,8 @@ pub(super) enum TreeRow {
         focused: bool,
         queued: usize,
         paused: bool,
+        /// The hiver agent (`hiver home`): pinned first, its own color.
+        home: bool,
     },
     SoloHeader,
     Solo(super::agent_sidebar::AgentRow),
@@ -191,6 +193,7 @@ pub(super) fn tree_rows(
     let mut solo = Vec::new();
     let mut paused = std::collections::HashSet::new();
     let mut solo_agents = std::collections::HashSet::new();
+    let mut home_agents = std::collections::HashSet::new();
     for pane_id in &order {
         let Some(agent) = snapshot
             .agents
@@ -214,6 +217,9 @@ pub(super) fn tree_rows(
                 if token("solo").is_some() {
                     solo_agents.insert(slug.to_string());
                 }
+                if token("home").is_some() {
+                    home_agents.insert(slug.to_string());
+                }
                 let queued = token("queued").and_then(|q| q.parse().ok()).unwrap_or(0);
                 swarms.entry(slug.to_string()).or_default().push((
                     agent,
@@ -235,14 +241,21 @@ pub(super) fn tree_rows(
             if let Some((agent, _, queued)) =
                 members.iter().find(|(_, role, _)| *role == Role::Master)
             {
-                rows.push(TreeRow::Agent {
+                let home = home_agents.contains(&slug);
+                let row = TreeRow::Agent {
                     slug: slug.clone(),
                     pane_id: agent.pane_id.clone(),
                     status: agent.agent_status,
                     focused: agent.focused,
                     queued: *queued,
                     paused: paused.contains(&slug),
-                });
+                    home,
+                };
+                if home {
+                    rows.insert(0, row);
+                } else {
+                    rows.push(row);
+                }
             }
             continue;
         }
@@ -494,7 +507,8 @@ fn render_member(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &Client
     }
 }
 
-/// `   ● ★ slug` in teal, so solo agents stand apart from swarms (yellow masters).
+/// `   ● ★ slug` in teal, so solo agents stand apart from swarms (yellow masters); the hiver
+/// agent is `   ● ⬢ hiver` in mauve.
 fn render_solo_agent(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &ClientShellConfig) {
     let TreeRow::Agent {
         slug,
@@ -502,12 +516,18 @@ fn render_solo_agent(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &Cl
         focused,
         queued,
         paused,
+        home,
         ..
     } = row
     else {
         return;
     };
     let palette = &config.palette;
+    let (glyph, color) = if *home {
+        (" ⬢", palette.mauve)
+    } else {
+        (" ★", palette.teal)
+    };
     if *focused {
         buffer.set_style(rect, Style::default().bg(palette.active_row_bg));
     }
@@ -520,15 +540,13 @@ fn render_solo_agent(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &Cl
         status_icon(*status, config.status_indicators),
         Style::default().fg(status_color(*status, palette)),
     );
-    x = put(buffer, x, rect, " ★", Style::default().fg(palette.teal));
+    x = put(buffer, x, rect, glyph, Style::default().fg(color));
     x = put(
         buffer,
         x,
         rect,
         &format!(" {slug}"),
-        Style::default()
-            .fg(palette.teal)
-            .add_modifier(Modifier::BOLD),
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
     );
     if *paused {
         x = put(buffer, x, rect, " ⏸", Style::default().fg(palette.yellow));
@@ -673,7 +691,9 @@ mod tests {
                     format!("{}{slug}", if *expanded { "▾" } else { "▸" })
                 }
                 TreeRow::Member { name, .. } => format!("  {name}"),
-                TreeRow::Agent { slug, .. } => format!("★{slug}"),
+                TreeRow::Agent { slug, home, .. } => {
+                    format!("{}{slug}", if *home { "⬢" } else { "★" })
+                }
                 TreeRow::SoloHeader => "solo".into(),
                 TreeRow::Solo(row) => format!("  {}", row.pane_id),
             })
@@ -800,6 +820,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(names(&rows), ["▸ideas", "  coordinator", "★seo"]);
+    }
+
+    #[test]
+    fn the_hiver_agent_is_pinned_first() {
+        let mut home = agent("hiver", Some("hiver"), "master", AgentStatus::Idle, false);
+        home.tokens.push(("solo".into(), "1".into()));
+        home.tokens.push(("home".into(), "1".into()));
+        let rows = rows_for(
+            vec![
+                agent(
+                    "coordinator",
+                    Some("app"),
+                    "master",
+                    AgentStatus::Idle,
+                    false,
+                ),
+                home,
+            ],
+            &SwarmTreeState::default(),
+        )
+        .unwrap();
+        assert_eq!(names(&rows), ["⬢hiver", "▸app", "  coordinator"]);
     }
 
     #[test]

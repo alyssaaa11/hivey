@@ -76,6 +76,8 @@ struct Options {
     addons: Vec<Addon>,
     /// One agent working in `root` itself, as its own master (`--solo`).
     solo: bool,
+    /// The hiver agent (`--solo --home`, used by `hiver home`): space pinned first, unfocused.
+    home: bool,
     /// Directory entry (`--description`, `--skills`, `--tools`); kept when not given.
     profile: serde_json::Map<String, Value>,
 }
@@ -192,6 +194,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         heartbeat: None,
         heartbeat_task: None,
         solo: false,
+        home: false,
         profile: serde_json::Map::new(),
     };
     // `--model` / `--kind` (solo agent), keyed by slug once it is known.
@@ -223,6 +226,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--master-pane" => opts.master_pane = Some(value("--master-pane")?),
             "--no-move" => opts.move_master = false,
             "--solo" => opts.solo = true,
+            "--home" => opts.home = true,
             "--description" => {
                 opts.profile
                     .insert("description".into(), json!(value("--description")?));
@@ -281,6 +285,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
         if let Some(kind) = solo_kind {
             opts.kinds.insert(opts.slug.clone(), kind);
         }
+    } else if opts.home {
+        return Err("--home needs --solo".into());
     } else if solo_model.is_some() || solo_kind.is_some() {
         return Err("--model and --kind are for --solo; use --models / --kinds".into());
     } else if opts.agents.is_empty() {
@@ -623,6 +629,11 @@ fn now_secs() -> f64 {
         .unwrap_or_default()
 }
 
+/// `hiver swarm launch` with these arguments, without printing the manifest (`hiver home`).
+pub(super) fn launch_quietly(args: &[String]) -> Result<Value, String> {
+    launch(&parse(args)?)
+}
+
 pub(super) fn run(args: &[String]) -> std::io::Result<i32> {
     let opts = match parse(args) {
         Ok(opts) => opts,
@@ -708,12 +719,15 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     let slug = &opts.slug;
     let created = api(
         "workspace.create",
-        json!({ "cwd": root, "label": slug, "focus": true }),
+        json!({ "cwd": root, "label": slug, "focus": !opts.home }),
     )?;
     let pane = created["root_pane"]["pane_id"]
         .as_str()
         .map(str::to_string)
         .ok_or("workspace.create returned no pane")?;
+    if opts.home {
+        pin_first_pane_space(&pane);
+    }
     let args = agent_args(opts, root, slug);
     let kind = opts.kind(slug);
     let mut agents = serde_json::Map::new();
@@ -724,6 +738,9 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     );
     let mut manifest = new_manifest(opts, root, &pane, agents);
     manifest["solo"] = json!(true);
+    if opts.home {
+        manifest["home"] = json!(true);
+    }
     manifest["coordinator"] = json!(slug);
     manifest["launch_dir"] = json!(root);
     // Relaunch reads the master's CLI flags from here.
@@ -755,6 +772,19 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     import(root)?;
     schedule_heartbeat(opts)?;
     Ok(manifest)
+}
+
+/// Moves the space holding `pane` to the top of the list (the hiver agent's space comes first).
+pub(super) fn pin_first_pane_space(pane: &str) {
+    let workspace = api("pane.get", json!({ "pane_id": pane }))
+        .ok()
+        .and_then(|got| got["pane"]["workspace_id"].as_str().map(str::to_string));
+    if let Some(workspace) = workspace {
+        let _ = api(
+            "workspace.move",
+            json!({ "workspace_id": workspace, "insert_index": 0 }),
+        );
+    }
 }
 
 /// The launch flags without `--model` (models are kept per agent) or `--add-dir`

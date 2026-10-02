@@ -6,6 +6,7 @@
 pub(crate) mod adapter;
 pub(crate) mod bus;
 pub(crate) mod engine;
+pub(crate) mod home;
 pub(crate) mod model;
 pub(crate) mod schedule;
 

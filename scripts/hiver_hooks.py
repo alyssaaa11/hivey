@@ -185,6 +185,10 @@ edit("src/cli.rs", '        "agent" => agent::run_agent_command(&args[2..])?,\n'
      '        "agent" => agent::run_agent_command(&args[2..])?,\n'
      '        "skill" => swarm::run_skill_command(&args[2..])?, // hiver\n',
      marker='"skill" => swarm::run_skill_command')
+edit("src/cli.rs", '        "agent" => agent::run_agent_command(&args[2..])?,\n',
+     '        "agent" => agent::run_agent_command(&args[2..])?,\n'
+     '        "home" => swarm::run_home_command(&args[2..])?, // hiver\n',
+     marker='"home" => swarm::run_home_command')
 p = ROOT / "src/cli.rs"
 s = p.read_text()
 if "\nmod swarm;" not in s:
