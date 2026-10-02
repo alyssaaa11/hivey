@@ -73,7 +73,7 @@ if [ "$CHECK" = 0 ]; then
   OLD_HEAD=$(git rev-parse HEAD)
   git fetch -q origin
   if ! git merge -q --ff-only origin/main 2>/dev/null; then
-    echo "hiver update: local main has commits that aren't on origin; publish them with hiver update --check"
+    echo "hiver update: local main and origin/main have diverged; sort it out in $ROOT (git pull --rebase)"
     exit 1
   fi
   if [ "$(git rev-parse HEAD)" = "$OLD_HEAD" ] && [ "$(git rev-parse --short HEAD)" = "$(cat "$INSTALLED_FILE" 2>/dev/null)" ] \
