@@ -39,13 +39,14 @@ A living, three-dimensional "H": the software conductor whose body shows how it 
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hiver H.app` and `dist/HiverH.zip`. Run after every change.
 
 ## Behavior
+- Click = chat box above the pet (`HiverChat`): Enter sends to the hiver agent (`hiver msg send hiver/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hiver repo (`pets/hiver-h/`). Built and installed by `hiver pet use hiver-h` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
 - Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 <app>/Contents/MacOS/<exe>` logs each look's events.
 - Launch: fades in while the sections settle from open into a complete H, restrained nod + brief mint glow, says "Welcome. I'm Hiver." (bubble + voice). Always visible, floats above windows, on all Spaces.
 - Idle: small deliberate shifts (x offset + slight rotation every 3.5–6.5s), gentle rise and settle, natural blinks, eyes drift toward the cursor.
-- Listen (click, `say`, menu): leans forward slightly (scale up, eyes look straight ahead).
+- Listen (click, which also opens the chat box; `say`; menu): leans forward slightly (scale up, eyes look straight ahead).
 - Think (menu; also while speaking): a soft mint pulse sweeps across the bridge.
 - Assign work (menu, 6s): sections spring outward, fine mint connections link bridge ↔ sections and top ↔ bottom halves; pulses run through the bridge and along the connections.
 - Send message: one pulse travels through the bridge.

@@ -35,6 +35,7 @@ A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face,
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hiver Prompt.app` and `dist/HiverPrompt.zip`. Run after every change.
 
 ## Behavior
+- Click = chat box above the pet (`HiverChat`): Enter sends to the hiver agent (`hiver msg send hiver/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hiver repo (`pets/hiver-prompt/`). Built and installed by `hiver pet use hiver-prompt` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
 - Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
@@ -44,7 +45,7 @@ A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face,
 - Agents spring toward per-mode spots `(x, y, z)` in `spots` (`idle` / `gather` / `swarm`); z sets draw order, size and haze. Modes expire back to idle.
 - Launch: fades in, message pulses out to agents, agents report back, restrained nod + brief mint glow, says "Welcome. I'm Hiver." (bubble + voice). Always visible, floats above windows, on all Spaces.
 - Idle: Hiver rises and settles; `_` cursor blinks slowly; agents hover at different depths; occasional pulse between agents or to Hiver.
-- Instructions (click, `say`, menu): face tilts in attention, agents gather close (3s).
+- Instructions (click, which also opens the chat box; `say`; menu): face tilts in attention, agents gather close (3s).
 - Start swarm (menu, 8s): agents spread into a triangle formation, bob in sync, steady message pulses; cursor pulses.
 - Dispatch message: a pulse from Hiver to each agent.
 - Task complete: agents report back (pulses to Hiver), nod + brief glow, back to idle.

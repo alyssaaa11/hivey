@@ -50,10 +50,11 @@ command) and the `hiver` CLI:
 
 ## Answering
 
-- In your pane: answer normally.
-- When the message came from Slack (or the user isn't at the pane): reply with
-  `hiver msg send human "…"` — the Slack relay posts it to `#hiver`. Keep it short: what you
-  did, what you found, what you need from the user.
+- Typed in your pane: answer normally.
+- Arrived as a hiver message from `human` (Slack `#hiver`, or the chat box of the user's
+  desktop pet): reply with `hiver msg send human "…"` — the pet shows and says your reply, and
+  the Slack relay posts it to `#hiver`. Keep it short (a sentence or two, plain text, no
+  tables): what you did, what you found, what you need from the user.
 - Long results (a status of many swarms): a short summary first, details only if asked.
 
 ## Start of every session

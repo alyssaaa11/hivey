@@ -34,6 +34,7 @@ Professional "harness" look: a dark graphite satin sphere (key light upper-left,
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hiver.app` and `dist/Hiver.zip` for sharing. Run after every change.
 
 ## Behavior
+- Click = chat box above the pet (`HiverChat`): Enter sends to the hiver agent (`hiver msg send hiver/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hiver repo (`pets/hiver-dot/`). Built and installed by `hiver pet use hiver-dot` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
 - Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
@@ -42,7 +43,7 @@ Professional "harness" look: a dark graphite satin sphere (key light upper-left,
 - Event CLI: `Hiver.app/Contents/MacOS/hiver agent|leave|swarm|pulse|done ["text"]` (DistributedNotification `com.hiver.pet.event`).
 - On launch: fades in, small restrained lift + mint glow, says "Welcome! I'm Hiver." (bubble + voice). Always visible, floats above windows, on all Spaces.
 - Idle: agents travel the signal wave (`signalPoint`, depth-sorted behind/in front of Hiver), breathing, blinking, eyes follow the cursor, occasional message pulse between agents.
-- Click = small lift + glow + short silent line.
+- Click = small lift + glow, and the chat box opens (see above).
 - Right-click menu (demos of future behaviors): New agent (dot flies out, max 9), Swarm formation (dots arc above Hiver, frequent pulses, 5s), Task finished (lift + glow), Quit.
 - A crew-motion variant (no orbit; idle groups, errands, listen/swarm/tidy formations) was tried on 2026-10-02 and rejected — user prefers the orbit.
 - Drag = move (position autosaved as `HiverPet`).

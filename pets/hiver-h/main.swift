@@ -9,7 +9,7 @@ import AppKit
 
 let sayNote = Notification.Name("com.hiver.h.say")
 let eventNote = Notification.Name("com.hiver.h.event")
-let petEvents = ["assign", "listen", "think", "message", "complete"]
+let petEvents = ["assign", "listen", "think", "message", "complete", "chat"]
 
 let cliArgs = CommandLine.arguments
 if cliArgs.count >= 2 && cliArgs[1] == "say" {
@@ -490,14 +490,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     private let hiverItem = NSMenuItem(title: "hiver: looking…", action: nil, keyEquivalent: "")
     private let watcher = HiverWatcher()
+    private let chat = HiverChat()
     private lazy var switcher = PetSwitcher(current: "hiver-h", say: { [weak self] in self?.say($0, aloud: false) },
                                             turnOffHere: { [weak self] in self?.turnOff() })
     private var watching: Bool {
         get { UserDefaults.standard.object(forKey: "watchHiver") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "watchHiver") }
     }
-
-    private let pokeLines = ["Listening.", "Ready.", "All agents connected.", "Standing by.", "What's next?"]
 
     private let launchAgent = URL(fileURLWithPath: NSHomeDirectory() + "/Library/LaunchAgents/com.hiver.h.plist")
 
@@ -541,11 +540,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switcher.addItems(to: menu)
         menu.addItem(withTitle: "Quit Hiver", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         pet.menu = menu
+        // Click: talk to the hiver agent (a chat box above the pet); drag still moves it
         pet.onPoke = { [weak self] in
             guard let self else { return }
             pet.listen()
-            say(pokeLines.randomElement()!, aloud: false)
+            chat.toggle(above: window)
         }
+        chat.say = { [weak self] text, aloud in self?.say(text, aloud: aloud) }
+        chat.onSent = { [weak self] in self?.pet.listen(for: 3) }
 
         DistributedNotificationCenter.default().addObserver(forName: sayNote, object: nil, queue: .main) { [weak self] note in
             guard let text = note.object as? String, !text.isEmpty else { return }
@@ -623,6 +625,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "think": pet.think()
         case "message": pet.message()
         case "complete": pet.complete()
+        case "chat": chat.toggle(above: window); return   // same as clicking the pet
         default: return
         }
         if !text.isEmpty { say(text) }
@@ -657,9 +660,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .finished(let name):
                 pet.complete()
                 offer("\(name) finished.", aloud: false, rank: 1)
-            case .message(let fromHuman, let replyFrom):
+            case .message(let fromHuman, let replyFrom, let text):
                 if fromHuman { pet.listen() }
-                if let replyFrom { offer("\(replyFrom) replied.", aloud: true, rank: 2) }
+                if let replyFrom { offer(replyLine(from: replyFrom, text: text), aloud: true, rank: 2) }
                 // A few pulses, staggered so each one reads; a burst of messages stays calm
                 if pulses < 3 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 * Double(pulses)) { [weak self] in

@@ -134,6 +134,8 @@ hiver pet use hiver-h|hiver-dot|hiver-prompt   # switch (built the first time, ~
 hiver pet off                     # no pet
 hiver pet choose                  # interactive picker (also ⌥P, and hiver menu → pets)
 ```
+Clicking the pet opens a chat box: it sends `hiver msg send hiver/master "…"` (from `human`);
+the hiver agent's `hiver msg send human` reply appears in the pet's bubble, spoken.
 The pet shows while a hiver window is open (it appears with the first window and quits
 ~6s after the last one closes). It watches hiver (swarm starts, working, finished, needs you, messages incl. Slack) and
 says the important ones aloud; right-click it for Switch pet / Turn off pet / Speak aloud.
@@ -219,6 +221,13 @@ Workflow for a new plugin:
   running: `python3 <this skill>/scripts/handoff.py <name>` (or stop + `hiver swarm relaunch`).
 - **`ctrl+b q` / `⌥Q` don't quit:** check `[keys] detach` in config.toml; it should be
   `["alt+q", "prefix+q"]` (rerun `hiver swarm setup`), then `hiver server reload-config`.
+- **`⌥Q` types a symbol (œ) / hiver doesn't close:** the terminal doesn't send Option as Alt.
+  Tell the user: `ctrl+b` then `q` always works, or close the terminal tab (agents keep
+  running); to fix ⌥ keys set "Use Option as Meta" (Terminal.app Profiles → Keyboard; iTerm2
+  Left Option = Esc+; Ghostty `macos-option-as-alt = true`).
+- **The desktop pet doesn't leave:** a hiver window is still open. `ls ~/.hiver/windows` lists
+  them (one file per window, named by pid; `ps -o tty=,command= -p <pid>` shows the terminal).
+  The pet quits ~6s after the last one closes and comes back with the next `hiver`.
 - **Agent shows blocked:** it's waiting on a dialog: `hiver pane read <pane> --source visible`.
 - **Messages not delivered:** `hiver swarm list` (✉ queued), is the swarm paused?
   `hiver msg log --swarm <slug>`.

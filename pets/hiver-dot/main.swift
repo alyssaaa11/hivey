@@ -8,7 +8,7 @@ import AppKit
 
 let sayNote = Notification.Name("com.hiver.pet.say")
 let eventNote = Notification.Name("com.hiver.pet.event")
-let petEvents = ["agent", "leave", "swarm", "pulse", "done"]
+let petEvents = ["agent", "leave", "swarm", "pulse", "done", "chat"]
 
 let cliArgs = CommandLine.arguments
 if cliArgs.count >= 2 && cliArgs[1] == "say" {
@@ -506,6 +506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var voiceItem: NSMenuItem!
     private let hiverItem = NSMenuItem(title: "hiver: looking…", action: nil, keyEquivalent: "")
     private let watcher = HiverWatcher()
+    private let chat = HiverChat()
     private lazy var switcher = PetSwitcher(current: "hiver-dot", say: { [weak self] in self?.say($0, aloud: false) },
                                             turnOffHere: { [weak self] in self?.turnOff() })
     private var watching: Bool {
@@ -516,8 +517,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         get { UserDefaults.standard.object(forKey: "speakAloud") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "speakAloud") }
     }
-
-    private let pokeLines = ["Hi there!", "Everyone's connected.", "The swarm is calm.", "Hmm? I'm listening.", "Ready when you are."]
 
     private let launchAgent = URL(fileURLWithPath: NSHomeDirectory() + "/Library/LaunchAgents/com.hiver.pet.plist")
 
@@ -559,11 +558,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switcher.addItems(to: menu)
         menu.addItem(withTitle: "Quit Hiver", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         pet.menu = menu
+        // Click: talk to the hiver agent (a chat box above the pet); drag still moves it
         pet.onPoke = { [weak self] in
             guard let self else { return }
             pet.celebrate()
-            say(pokeLines.randomElement()!, aloud: false)
+            chat.toggle(above: window)
         }
+        chat.say = { [weak self] text, aloud in self?.say(text, aloud: aloud) }
+        chat.onSent = { [weak self] in self?.pet.pulse() }
 
         // `hiver agent|leave|swarm|pulse|done ["text"]`
         DistributedNotificationCenter.default().addObserver(forName: eventNote, object: nil, queue: .main) { [weak self] note in
@@ -638,6 +640,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "swarm": pet.formSwarm()
         case "pulse": pet.pulse()
         case "done": pet.celebrate()
+        case "chat": chat.toggle(above: window); return   // same as clicking the pet
         default: return
         }
         if !text.isEmpty { say(text) }
@@ -671,9 +674,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .finished(let name):
                 pet.celebrate()
                 offer("\(name) finished.", aloud: false, rank: 1)
-            case .message(let fromHuman, let replyFrom):
+            case .message(let fromHuman, let replyFrom, let text):
                 if fromHuman { offer("On it.", aloud: false, rank: 0) }
-                if let replyFrom { offer("\(replyFrom) replied.", aloud: true, rank: 2) }
+                if let replyFrom { offer(replyLine(from: replyFrom, text: text), aloud: true, rank: 2) }
                 if pulses < 3 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3 * Double(pulses)) { [weak self] in
                         self?.pet.pulse()

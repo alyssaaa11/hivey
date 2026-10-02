@@ -39,7 +39,10 @@ three: **Hiver H** (a 3D H whose sections slide apart), **Hiver** (a dot whose a
 signal wave) or **Hiver Prompt** (a `>_` sphere leading three agents), or none. Change it any
 time: right-click the pet (Switch pet, Turn off pet, Speak aloud), hiver's menu → **pets**,
 `⌥P`, or `hiver pet` (`hiver pet use hiver-dot`, `hiver pet off`). The pet comes with hiver:
-it appears when you open hiver and leaves a few seconds after the last hiver window closes. Needs Apple's command
+it appears when you open hiver and leaves a few seconds after the last hiver window closes.
+**Click the pet** to chat with the hiver agent: type in the box above it and press Enter; the
+answer appears in the pet's bubble and is said aloud (Esc closes the box; drag still moves the
+pet). Needs Apple's command
 line tools to build it (`xcode-select --install`).
 
 **Update:** `hiver update` gets the latest hiver, installs it and moves running sessions to it
@@ -274,4 +277,6 @@ Try it safely first with `HIVER_GITHUB_DRY_RUN=1`.
 | Agent shows `gone` | `hiver swarm relaunch <swarm>` |
 | Agents asking for permission after a restart | Relaunch them once: `hiver swarm relaunch <swarm> <agent>` (records their flags) |
 | Dashboard closed | `hiver swarm addon <swarm> hiver.dashboard` |
+| `⌥Q` types a symbol (œ) instead of closing hiver | Your terminal doesn't send Option as Alt: use `ctrl+b` then `q`, or close the terminal tab (agents keep running). To fix ⌥ keys: Terminal.app → Settings → Profiles → Keyboard → "Use Option as Meta key"; iTerm2 → Profiles → Keys → Left Option = Esc+; Ghostty: `macos-option-as-alt = true` |
+| The desktop pet doesn't leave after closing hiver | A hiver window is still open somewhere (another tab, or ⌥Q didn't close it, see above). It leaves ~6s after the last one closes. Find them: `ls ~/.hiver/windows` (one file per open window, named by its process id) and `ps -o tty= -p <id>` for its terminal |
 | Agents waking each other forever | Can't happen: two agents can wake each other at most 6 times in 5 min; further messages become FYI |

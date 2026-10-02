@@ -17,6 +17,9 @@ Desktop pets that act out what hiver's agents do. Choose one (or none) with `hiv
 - `pet.py`: `hiver pet` (build, install to `~/Applications`, switch, off, show). The
   choice is in `~/.hiver/pet.json`; `hiver update` runs `hiver pet refresh` to rebuild it when
   its source changed.
+- Chat: clicking a pet opens `HiverChat` (a box above it); Enter sends the text to the hiver
+  agent (`hiver msg send hiver/master`), whose reply to `human` the pet shows and says
+  (`replyLine`). Other agents' replies are announced as "<agent> replied.".
 - Lifecycle: every hiver window writes `~/.hiver/windows/<pid>` while open and runs
   `hiver pet show`, so the pet appears with the first window; the pet quits itself ~6s after the
   last window closes (`HiverWatcher.onLastWindowClosed`). Pets don't open at login.
