@@ -38,7 +38,8 @@ and to every message (also from Slack), and says the important ones out loud. Ch
 three: **Hiver H** (a 3D H whose sections slide apart), **Hiver** (a dot whose agents ride a
 signal wave) or **Hiver Prompt** (a `>_` sphere leading three agents), or none. Change it any
 time: right-click the pet (Switch pet, Turn off pet, Speak aloud), hiver's menu → **pets**,
-`⌥P`, or `hiver pet` (`hiver pet use hiver-dot`, `hiver pet off`). Needs Apple's command
+`⌥P`, or `hiver pet` (`hiver pet use hiver-dot`, `hiver pet off`). The pet comes with hiver:
+it appears when you open hiver and leaves a few seconds after the last hiver window closes. Needs Apple's command
 line tools to build it (`xcode-select --install`).
 
 **Update:** `hiver update` gets the latest hiver, installs it and moves running sessions to it

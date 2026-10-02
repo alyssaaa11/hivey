@@ -30,12 +30,12 @@ Its design stays simple and recognizable: one thoughtful little dot, surrounded 
 Professional "harness" look: a dark graphite satin sphere (key light upper-left, mint bounce light underneath) with glowing mint-white eyes; small mint dots (its agents) ride a glowing **signal wave** — a tilted loop whose radius carries a travelling sine wave, with a brighter signal packet running along it. Mouth only while speaking, no cheeks. Dark terminal-style speech bubble (monospaced). Watches hiver: its dots are hiver's agents. `main.swift` (AppKit + Core Graphics) plus the shared `../shared/HiverWatch.swift`. Previous ivory version saved in `backup/main.ivory-orbit.swift`.
 
 ## Files
-- `main.swift` — the whole app: Hiver + orbit drawing/animation, speech bubble, `say` voice, Open at Login.
+- `main.swift` — the whole app: Hiver + orbit drawing/animation, speech bubble, `say` voice.
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hiver.app` and `dist/Hiver.zip` for sharing. Run after every change.
 
 ## Behavior
-- Lives in the hiver repo (`pets/hiver-dot/`). Built and installed by `hiver pet use hiver-dot` (into `~/Applications`, opens at login; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
-- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Open at Login, Quit.
+- Lives in the hiver repo (`pets/hiver-dot/`). Built and installed by `hiver pet use hiver-dot` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
+- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 <app>/Contents/MacOS/<exe>` logs each look's events.
 - hiver → Hiver: dots on the wave = hiver's agents (max 9; `showAgents`: new dots fly out, gone ones fade off via `removeAgent`) · swarm/agent starts → `formSwarm` · agents working → `busy` (frequent pulses) · message → `pulse()` between two dots · message from the user → bubble "On it." · agent finished → `celebrate`.
@@ -43,12 +43,12 @@ Professional "harness" look: a dark graphite satin sphere (key light upper-left,
 - On launch: fades in, small restrained lift + mint glow, says "Welcome! I'm Hiver." (bubble + voice). Always visible, floats above windows, on all Spaces.
 - Idle: agents travel the signal wave (`signalPoint`, depth-sorted behind/in front of Hiver), breathing, blinking, eyes follow the cursor, occasional message pulse between agents.
 - Click = small lift + glow + short silent line.
-- Right-click menu (demos of future behaviors): New agent (dot flies out, max 9), Swarm formation (dots arc above Hiver, frequent pulses, 5s), Task finished (lift + glow), Open at Login, Quit.
+- Right-click menu (demos of future behaviors): New agent (dot flies out, max 9), Swarm formation (dots arc above Hiver, frequent pulses, 5s), Task finished (lift + glow), Quit.
 - A crew-motion variant (no orbit; idle groups, errands, listen/swarm/tidy formations) was tried on 2026-10-02 and rejected — user prefers the orbit.
 - Drag = move (position autosaved as `HiverPet`).
 - `Hiver.app/Contents/MacOS/hiver say "text"` makes the running pet talk.
 - One instance per Mac.
 
-## Sharing / login
-- First launch from an `.app` writes `~/Library/LaunchAgents/com.hiver.pet.plist` (`open -a <app path>`, RunAtLoad), so Hiver greets on every login. Toggle via the menu.
-- To share: send `dist/Hiver.zip`. It is ad-hoc signed, not notarized → recipients must move it to Applications and right-click → Open the first time (or `xattr -dr com.apple.quarantine Hiver.app`).
+## Sharing / lifecycle
+- Shows while hiver is open: each hiver window writes `~/.hiver/windows/<pid>` and runs `hiver pet show`; the pet quits itself ~6s after the last live window is gone (`HiverWatcher.onLastWindowClosed`). No Open at Login: switching removes old `~/Library/LaunchAgents/com.hiver.pet.plist` items.
+- Share it through hiver (`hiver pet use hiver-dot`): ad-hoc signed, built on the user's Mac, so no quarantine prompt.

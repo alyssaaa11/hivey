@@ -7,6 +7,62 @@ pub(crate) const HIVER_ENV_VAR: &str = "HIVER_ENV";
 pub(crate) const SELF_UPDATE_DISABLED: &str =
     "hiver does not self-update; update from source: git pull && cargo build --release";
 
+/// A hiver window open on this computer: `~/.hiver/windows/<pid>` exists while it runs. The
+/// desktop pet shows while any window is open (it checks each pid is alive, so a crashed
+/// window doesn't count) and quits itself after the last one closes; opening a window starts
+/// the chosen pet (`hiver pet show`).
+pub(crate) struct WindowMarker(Option<std::path::PathBuf>);
+
+/// Pets are macOS desktop apps.
+const PETS_SUPPORTED: bool = cfg!(target_os = "macos");
+
+impl WindowMarker {
+    pub(crate) fn open() -> Self {
+        let Some(home) = std::env::var_os("HOME") else {
+            return Self(None);
+        };
+        let dir = std::path::Path::new(&home).join(".hiver").join("windows");
+        let path = dir.join(std::process::id().to_string());
+        let marker = std::fs::create_dir_all(&dir)
+            .and_then(|()| std::fs::write(&path, b""))
+            .map(|()| path)
+            .map_err(|err| tracing::debug!(%err, "hiver window marker"))
+            .ok();
+        if PETS_SUPPORTED {
+            show_pet();
+        }
+        Self(marker)
+    }
+}
+
+impl Drop for WindowMarker {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// `hiver pet show` in the background (it does nothing when no pet is chosen or it's running).
+fn show_pet() {
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let spawned = std::process::Command::new(exe)
+        .args(["pet", "show"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    match spawned {
+        // Reaped off the main thread; it may build the pet for a minute
+        Ok(mut child) => {
+            std::thread::spawn(move || child.wait());
+        }
+        Err(err) => tracing::debug!(%err, "hiver pet show"),
+    }
+}
+
 /// The hiver checkout this binary was built from, or `HIVER_REPO`.
 pub(crate) fn repo() -> std::path::PathBuf {
     std::env::var_os("HIVER_REPO")

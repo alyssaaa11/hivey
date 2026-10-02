@@ -31,12 +31,12 @@ Hiver's cursor blinks slowly while idle and pulses while working. Its movements 
 A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face, directional lighting (key light upper-left, floor bounce light underneath, soft specular), soft contact shadow. Three smaller shaded agent spheres (emerald + muted mint) surround it at different heights and depths — some behind Hiver, some nearer the viewer. No orbits or rings. Professional, composed, precise. Watches hiver and acts out its swarms, agents and messages. Sibling of `~/projects/hiver_pet` (separate app, bundle id `com.hiver.prompt`, so both can run at once). Single `main.swift` (AppKit + Core Graphics).
 
 ## Files
-- `main.swift` — the whole app: `drawSphere`/`drawShadow` 3D shading, pet animation, terminal-style speech bubble, `say` voice, Open at Login.
+- `main.swift` — the whole app: `drawSphere`/`drawShadow` 3D shading, pet animation, terminal-style speech bubble, `say` voice.
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hiver Prompt.app` and `dist/HiverPrompt.zip`. Run after every change.
 
 ## Behavior
-- Lives in the hiver repo (`pets/hiver-prompt/`). Built and installed by `hiver pet use hiver-prompt` (into `~/Applications`, opens at login; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
-- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Open at Login, Quit.
+- Lives in the hiver repo (`pets/hiver-prompt/`). Built and installed by `hiver pet use hiver-prompt` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
+- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 <app>/Contents/MacOS/<exe>` logs each look's events.
 - hiver → Hiver Prompt: swarm/agent starts → `work` · agents working → `keepWorking` (formation renewed; an `attend` gather is not interrupted) · agent needs you / message from the user → `attend` · message → `pulse()` between agents · agent finished → `complete`.
@@ -49,10 +49,10 @@ A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face,
 - Dispatch message: a pulse from Hiver to each agent.
 - Task complete: agents report back (pulses to Hiver), nod + brief glow, back to idle.
 - While speaking the `_` flickers like typing (no mouth).
-- Drag = move (autosaved as `HiverPromptPet`). Right-click: Give instructions, Start swarm, Dispatch message, Task complete, Open at Login, Quit.
+- Drag = move (autosaved as `HiverPromptPet`). Right-click: Give instructions, Start swarm, Dispatch message, Task complete, Quit.
 - `"Hiver Prompt.app/Contents/MacOS/hiver-prompt" say "text"` makes it talk. One instance per Mac.
 - Window-only screenshots (`screencapture -l`) show the floor shadow wrongly light on dark backgrounds; it composites correctly on the real desktop.
 
-## Sharing / login
-- First launch from an `.app` writes `~/Library/LaunchAgents/com.hiver.prompt.plist` (`open -a <app path>`, RunAtLoad). Toggle via the menu.
-- Share `dist/HiverPrompt.zip`. Ad-hoc signed, not notarized → recipients right-click → Open the first time (or `xattr -dr com.apple.quarantine "Hiver Prompt.app"`).
+## Sharing / lifecycle
+- Shows while hiver is open: each hiver window writes `~/.hiver/windows/<pid>` and runs `hiver pet show`; the pet quits itself ~6s after the last live window is gone (`HiverWatcher.onLastWindowClosed`). No Open at Login: switching removes old `~/Library/LaunchAgents/com.hiver.prompt.plist` items.
+- Share it through hiver (`hiver pet use hiver-prompt`): ad-hoc signed, built on the user's Mac, so no quarantine prompt.

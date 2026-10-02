@@ -128,7 +128,7 @@ if [ "$SETUP" = 1 ]; then
   if [ "$(uname -s)" != Darwin ]; then
     echo "pets are macOS apps: skipped"
   elif [ -t 0 ]; then
-    # Builds the chosen pet (about a minute), starts it and opens it at login.
+    # Builds the chosen pet (about a minute) and starts it; it then shows while hiver is open.
     "$BIN" pet choose || echo "no pet for now (later: hiver pet choose, or ⌥P)"
   else
     echo "skipped: not a terminal (later: hiver pet choose)"

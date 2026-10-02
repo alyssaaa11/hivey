@@ -59,10 +59,23 @@ class PetTest(unittest.TestCase):
             pet.set_login("hiver-dot", True)
             pet.use("hiver-prompt")
         self.assertEqual(pet.chosen(), "hiver-prompt")
-        self.assertFalse(pet.launch_agent("hiver-dot").exists())
-        self.assertTrue(pet.launch_agent("hiver-prompt").exists())
+        # pets show while hiver is open: old login items are removed, none are added
+        self.assertFalse(any(pet.launch_agent(p).exists() for p in pet.ORDER))
         self.assertEqual({p for _, p in calls}, set(pet.ORDER))
         self.assertEqual(run.call_args.args[0][:2], ["open", "-a"])
+
+    def test_show_starts_only_a_chosen_stopped_pet(self):
+        with mock.patch.object(pet.platform, "system", return_value="Darwin"), \
+                mock.patch.object(pet, "outdated", return_value=False), \
+                mock.patch.object(pet.subprocess, "run") as run:
+            pet.show()                                   # nothing chosen
+            pet.save_choice("hiver-h")
+            with mock.patch.object(pet, "running", return_value=True):
+                pet.show()                               # already there
+            run.assert_not_called()
+            with mock.patch.object(pet, "running", return_value=False):
+                pet.show()
+            self.assertEqual(run.call_args.args[0][:3], ["open", "-g", "-a"])
 
     def test_unknown_pet_is_refused(self):
         with self.assertRaises(SystemExit) as stop:

@@ -35,12 +35,12 @@ Preview: `docs/capabilities-demo.gif` acts out the event → reaction table unde
 A living, three-dimensional "H": the software conductor whose body shows how it connects agents and coordinates swarms. Five precisely fitted sections (left/right uprights split into top + bottom, plus the central bridge), softly beveled, dark graphite satin finish, extruded depth toward the lower right, soft floor shadow. Two small attentive mint eyes sit in the bridge. Professional, observant, quietly confident. Watches hiver and acts out what its swarms and agents do. Sibling of `~/projects/hiver_pet` and `~/projects/hiver_pet_2` (separate app, bundle id `com.hiver.h`, so all can run at once). Single `main.swift` (AppKit + Core Graphics).
 
 ## Files
-- `main.swift` — the whole app: `sections` geometry + `spread` vectors, `drawSide` (extrusion) / `drawFace` (satin + bevel), connections, pulses, agent dots, terminal-style speech bubble, `say` voice, Open at Login, event CLI, `AppDelegate.react` (maps hiver events onto animations). The watcher (`HiverSnapshot` → `HiverEvent`s, `HiverWatcher`) and the pet switcher are in the shared `../shared/HiverWatch.swift`.
+- `main.swift` — the whole app: `sections` geometry + `spread` vectors, `drawSide` (extrusion) / `drawFace` (satin + bevel), connections, pulses, agent dots, terminal-style speech bubble, `say` voice, event CLI, `AppDelegate.react` (maps hiver events onto animations). The watcher (`HiverSnapshot` → `HiverEvent`s, `HiverWatcher`) and the pet switcher are in the shared `../shared/HiverWatch.swift`.
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hiver H.app` and `dist/HiverH.zip`. Run after every change.
 
 ## Behavior
-- Lives in the hiver repo (`pets/hiver-h/`). Built and installed by `hiver pet use hiver-h` (into `~/Applications`, opens at login; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
-- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Open at Login, Quit.
+- Lives in the hiver repo (`pets/hiver-h/`). Built and installed by `hiver pet use hiver-h` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiverWatch.swift`.
+- Right-click: hiver status line ("hiver: N agents, M working"), Watch hiver, Speak aloud, …, Switch pet ▸ (Hiver / Hiver Prompt / Hiver H, via `hiver pet use`), Turn off pet (`hiver pet off`), Quit.
 - Watches hiver through the shared `HiverWatcher` (every 2s: `hiver swarm list --json` + `hiver msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 <app>/Contents/MacOS/<exe>` logs each look's events.
 - Launch: fades in while the sections settle from open into a complete H, restrained nod + brief mint glow, says "Welcome. I'm Hiver." (bubble + voice). Always visible, floats above windows, on all Spaces.
@@ -50,7 +50,7 @@ A living, three-dimensional "H": the software conductor whose body shows how it 
 - Assign work (menu, 6s): sections spring outward, fine mint connections link bridge ↔ sections and top ↔ bottom halves; pulses run through the bridge and along the connections.
 - Send message: one pulse travels through the bridge.
 - Task complete: sections settle back into the H, restrained nod, brief mint glow.
-- Drag = move (autosaved as `HiverHPet`). Right-click: hiver status line, Watch hiver, Speak aloud, Assign work, Listen, Think, Send message, Task complete, Open at Login, Quit.
+- Drag = move (autosaved as `HiverHPet`). Right-click: hiver status line, Watch hiver, Speak aloud, Assign work, Listen, Think, Send message, Task complete, Quit.
 - `"Hiver H.app/Contents/MacOS/hiver-h" say "text"` makes it talk. One instance per Mac.
 - Event CLI: `hiver-h assign|listen|think|message|complete ["text"]` plays that animation (and says the text) in the running pet, via a DistributedNotification (`com.hiver.h.event`, object `"<event>\n<text>"`). `hiver-h --help` lists it.
 - Watches hiver (menu "Watch hiver", on by default): every 2s it runs `hiver swarm list --json` and `hiver msg log --json` against the `default` session (finds `hiver` via `$HIVER_BIN`, `~/.local/bin`, Homebrew paths, `$PATH`; never starts a server; first look and reconnects replay nothing). The menu's first line shows `hiver: N agents, M working`.
@@ -69,6 +69,6 @@ A living, three-dimensional "H": the software conductor whose body shows how it 
   One line per look, the most urgent wins (needs you > starting > replied > finished); "finished" is bubble-only. Menu "Speak aloud" (on by default) mutes the voice; bubbles stay. Script panes (relays) are not agents.
 - Debug: `HIVER_BIN=/path/to/fake-hiver HIVER_H_DEBUG=1 "Hiver H.app/Contents/MacOS/hiver-h"` logs each look's events to stderr; a fake `hiver` that `cat`s prepared `swarm list` / `msg log` JSON replays any scenario.
 
-## Sharing / login
-- First launch from an `.app` writes `~/Library/LaunchAgents/com.hiver.h.plist` (`open -a <app path>`, RunAtLoad). Toggle via the menu.
-- Share `dist/HiverH.zip`. Ad-hoc signed, not notarized → recipients right-click → Open the first time (or `xattr -dr com.apple.quarantine "Hiver H.app"`).
+## Sharing / lifecycle
+- Shows while hiver is open: each hiver window writes `~/.hiver/windows/<pid>` and runs `hiver pet show`; the pet quits itself ~6s after the last live window is gone (`HiverWatcher.onLastWindowClosed`). No Open at Login: switching removes old `~/Library/LaunchAgents/com.hiver.h.plist` items.
+- Share it through hiver (`hiver pet use hiver-h`): ad-hoc signed, built on the user's Mac, so no quarantine prompt.

@@ -482,7 +482,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let bubble = BubbleView(frame: NSRect(x: 0, y: 130, width: 220, height: 80))
     private var speech: Process?
     private var hideBubble: DispatchWorkItem?
-    private var loginItem: NSMenuItem!
     private var watchItem: NSMenuItem!
     private var voiceItem: NSMenuItem!
     private var speakAloud: Bool {
@@ -540,8 +539,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Task complete", action: #selector(taskDone), keyEquivalent: "").target = self
         menu.addItem(.separator())
         switcher.addItems(to: menu)
-        loginItem = menu.addItem(withTitle: "Open at Login", action: #selector(toggleLogin), keyEquivalent: "")
-        loginItem.target = self
         menu.addItem(withTitle: "Quit Hiver", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         pet.menu = menu
         pet.onPoke = { [weak self] in
@@ -569,14 +566,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.onUpdate = { [weak self] snapshot, events in
             MainActor.assumeIsolated { self?.react(snapshot, events) }
         }
+        watcher.onLastWindowClosed = { NSApp.terminate(nil) }   // back with the next hiver window
         if watching { watcher.start() } else { hiverItem.title = "hiver: not watching" }
 
-        // First launch from an .app turns on Open at Login, so Hiver greets you on every startup
-        if Bundle.main.bundlePath.hasSuffix(".app") && !UserDefaults.standard.bool(forKey: "loginConfigured") {
-            UserDefaults.standard.set(true, forKey: "loginConfigured")
-            setLogin(true)
-        }
-        loginItem.state = FileManager.default.fileExists(atPath: launchAgent.path) ? .on : .off
 
         // Appear: fade in while the sections settle into a complete H, then nod, glow and welcome
         window.alphaValue = 0
@@ -712,15 +704,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func sendMessage() { pet.message() }
     @objc func taskDone() { pet.complete() }
 
-    /// Without hiver: stop opening at login and quit
+    /// Without hiver: remove any old login item and quit
     private func turnOff() {
         setLogin(false)
         NSApp.terminate(nil)
-    }
-
-    @objc func toggleLogin() {
-        setLogin(loginItem.state != .on)
-        loginItem.state = FileManager.default.fileExists(atPath: launchAgent.path) ? .on : .off
     }
 
     private func setLogin(_ on: Bool) {

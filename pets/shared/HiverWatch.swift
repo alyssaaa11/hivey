@@ -55,6 +55,11 @@ struct HiverSnapshot {
 /// No hiver, or no hiver server running: it waits quietly and never starts one.
 final class HiverWatcher {
     var onUpdate: ((HiverSnapshot, [HiverEvent]) -> Void)?
+    /// The last hiver window on this computer closed (after one had been open): the pet goes
+    /// too, and comes back when a window opens (`hiver pet show`).
+    var onLastWindowClosed: (() -> Void)?
+    private var sawWindow = false
+    private var emptyLooks = 0
     private(set) var hiverPath: String?
     private var last: HiverSnapshot?
     private var lastMessageTs: Double?
@@ -106,7 +111,43 @@ final class HiverWatcher {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
+    /// hiver windows open on this computer: `~/.hiver/windows/<pid>` of a live process (a
+    /// window that crashed leaves its file behind; it's removed here)
+    static func openWindows() -> Int {
+        let dir = NSHomeDirectory() + "/.hiver/windows"
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return 0 }
+        var open = 0
+        for name in names {
+            guard let pid = Int32(name) else { continue }
+            if kill(pid, 0) == 0 || errno == EPERM {
+                open += 1
+            } else {
+                try? FileManager.default.removeItem(atPath: dir + "/" + name)
+            }
+        }
+        return open
+    }
+
+    /// Three empty looks in a row (~6s) count as closed: a reattach or `hiver update` reopens
+    /// windows within that time.
+    private func checkWindows() {
+        if Self.openWindows() > 0 {
+            sawWindow = true
+            emptyLooks = 0
+            return
+        }
+        guard sawWindow else { return }
+        emptyLooks += 1
+        if emptyLooks >= 3 {
+            sawWindow = false
+            emptyLooks = 0
+            if debug { FileHandle.standardError.write(Data("hiver pet: last hiver window closed\n".utf8)) }
+            DispatchQueue.main.async { [weak self] in self?.onLastWindowClosed?() }
+        }
+    }
+
     private func poll() {
+        checkWindows()
         if hiverPath == nil { hiverPath = findHiver() }
         guard let list = run(["swarm", "list", "--json"]) else {
             // hiver gone or its server stopped: start fresh when it's back (no replay of old events)

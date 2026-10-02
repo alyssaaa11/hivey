@@ -439,7 +439,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let bubble = BubbleView(frame: NSRect(x: 0, y: 134, width: 240, height: 80))
     private var speech: Process?
     private var hideBubble: DispatchWorkItem?
-    private var loginItem: NSMenuItem!
     private var watchItem: NSMenuItem!
     private var voiceItem: NSMenuItem!
     private let hiverItem = NSMenuItem(title: "hiver: looking…", action: nil, keyEquivalent: "")
@@ -496,8 +495,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Task complete", action: #selector(taskDone), keyEquivalent: "").target = self
         menu.addItem(.separator())
         switcher.addItems(to: menu)
-        loginItem = menu.addItem(withTitle: "Open at Login", action: #selector(toggleLogin), keyEquivalent: "")
-        loginItem.target = self
         menu.addItem(withTitle: "Quit Hiver Prompt", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         pet.menu = menu
         pet.onPoke = { [weak self] in
@@ -517,6 +514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.onUpdate = { [weak self] snapshot, events in
             MainActor.assumeIsolated { self?.react(snapshot, events) }
         }
+        watcher.onLastWindowClosed = { NSApp.terminate(nil) }   // back with the next hiver window
         if watching { watcher.start() } else { hiverItem.title = "hiver: not watching" }
 
         DistributedNotificationCenter.default().addObserver(forName: sayNote, object: nil, queue: .main) { [weak self] note in
@@ -527,12 +525,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // First launch from an .app turns on Open at Login, so Hiver Prompt greets you on every startup
-        if Bundle.main.bundlePath.hasSuffix(".app") && !UserDefaults.standard.bool(forKey: "loginConfigured") {
-            UserDefaults.standard.set(true, forKey: "loginConfigured")
-            setLogin(true)
-        }
-        loginItem.state = FileManager.default.fileExists(atPath: launchAgent.path) ? .on : .off
 
         // Appear: fade in, Hiver checks in with its team, welcome
         window.alphaValue = 0
@@ -659,7 +651,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Without hiver: stop opening at login and quit
+    /// Without hiver: remove any old login item and quit
     private func turnOff() {
         setLogin(false)
         NSApp.terminate(nil)
@@ -669,11 +661,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func startWork() { pet.work() }
     @objc func dispatch() { pet.emit() }
     @objc func taskDone() { pet.complete() }
-
-    @objc func toggleLogin() {
-        setLogin(loginItem.state != .on)
-        loginItem.state = FileManager.default.fileExists(atPath: launchAgent.path) ? .on : .off
-    }
 
     private func setLogin(_ on: Bool) {
         guard on else { try? FileManager.default.removeItem(at: launchAgent); return }

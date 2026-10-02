@@ -130,11 +130,12 @@ for the Slack token in chat: the user types it into `hiver slack connect`.
 
 ```bash
 hiver pet                         # chosen pet, running or not, the pets to choose from
-hiver pet use hiver-h|hiver-dot|hiver-prompt   # switch (built the first time, ~1 min; opens at login)
-hiver pet off                     # quit it and stop opening it at login
+hiver pet use hiver-h|hiver-dot|hiver-prompt   # switch (built the first time, ~1 min)
+hiver pet off                     # no pet
 hiver pet choose                  # interactive picker (also ⌥P, and hiver menu → pets)
 ```
-The pet watches hiver (swarm starts, working, finished, needs you, messages incl. Slack) and
+The pet shows while a hiver window is open (it appears with the first window and quits
+~6s after the last one closes). It watches hiver (swarm starts, working, finished, needs you, messages incl. Slack) and
 says the important ones aloud; right-click it for Switch pet / Turn off pet / Speak aloud.
 Sources: `pets/<id>/` + `pets/shared/HiverWatch.swift` in the hiver repo. Only switch or turn
 it off when the user asks.

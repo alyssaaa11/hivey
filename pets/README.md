@@ -14,6 +14,9 @@ Desktop pets that act out what hiver's agents do. Choose one (or none) with `hiv
 - `shared/HiverWatch.swift`: compiled into every pet. `HiverWatcher` polls hiver
   (`swarm list` / `msg log`), `HiverSnapshot` turns two looks into `HiverEvent`s (launched,
   needs you, finished, message), `PetSwitcher` is the Switch pet / Turn off pet menu.
-- `pet.py`: `hiver pet` (build, install to `~/Applications`, open at login, switch, off). The
+- `pet.py`: `hiver pet` (build, install to `~/Applications`, switch, off, show). The
   choice is in `~/.hiver/pet.json`; `hiver update` runs `hiver pet refresh` to rebuild it when
   its source changed.
+- Lifecycle: every hiver window writes `~/.hiver/windows/<pid>` while open and runs
+  `hiver pet show`, so the pet appears with the first window; the pet quits itself ~6s after the
+  last window closes (`HiverWatcher.onLastWindowClosed`). Pets don't open at login.

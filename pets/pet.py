@@ -3,8 +3,11 @@
 
 usage: pet.py [status]            the chosen pet, running or not, and the pets to choose from
        pet.py list [--json]       the pets
-       pet.py use <id>            build (when needed), install, start it, open at login; the
-                                  other pets are quit and no longer open at login
+       pet.py use <id>            build (when needed), install and start it; the other pets
+                                  are quit
+       pet.py show                start the chosen pet if it isn't running (hiver runs it when
+                                  a hiver window opens; the pet quits itself when the last
+                                  hiver window closes)
        pet.py off                 quit the pet and stop opening it at login
        pet.py choose              pick one interactively (install.sh, the ⌥P popup)
        pet.py refresh             rebuild and restart the chosen pet if its source changed
@@ -169,14 +172,26 @@ def use(pet):
     if outdated(pet):
         build(pet)
     for other in ORDER:
+        # Pets come and go with hiver now: no login items (older versions added them)
+        set_login(other, False)
         if other != pet:
             quit_pet(other)
-            set_login(other, False)
     quit_pet(pet)   # a rebuilt pet restarts with the new code
-    set_login(pet, True)
     subprocess.run(["open", "-a", str(installed_app(pet))], check=True)
     save_choice(pet)
-    print(f"{PETS[pet]['name']} is your pet (it opens at login; change it: hiver pet)")
+    print(f"{PETS[pet]['name']} is your pet: it shows while hiver is open (change it: hiver pet)")
+
+
+def show():
+    """Start the chosen pet if it isn't running; quiet when there is nothing to do."""
+    pet = chosen()
+    if pet not in PETS or platform.system() != "Darwin" or running(pet):
+        return
+    if outdated(pet):
+        if not shutil.which("swiftc"):
+            return
+        build(pet)
+    subprocess.run(["open", "-g", "-a", str(installed_app(pet))], check=False)
 
 
 def off():
@@ -190,7 +205,7 @@ def off():
 def status():
     current = chosen()
     if current in PETS:
-        state = "running" if running(current) else "not running (hiver pet use " + current + ")"
+        state = "running" if running(current) else "shows when a hiver window is open"
         print(f"pet: {PETS[current]['name']} ({current}), {state}")
     else:
         print("pet: none")
@@ -257,6 +272,8 @@ def main(argv):
         use(argv[1])
     elif command == "off":
         off()
+    elif command == "show":
+        show()
     elif command == "choose":
         return choose()
     elif command == "refresh":

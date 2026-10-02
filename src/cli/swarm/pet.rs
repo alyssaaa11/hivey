@@ -4,8 +4,10 @@
 const HELP: &str = "\
 usage: hiver pet [status]         your pet (running or not) and the pets to choose from
        hiver pet choose           pick one (or none) interactively
-       hiver pet use <id>         switch to that pet: built if needed, opens at login
-       hiver pet off              quit the pet and stop opening it at login
+       hiver pet use <id>         switch to that pet (built the first time, about a minute)
+       hiver pet off              no pet
+       hiver pet show             start the chosen pet (each hiver window does this; the pet
+                                  quits itself when the last hiver window closes)
        hiver pet list [--json]    the pets
   Pets: hiver-h (Hiver H), hiver-dot (Hiver), hiver-prompt (Hiver Prompt). Also in the pet's
   right-click menu (Switch pet, Turn off pet), hiver settings → pets, and ⌥P.";
