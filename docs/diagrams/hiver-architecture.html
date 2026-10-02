@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.17.0-dev.1">
   <meta name="archify-reader-contract" content="declared-wide-v1">
-  <title>hiver: swarm runtime core and its addons Diagram</title>
+  <title>hiver: swarm runtime core, the hiver agent and addons Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -4978,17 +4978,17 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
            data-preset-badge-blueprint="BLUEPRINT / REV 01"
            data-preset-badge-editorial="EDITORIAL / FIELD NOTE">
         <div class="pulse-dot"></div>
-        <h1>hiver: swarm runtime core and its addons</h1>
+        <h1>hiver: swarm runtime core, the hiver agent and addons</h1>
       </div>
     </div>
 
-    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"git@github.com:jcsancho/hiver","revision":"8fd65b6bb9d9ae3658a9c310047292d99f58023d","shortRevision":"8fd65b6","label":"jcsancho/hiver","linkMode":"local-only"},"referenceCount":23,"nodes":{"agents":[{"path":"src/cli/swarm/launch.rs","line":446,"endLine":470,"label":"start agent in its pane"}],"tui":[{"path":"src/client/shell/sidebar.rs","line":214,"endLine":235,"label":"swarms list, full height"},{"path":"src/client/shell/swarm_sidebar.rs","line":472,"endLine":550,"label":"hover info card"},{"path":"src/client/shell/mouse.rs","line":694,"endLine":716,"label":"double-click title: zoom"}],"cli":[{"path":"src/cli/swarm.rs","line":135,"endLine":246,"label":"hiver swarm …"},{"path":"src/cli/swarm.rs","line":277,"endLine":395,"label":"hiver msg …"},{"path":"src/cli/swarm/launch.rs","line":545,"endLine":597,"label":"launch into own space"}],"server":[{"path":"src/api/server.rs","line":458,"endLine":475,"label":"method swarm → engine"},{"path":"src/api/server.rs","line":121,"endLine":123,"label":"starts swarm engine"}],"engine":[{"path":"src/swarm/engine.rs","line":381,"endLine":462,"label":"tick: deliver, label, resume"},{"path":"src/swarm/engine.rs","line":463,"endLine":539,"label":"hold, deliver, escalate"},{"path":"src/swarm/engine.rs","line":696,"endLine":790,"label":"swarm info for the hover card"}],"adapter":[{"path":"src/swarm/adapter.rs","line":17,"endLine":113,"label":"start, continue, resume"}],"bus":[{"path":"src/swarm/bus.rs","line":200,"endLine":267,"label":"address resolution"},{"path":"src/swarm/bus.rs","line":302,"endLine":321,"label":"deliver when idle"},{"path":"src/swarm/bus.rs","line":330,"endLine":367,"label":"digest"}],"store":[{"path":"src/swarm/engine.rs","line":278,"endLine":306,"label":"log + queue a message"},{"path":"src/swarm/bus.rs","line":99,"endLine":119,"label":"append bus.jsonl"},{"path":"src/swarm/model.rs","line":110,"endLine":117,"label":"read agents.json"}],"slackrelay":[{"path":"plugins/slack-relay/relay.py","line":242,"endLine":272,"label":"slack→bus, bus→slack"}],"githubaddon":[{"path":"plugins/github/github.py","line":145,"endLine":159,"label":"commit, scan, create, push"},{"path":"plugins/github/github.py","line":187,"endLine":259,"label":"confirm-first pane"}],"dashboard":[{"path":"plugins/dashboard/dashboard.py","line":183,"endLine":247,"label":"token metering"}]}}</script>
+    <script id="archify-source-evidence-data" type="application/json">{"schemaVersion":1,"verified":true,"repository":{"url":"git@github.com:jcsancho/hiver","revision":"cdbed38e432345cf361b39ca9e37125967d613c1","shortRevision":"cdbed38","label":"jcsancho/hiver","linkMode":"local-only"},"referenceCount":26,"nodes":{"agents":[{"path":"src/cli/swarm/launch.rs","line":446,"endLine":470,"label":"start agent in its pane"}],"tui":[{"path":"src/client/shell/sidebar.rs","line":214,"endLine":235,"label":"swarms list, full height"},{"path":"src/client/shell/swarm_sidebar.rs","line":472,"endLine":550,"label":"hover info card"},{"path":"src/client/shell/mouse.rs","line":694,"endLine":716,"label":"double-click title: zoom"}],"cli":[{"path":"src/cli/swarm.rs","line":135,"endLine":246,"label":"hiver swarm …"},{"path":"src/cli/swarm.rs","line":277,"endLine":395,"label":"hiver msg …"},{"path":"src/cli/swarm/launch.rs","line":545,"endLine":597,"label":"launch into own space"}],"server":[{"path":"src/api/server.rs","line":458,"endLine":475,"label":"method swarm → engine"},{"path":"src/api/server.rs","line":121,"endLine":123,"label":"starts swarm engine"}],"engine":[{"path":"src/swarm/engine.rs","line":381,"endLine":462,"label":"tick: deliver, label, resume"},{"path":"src/swarm/engine.rs","line":463,"endLine":539,"label":"hold, deliver, escalate"},{"path":"src/swarm/engine.rs","line":696,"endLine":790,"label":"swarm info for the hover card"}],"adapter":[{"path":"src/swarm/adapter.rs","line":17,"endLine":113,"label":"start, continue, resume"}],"bus":[{"path":"src/swarm/bus.rs","line":200,"endLine":267,"label":"address resolution"},{"path":"src/swarm/bus.rs","line":302,"endLine":321,"label":"deliver when idle"},{"path":"src/swarm/bus.rs","line":330,"endLine":367,"label":"digest"}],"store":[{"path":"src/swarm/engine.rs","line":278,"endLine":306,"label":"log + queue a message"},{"path":"src/swarm/bus.rs","line":99,"endLine":119,"label":"append bus.jsonl"},{"path":"src/swarm/model.rs","line":110,"endLine":117,"label":"read agents.json"}],"home":[{"path":"src/cli/swarm/home.rs","line":198,"endLine":260,"label":"hiver home start: launch or relaunch"},{"path":"src/swarm/home.rs","line":100,"endLine":140,"label":"watchdog: restart when gone"},{"path":"src/cli/swarm/home_brief.md","line":1,"endLine":30,"label":"its brief"}],"slackrelay":[{"path":"plugins/slack-relay/relay.py","line":242,"endLine":272,"label":"slack→bus, bus→slack"}],"githubaddon":[{"path":"plugins/github/github.py","line":145,"endLine":159,"label":"commit, scan, create, push"},{"path":"plugins/github/github.py","line":187,"endLine":259,"label":"confirm-first pane"}],"dashboard":[{"path":"plugins/dashboard/dashboard.py","line":183,"endLine":247,"label":"token metering"}]}}</script>
     <script id="archify-i18n-data" type="application/json">{"locale":"en","messages":{"viewer.kind.frontend":"Frontend","viewer.kind.backend":"Backend","viewer.kind.database":"Database","viewer.kind.cloud":"Cloud","viewer.kind.security":"Security","viewer.kind.messagebus":"Message bus","viewer.kind.external":"External","viewer.kind.neutral":"Neutral","viewer.kind.node":"Node","viewer.kind.start":"Start","viewer.kind.active":"Active","viewer.kind.waiting":"Waiting","viewer.kind.decision":"Decision","viewer.kind.success":"Success","viewer.kind.failure":"Failure","viewer.toolbar.actions":"Diagram actions","viewer.theme.toggle.title":"Toggle theme (T)","viewer.theme.toggle":"Toggle color theme","viewer.theme.dark":"Dark","viewer.theme.light":"Light","viewer.preset.choose.title":"Choose visual style (S cycles)","viewer.preset.choose":"Choose visual style","viewer.preset.style":"Style","viewer.preset.menu":"Visual style","viewer.preset.identity":"Visual identity","viewer.preset.cycles":"to cycle","viewer.preset.classic":"Classic","viewer.preset.classic.short":"Classic","viewer.preset.classic.hint":"Stable technical default","viewer.preset.flow":"Signal Flow","viewer.preset.flow.short":"Flow","viewer.preset.flow.hint":"Motion-forward presentation","viewer.preset.blueprint":"Blueprint","viewer.preset.blueprint.hint":"Engineering review","viewer.preset.editorial":"Editorial","viewer.preset.editorial.hint":"Publication and launch notes","viewer.preset.badge.signalFlow":"SIGNAL FLOW","viewer.preset.badge.blueprint":"BLUEPRINT / REV 01","viewer.preset.badge.editorial":"EDITORIAL / FIELD NOTE","viewer.preset.badge.editorialPlate":"ARCHIFY / PLATE 04","viewer.preset.current":"Visual style: {style}. Choose visual style","viewer.motion.live":"Live","viewer.motion.still":"Still","viewer.motion.pause":"Pause motion","viewer.motion.resume":"Resume motion","viewer.motion.reduced":"Motion paused by reduced-motion preference","viewer.motion.hidden":"Motion paused while this page is hidden","viewer.motion.yielding":"Pause motion; currently yielding to {owner}","viewer.motion.yielding.title":"Live preview enabled · yielding to {owner}","viewer.owner.route":"Route Probe","viewer.owner.lens":"Semantic Lens","viewer.owner.relationship":"Relationship Preview","viewer.owner.intent":"Intent Trace","viewer.owner.focus":"semantic focus","viewer.owner.legend":"legend preview","viewer.owner.reader":"reader interaction","viewer.present.enter":"Enter presentation stage","viewer.present.enter.title":"Presentation stage (F)","viewer.present.exit":"Exit presentation stage","viewer.present.exit.title":"Exit presentation stage (F or Escape)","viewer.present.present":"Present","viewer.present.exit.label":"Exit","viewer.export.button":"Export","viewer.export.button.title":"Export diagram (E)","viewer.export.diagram":"Export diagram","viewer.export.menu":"Export","viewer.export.subtitle":"Portable, clean outputs","viewer.export.share":"Share","viewer.export.shareCard":"Share Card","viewer.export.routeShareCard":"Route Share Card","viewer.export.reachShareCard":"Reach Share Card","viewer.export.copyDiagram":"Copy diagram","viewer.export.clipboardPng":"PNG to clipboard","viewer.export.raster":"Raster images","viewer.export.image":"Image","viewer.export.lossless":"Lossless image","viewer.export.compact":"Compact image","viewer.export.modern":"Modern image","viewer.export.vectorMotion":"Vector and motion","viewer.export.vectorMotion.heading":"Vector \u0026 motion","viewer.export.editable":"Editable vector","viewer.export.svg.auto":"SVG · Auto","viewer.export.svg.auto.hint":"Matches host theme","viewer.export.svg.light":"SVG · Light","viewer.export.svg.light.hint":"Always light","viewer.export.svg.dark":"SVG · Dark","viewer.export.svg.dark.hint":"Always dark","viewer.export.motion6s":"6s motion","viewer.export.unsupported":"Not supported by this browser","viewer.export.clipboardUnsupported":"Clipboard image write not supported by this browser","viewer.export.clipboardUnsupported.short":"Clipboard image write not supported in this browser.","viewer.export.motionUnavailable":"Motion capture unavailable in this browser","viewer.export.webmUnavailable":"WebM unavailable in this browser","viewer.export.failed":"Export failed: {message}","viewer.export.unknownVariant":"Unknown Share Card variant: {variant}","viewer.export.routeRequired":"Trace a route before exporting a Route Share Card","viewer.export.reachRequired":"Trace authored reach before exporting a Reach Share Card","viewer.export.unknown":"unknown","viewer.export.routeFailed":"Route Share Card export failed: {message}","viewer.export.reachFailed":"Reach Share Card export failed: {message}","viewer.export.copyFailed":"Copy failed: {message}","viewer.export.copiedPng":"Copied PNG to clipboard","viewer.export.downloadedRoute":"Downloaded Route Share Card","viewer.export.downloadedReach":"Downloaded Reach Share Card","viewer.export.downloadedWebm":"Downloaded WebM","viewer.export.recording":"Recording 6 seconds of motion…","viewer.export.card.routeSummary.one":"Path: {source} → {target} · {count} step","viewer.export.card.routeSummary.other":"Path: {source} → {target} · {count} steps","viewer.export.card.reachSummary":"Authored {direction} from {origin} · {nodes} · {links} · max {hops}","viewer.export.card.node.one":"{count} node","viewer.export.card.node.other":"{count} nodes","viewer.export.card.link.one":"{count} link","viewer.export.card.link.other":"{count} links","viewer.export.card.hop.one":"{count} hop","viewer.export.card.hop.other":"{count} hops","viewer.export.card.routeBadge":"ARCHIFY · ROUTE · {hops}","viewer.export.card.reachBadge":"ARCHIFY · {direction} REACH","viewer.export.direction.upstream":"Upstream","viewer.export.direction.downstream":"Downstream","viewer.export.error.canvasUnavailable":"Canvas unavailable for {label}","viewer.export.error.contextUnavailable":"2D canvas context unavailable for {label}","viewer.export.error.toBlobUnavailable":"canvas.toBlob unavailable for {label}","viewer.export.error.toBlobNull":"canvas.toBlob returned no data for {label}","viewer.export.error.variantsCombined":"Share Card variants cannot be combined","viewer.export.error.viewerState":"Share Card export could not remove temporary viewer state","viewer.export.error.routeState":"Route Card export could not preserve the resolved route safely","viewer.export.error.reachState":"Reach Card export could not preserve authored reach safely","viewer.export.error.webmRequirements":"WebM motion export requires a trace animation and browser MediaRecorder support","viewer.export.error.mediaRecorder":"MediaRecorder failed","viewer.export.error.emptyWebm":"MediaRecorder produced an empty WebM","viewer.export.error.webmBackground":"SVG background could not be loaded for WebM export","viewer.guide.title":"Explore this system","viewer.focus.selectedNodes":"{count} selected nodes","viewer.guide.eyebrow":"Diagram guide","viewer.guide.close":"Close diagram guide","viewer.guide.inspecting":"Inspecting compiled semantics","viewer.guide.actions":"Diagram exploration actions","viewer.guide.find":"Find any node","viewer.guide.find.hint":"Search labels, responsibilities, kinds, and stable IDs.","viewer.guide.route":"Trace a route","viewer.guide.route.aria":"Trace a directed route","viewer.guide.route.hint":"Ask how two semantic nodes connect in authored direction.","viewer.guide.map":"See the whole system","viewer.guide.map.hint":"Open Semantic Radar with a live viewport and stable nodes.","viewer.guide.lens":"Compare semantic kinds","viewer.guide.lens.hint":"Count roles, reveal their traffic, and compare direct authored links.","viewer.guide.present":"Enter Presentation Stage","viewer.guide.present.hint":"Give the live diagram the viewport without changing export.","viewer.guide.shortcuts":"Additional keyboard shortcuts","viewer.guide.shortcut.export":"Export","viewer.guide.shortcut.theme":"Theme","viewer.guide.shortcut.style":"Style","viewer.guide.shortcut.reset":"Reset","viewer.guide.shortcut.zoomIn":"Zoom in","viewer.guide.shortcut.zoomOut":"Zoom out","viewer.guide.shortcut.close":"Close","viewer.guide.facts":"{nodes} · {relationships}","viewer.guide.fact.node.one":"{count} semantic node","viewer.guide.fact.node.other":"{count} semantic nodes","viewer.guide.fact.relationship.one":"{count} relationship","viewer.guide.fact.relationship.other":"{count} relationships","viewer.guide.open":"Open diagram guide","viewer.finder.title":"Find a node","viewer.finder.close":"Close node finder","viewer.finder.placeholder":"Search labels or IDs","viewer.finder.search":"Search diagram nodes","viewer.finder.results":"Diagram nodes","viewer.finder.empty":"No matching nodes","viewer.finder.result.focus":"Focus {label}","viewer.finder.result.routeStart":"Choose {label} as route start","viewer.finder.result.routeTarget":"Choose {label} as route destination, {links}","viewer.finder.status.empty":"No matching nodes","viewer.finder.status.count.one":"{count} matching node","viewer.finder.status.count.other":"{count} matching nodes","viewer.finder.noun.nodes":"nodes","viewer.finder.link.one":"{count} link","viewer.finder.link.other":"{count} links","viewer.finder.result.focus.one":"Focus {label}, {count} related connection","viewer.finder.result.focus.other":"Focus {label}, {count} related connections","viewer.finder.status.filtered":"{visible} of {available} {noun}","viewer.finder.status.all":"{available} {noun}","viewer.passport.eyebrow":"Semantic passport","viewer.passport.metadata":"Node metadata","viewer.passport.evidence":"Verified source evidence","viewer.passport.verified":"Verified source","viewer.passport.verificationScope":"Verified against local Git at the pinned revision. Remote access has not been checked.","viewer.passport.reach":"Authored reach","viewer.passport.reach.trace":"Trace authored reachability","viewer.passport.upstream":"Upstream","viewer.passport.downstream":"Downstream","viewer.passport.upstream.trace":"Trace upstream authored reachability","viewer.passport.downstream.trace":"Trace downstream authored reachability","viewer.passport.close":"Close semantic passport","viewer.passport.move":"Move semantic passport. Drag, use arrow keys, or press Home to reset.","viewer.passport.copy":"Copy link","viewer.passport.copy.focus":"Copy link to focused node","viewer.passport.relations":"Relations","viewer.passport.relations.show":"Show connected relationships","viewer.passport.relations.hide":"Hide connected relationships","viewer.passport.relations.list":"Connected relationships","viewer.passport.copyRelation":"Copy relation","viewer.passport.copyNode":"Copy node","viewer.passport.copyPinned":"Copy link to pinned relationship","viewer.passport.copySource":"Copy link to source node","viewer.passport.copy.focused.success":"Focused node link copied","viewer.passport.copy.pinned.success":"Pinned relationship link copied","viewer.passport.copy.focused.failed":"Could not copy focused node link","viewer.passport.copy.pinned.failed":"Could not copy pinned relationship link","viewer.passport.relationship.none":"No connected relationships","viewer.passport.relationship.count.one":"{count} relation","viewer.passport.relationship.count.other":"{count} relations","viewer.passport.relationship.show.one":"Show {count} connected relationship","viewer.passport.relationship.show.other":"Show {count} connected relationships","viewer.passport.relationship.summary":"{out} outgoing · {in} incoming{loops}","viewer.passport.relationship.loops":" · {count} loop","viewer.passport.relationship.explorer":"Direct relationship explorer","viewer.passport.relationship.help":"Use arrow keys to explore relationships. Press Enter or Space to pin details; Escape clears.","viewer.passport.relationship.loopsBack":"loops back","viewer.passport.relationship.connectsTo":"connects to","viewer.passport.relationship.connectsFrom":"connects from","viewer.passport.relationship.pinned":"Pinned relationship · {from} → {to} · {label}","viewer.passport.relationship.inspect":"Inspect relationship {index} of {total}: {from} to {to}, {label}. Press Enter for details.","viewer.passport.relationship.group.out":"Outgoing","viewer.passport.relationship.group.in":"Incoming","viewer.passport.relationship.group.loop":"Self loops","viewer.passport.relationship.row":"{group}: {relationship}, {neighbor}","viewer.passport.relationship.direction.out":"OUT →","viewer.passport.relationship.direction.in":"← IN","viewer.passport.relationship.direction.loop":"LOOP","viewer.passport.sourceCount.one":"{count} verified source reference","viewer.passport.sourceCount.other":"{count} verified source references","viewer.passport.sourceMarker":"SRC","viewer.passport.beacon.one":"{count} verified source; focus this node to inspect","viewer.passport.beacon.other":"{count} verified sources; focus this node to inspect","viewer.passport.repository.open":"Open verified repository revision {revision}","viewer.passport.source.open":"Open verified source {path} at revision {revision}","viewer.passport.source.openLink":"Open ↗","viewer.passport.reach.upstream.one":"Trace {count} upstream authored node","viewer.passport.reach.upstream.other":"Trace {count} upstream authored nodes","viewer.passport.reach.downstream.one":"Trace {count} downstream authored node","viewer.passport.reach.downstream.other":"Trace {count} downstream authored nodes","viewer.passport.reach.noUpstream":"No upstream authored nodes","viewer.passport.reach.noDownstream":"No downstream authored nodes","viewer.passport.reach.status":"{direction} · {nodes} nodes · {links} links · max {hops} hops","viewer.route.eyebrow":"Path","viewer.route.start":"Click where the path starts","viewer.route.start.find":"Find start","viewer.route.start.find.aria":"Find a route start","viewer.route.copy":"Copy link","viewer.route.copy.aria":"Copy link to traced route","viewer.route.clear":"Clear","viewer.route.clear.aria":"Clear route probe","viewer.route.traced":"Path","viewer.route.pickTwo":"Click two nodes on the diagram","viewer.route.pickOne":"Click a node on the diagram","viewer.route.controls":"Route journey controls","viewer.route.previous":"Previous route position","viewer.route.play":"Play route journey","viewer.route.pause":"Pause route journey","viewer.route.replay":"Replay route journey","viewer.route.next":"Next route position","viewer.route.journey":"Journey","viewer.route.pause.label":"Pause","viewer.route.replay.label":"Replay","viewer.route.overview":"Overview","viewer.route.overview.aria":"Show complete route overview","viewer.route.instructions":"Click a start, then an end. Paths follow the arrows.","viewer.route.destination":"Where does the path from {label} end?","viewer.route.destination.find":"Find target","viewer.route.destination.find.aria":"Find a reachable route destination","viewer.route.differentDestination":"Choose a different destination","viewer.route.distinct":"Pick two different nodes.","viewer.route.unreachable":"Cannot reach {label} from here","viewer.route.unreachable.detail":"{target} cannot be reached from {source} along the arrows. Pick a highlighted node.","viewer.route.start.instructions":"Next, pick the end. Only nodes you can reach will light up.","viewer.route.copy.success":"Traced route link copied","viewer.route.copy.failed":"Could not copy traced route link","viewer.route.position":"Route position {index} of {total}: {label}","viewer.route.step":"Step {index} of {total} · {phase} · {label}","viewer.route.motionRequired":"Automatic journey requires Live motion","viewer.route.trigger.clear":"Clear traced route","viewer.route.overview.status":"{nodes} · {hops} · shortest path","viewer.route.overview.node.one":"{count} node","viewer.route.overview.node.other":"{count} nodes","viewer.route.overview.hop.one":"{count} step","viewer.route.overview.hop.other":"{count} steps","viewer.route.phase.playing":"Playing","viewer.route.phase.complete":"Complete","viewer.route.phase.inspecting":"Inspecting","viewer.route.destination.count.one":"{count} reachable node is highlighted. Click it.","viewer.route.destination.count.other":"{count} reachable nodes are highlighted. Click one.","viewer.route.noOutgoing":"No arrows lead out of this node. Clear it and pick another start.","viewer.route.result.title":"{source} to {target}","viewer.route.finder.source.title":"Choose route start","viewer.route.finder.source.placeholder":"Search route sources","viewer.route.finder.source.empty":"No matching route sources","viewer.route.finder.source.results":"Nodes that can start a route","viewer.route.finder.source.noun":"route sources","viewer.route.finder.source.badge":"start","viewer.route.finder.target.title":"Destination from {label}","viewer.route.finder.target.placeholder":"Search reachable destinations","viewer.route.finder.target.empty":"No matching reachable destinations","viewer.route.finder.target.results":"Reachable route destinations","viewer.route.finder.target.noun":"reachable destinations","viewer.route.hop.one":"{count} hop","viewer.route.hop.other":"{count} hops","viewer.lens.eyebrow":"Semantic lens","viewer.lens.title":"Compare system roles","viewer.lens.close":"Close semantic lens","viewer.lens.instruction":"Choose up to two semantic kinds. One reveals its real traffic; two compare only direct authored relationships.","viewer.lens.kinds":"Semantic kinds","viewer.lens.choose":"Choose a kind to inspect its nodes and touching relationships.","viewer.lens.copy":"Copy link to semantic lens","viewer.lens.clear":"Clear semantic lens","viewer.lens.open":"Open semantic lens","viewer.lens.openActive":"Open active semantic lens","viewer.lens.legend":"Semantic legend","viewer.lens.legend.inspect.one":"Inspect {label}, {count} node","viewer.lens.legend.inspect.other":"Inspect {label}, {count} nodes","viewer.lens.kind.count.one":"{label}, {count} node","viewer.lens.kind.count.other":"{label}, {count} nodes","viewer.lens.compare.one":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationship","viewer.lens.compare.other":"{first} → {second}: {forward} · {second} → {first}: {reverse} · {count} direct relationships","viewer.lens.single":"{nodes} · {relationships} · connected peers remain visible","viewer.lens.node.one":"{count} {label} node","viewer.lens.node.other":"{count} {label} nodes","viewer.lens.relationship.one":"{count} touching relationship","viewer.lens.relationship.other":"{count} touching relationships","viewer.radar.title":"Semantic radar","viewer.radar.building":"Building overview","viewer.radar.openFull":"Open full semantic radar","viewer.radar.open":"Open radar","viewer.radar.close":"Close semantic radar","viewer.radar.surface":"Diagram overview. Click a node to focus it, or use arrow keys to pan.","viewer.radar.click":"Click node","viewer.radar.drag":"Drag to pan","viewer.radar.space":"Semantic radar needs more MAP space.","viewer.radar.nodes":"Semantic diagram radar nodes","viewer.radar.focus":"Focus {label} from Semantic Radar","viewer.radar.status":"{count} nodes · {viewport}","viewer.radar.fullMap":"{count} nodes · full map","viewer.radar.compacted":"Radar compacted to avoid covering the Semantic Passport or MAP controls.","viewer.radar.cancelWaiting":"Cancel semantic radar waiting for more MAP space","viewer.radar.needsSpace":"Semantic radar needs more visible MAP space","viewer.radar.viewport.full":"full map","viewer.radar.viewport.width":"{percent}% width","viewer.radar.viewport.scale":"{percent}% viewport","viewer.nav.controls":"Diagram view controls","viewer.nav.route":"Trace a directed route","viewer.nav.route.title":"Trace route (R)","viewer.nav.route.short":"PATH","viewer.nav.radar":"Open semantic radar","viewer.nav.radar.title":"Semantic radar (M)","viewer.nav.radar.short":"MAP","viewer.nav.lens":"Open semantic lens","viewer.nav.lens.title":"Semantic lens (L)","viewer.nav.lens.short":"LENS","viewer.nav.find":"Find a node","viewer.nav.find.title":"Find a node (/)","viewer.outline.title":"Node index","viewer.rail.show":"Notes \u0026 index","viewer.rail.controls":"Side panel","viewer.rail.collapse":"Collapse side panel","viewer.rail.bottom":"Move panel below the diagram","viewer.rail.right":"Move panel beside the diagram","viewer.nav.guide":"Open diagram guide","viewer.nav.guide.title":"Diagram guide (?)","viewer.nav.zoomOut":"Zoom out","viewer.nav.zoomOut.title":"Zoom out (-)","viewer.nav.reset":"Reset diagram view","viewer.nav.reset.title":"Reset view (0)","viewer.nav.read":"READ","viewer.nav.zoomIn":"Zoom in","viewer.nav.zoomIn.title":"Zoom in (+)","viewer.nav.camera":"{hint}. Reset diagram view","viewer.nav.camera.title":"{semantic}{hint} · reset view (0)","viewer.nav.camera.semantic":"Semantic camera active · ","viewer.nav.level.map":"MAP","viewer.nav.level.read":"READ","viewer.nav.level.full":"FULL","viewer.nav.level.auto":"AUTO","viewer.nav.detail.map":"Zoom in to reveal relationship labels and node context","viewer.nav.detail.read":"Zoom in again to reveal tags and annotations","viewer.nav.detail.full":"Full diagram detail","viewer.intent.summary":"{label}. {out} outgoing, {in} incoming{loops}. {total} connections. Press Enter for details.","viewer.intent.loops":", {count} self loop","viewer.common.copied":"Copied","viewer.common.copyFailed":"Copy failed","viewer.common.copyLink":"Copy link","viewer.common.clear":"Clear","viewer.common.close":"Close"}}</script>
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read"
          data-preset-badge-editorial-plate="ARCHIFY / PLATE 04">
-      <svg viewBox="0 0 1235 932" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
-        <title id="archify-diagram-title">hiver: swarm runtime core and its addons</title>
+      <svg viewBox="0 0 1235 917" role="img" lang="en" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase" data-reader-fit="intrinsic-height" data-reader-min-text="7.5" data-reader-primary-text="14">
+        <title id="archify-diagram-title">hiver: swarm runtime core, the hiver agent and addons</title>
         <desc id="archify-diagram-description">An architecture diagram generated by Archify.</desc>
         <!-- Definitions -->
         <defs>
@@ -5015,7 +5015,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <!-- Boundaries (behind everything) -->
         <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="0" data-composition-frame-label="hiver server process (Rust, herdr fork)" x="510" y="150" width="685" height="264" rx="12" class="c-region" stroke-width="1"/>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="Addons: plugin panes in each swarm&#39;s space" x="240" y="610" width="955" height="114" rx="12" class="c-region" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="region" data-composition-frame-id="1" data-composition-frame-label="Addons: plugin panes in each swarm&#39;s space" x="240" y="600" width="955" height="114" rx="12" class="c-region" stroke-width="1"/>
 
         <!-- Connection paths (before components for correct z-order) -->
         <g data-graph-role="automatic-crossover" style="--step:0">
@@ -5039,8 +5039,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <path data-edge-from="cli" data-edge-to="server" data-edge-label="socket API" data-edge-key="4" data-edge-id="cli-server" data-composition-points="420,362;480,362;480,294;540,294" data-composition-crossover="halo" data-composition-independent="true" d="M 420 362 L 472 362 Q 480 362 480 354 L 480 302 Q 480 294 488 294 L 540 294" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:5">
-          <path data-graph-role="automatic-crossover-underlay" d="M 690 287 L 775 287" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="server" data-edge-to="engine" data-edge-label="swarm ops" data-edge-key="5" data-edge-id="server-engine" data-composition-points="690,287;775,287" data-composition-crossover="halo" data-composition-independent="true" d="M 690 287 L 775 287" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 690 278.95 L 775 278.95" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="server" data-edge-to="engine" data-edge-label="swarm ops" data-edge-key="5" data-edge-id="server-engine" data-composition-points="690,278.95;775,278.95" data-composition-crossover="halo" data-composition-independent="true" d="M 690 278.95 L 775 278.95" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:6">
           <path data-graph-role="automatic-crossover-underlay" d="M 615 180 L 615 100" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
@@ -5063,29 +5063,41 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <path data-edge-from="engine" data-edge-to="store" data-edge-label="log · roster" data-edge-key="10" data-edge-id="engine-store" data-composition-points="850,394;850,470" data-composition-crossover="halo" data-composition-independent="true" d="M 850 394 L 850 470" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:11">
-          <path data-graph-role="automatic-crossover-underlay" d="M 615 394 L 615 640" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="server" data-edge-to="githubaddon" data-edge-label="opens addon panes" data-edge-key="11" data-edge-id="server-addons" data-composition-points="615,394;615,640" data-composition-crossover="halo" data-composition-independent="true" d="M 615 394 L 615 640" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 615 394 L 615 630" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="server" data-edge-to="githubaddon" data-edge-label="opens addon panes" data-edge-key="11" data-edge-id="server-addons" data-composition-points="615,394;615,630" data-composition-crossover="halo" data-composition-independent="true" d="M 615 394 L 615 630" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:12">
-          <path data-graph-role="automatic-crossover-underlay" d="M 345 640 L 345 394" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="slackrelay" data-edge-to="cli" data-edge-label="msg send --from human" data-edge-key="12" data-edge-id="relay-cli" data-composition-points="345,640;345,394" data-composition-crossover="halo" data-composition-independent="true" d="M 345 640 L 345 394" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 345 630 L 345 581 Q 345 573 353 573 L 415 573 Q 423 573 423 565 L 423 426 Q 423 418 415 418 L 360 418 Q 352 418 352 410 L 352 394" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="slackrelay" data-edge-to="cli" data-edge-label="msg send --from human" data-edge-key="12" data-edge-id="relay-cli" data-composition-points="345,630;345,573;423,573;423,418;352,418;352,394" data-composition-crossover="halo" data-composition-independent="true" d="M 345 630 L 345 581 Q 345 573 353 573 L 415 573 Q 423 573 423 565 L 423 426 Q 423 418 415 418 L 360 418 Q 352 418 352 410 L 352 394" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:13">
-          <path data-graph-role="automatic-crossover-underlay" d="M 345 800 L 345 704" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="slack" data-edge-to="slackrelay" data-edge-label="@mentions ⇄ mirror" data-edge-key="13" data-edge-id="slack-relay" data-composition-points="345,800;345,704" data-composition-crossover="halo" data-composition-independent="true" d="M 345 800 L 345 704" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 345 785 L 345 694" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="slack" data-edge-to="slackrelay" data-edge-label="@mentions ⇄ mirror" data-edge-key="13" data-edge-id="slack-relay" data-composition-points="345,785;345,694" data-composition-crossover="halo" data-composition-independent="true" d="M 345 785 L 345 694" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:14">
-          <path data-graph-role="automatic-crossover-underlay" d="M 850 640 L 850 540" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="dashboard" data-edge-to="store" data-edge-label="reads log" data-edge-key="14" data-edge-id="dashboard-store" data-composition-points="850,640;850,540" data-composition-crossover="halo" data-composition-independent="true" d="M 850 640 L 850 540" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 850 630 L 850 540" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="dashboard" data-edge-to="store" data-edge-label="reads log" data-edge-key="14" data-edge-id="dashboard-store" data-composition-points="850,630;850,540" data-composition-crossover="halo" data-composition-independent="true" d="M 850 630 L 850 540" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
         </g>
         <g data-graph-role="automatic-crossover" style="--step:15">
-          <path data-graph-role="automatic-crossover-underlay" d="M 615 704 L 615 800" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
-          <path data-edge-from="githubaddon" data-edge-to="github" data-edge-label="create + push" data-edge-key="15" data-edge-id="github-push" data-composition-points="615,704;615,800" data-composition-crossover="halo" data-composition-independent="true" d="M 615 704 L 615 800" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+          <path data-graph-role="automatic-crossover-underlay" d="M 615 694 L 615 785" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="githubaddon" data-edge-to="github" data-edge-label="create + push" data-edge-key="15" data-edge-id="github-push" data-composition-points="615,694;615,785" data-composition-crossover="halo" data-composition-independent="true" d="M 615 694 L 615 785" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:16">
+          <path data-graph-role="automatic-crossover-underlay" d="M 85 244 L 85 308 Q 85 316 93 316 L 182.6 316 Q 190.6 316 190.6 324 L 190.6 507 Q 190.6 515 198.6 515 L 270 515" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="user" data-edge-to="home" data-edge-label="asks · Slack #hiver" data-edge-key="16" data-edge-id="user-home" data-composition-points="85,244;85,316;190.6,316;190.6,515;270,515" data-composition-crossover="halo" data-composition-independent="true" d="M 85 244 L 85 308 Q 85 316 93 316 L 182.6 316 Q 190.6 316 190.6 324 L 190.6 507 Q 190.6 515 198.6 515 L 270 515" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:17">
+          <path data-graph-role="automatic-crossover-underlay" d="M 353.05 480 L 353.05 445 Q 353.05 437 345.05 437 L 344.95 437 Q 336.95 437 336.95 429 L 336.95 394" fill="none" stroke="var(--mask)" stroke-width="5.8" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="home" data-edge-to="cli" data-edge-label="launch · status · msg" data-edge-key="17" data-edge-id="home-cli" data-composition-points="353.05,480;353.05,437;336.95,437;336.95,394" data-composition-crossover="halo" data-composition-independent="true" d="M 353.05 480 L 353.05 445 Q 353.05 437 345.05 437 L 344.95 437 Q 336.95 437 336.95 429 L 336.95 394" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        </g>
+        <g data-graph-role="automatic-crossover" style="--step:18">
+          <path data-graph-role="automatic-crossover-underlay" d="M 836 394 L 836 410 Q 836 418 828 418 L 452 418 Q 444 418 444 426 L 444 507 Q 444 515 436 515 L 420 515" fill="none" stroke="var(--mask)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>
+          <path data-edge-from="engine" data-edge-to="home" data-edge-label="keeps alive" data-edge-key="18" data-edge-id="engine-home" data-composition-points="836,394;836,418;444,418;444,515;420,515" data-composition-crossover="halo" data-composition-independent="true" d="M 836 394 L 836 410 Q 836 418 828 418 L 452 418 Q 444 418 444 426 L 444 507 Q 444 515 436 515 L 420 515" class="a-dashed" stroke-width="1.5" marker-end="url(#arrowhead-dashed)"/>
         </g>
 
         <!-- Components -->
-        <g id="node-agents" data-node-id="agents" data-node-label="Agents in panes" tabindex="0" role="button" aria-label="Focus Agents in panes, Claude Code · Codex, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="Claude Code · Codex" data-node-context="Architecture component">
-          <title>Agents in panes · Claude Code · Codex · Architecture component</title>
+        <g id="node-agents" data-node-id="agents" data-node-label="Agents in panes" tabindex="0" role="button" aria-label="Focus Agents in panes, swarms · ★ solo agents, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="swarms · ★ solo agents" data-node-context="Architecture component">
+          <title>Agents in panes · swarms · ★ solo agents · Architecture component</title>
           <rect x="540" y="30" width="150" height="70" rx="6" class="c-mask"/>
           <rect x="540" y="30" width="150" height="70" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(546 36) scale(0.6875)">
@@ -5093,7 +5105,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="615" y="63" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Agents in panes</text>
-        <text data-detail="context" x="615" y="79" class="t-muted" font-size="9" text-anchor="middle">Claude Code · Codex</text>
+        <text data-detail="context" x="615" y="79" class="t-muted" font-size="9" text-anchor="middle">swarms · ★ solo agents</text>
         </g>
 
         <g id="node-user" data-node-id="user" data-node-label="You" tabindex="0" role="button" aria-label="Focus You, terminal · Slack, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="terminal · Slack" data-node-context="Architecture component">
@@ -5108,16 +5120,16 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="85" y="226" class="t-muted" font-size="9" text-anchor="middle">terminal · Slack</text>
         </g>
 
-        <g id="node-skill" data-node-id="skill" data-node-label="/swarm skill" tabindex="0" role="button" aria-label="Focus /swarm skill, team design · briefs, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="team design · briefs" data-node-context="Architecture component">
-          <title>/swarm skill · team design · briefs · Architecture component</title>
+        <g id="node-skill" data-node-id="skill" data-node-label="Setup providers" tabindex="0" role="button" aria-label="Focus Setup providers, /swarm · /agent-creator, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="/swarm · /agent-creator" data-node-context="Architecture component">
+          <title>Setup providers · /swarm · /agent-creator · Architecture component</title>
           <rect x="10" y="330" width="150" height="64" rx="6" class="c-mask"/>
           <rect x="10" y="330" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(16 336) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="85" y="360" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">/swarm skill</text>
-        <text data-detail="context" x="85" y="376" class="t-muted" font-size="9" text-anchor="middle">team design · briefs</text>
+          <text data-node-label="" data-detail-anchor="" x="85" y="360" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Setup providers</text>
+        <text data-detail="context" x="85" y="376" class="t-muted" font-size="9" text-anchor="middle">/swarm · /agent-creator</text>
         </g>
 
         <g id="node-tui" data-node-id="tui" data-node-label="TUI client" tabindex="0" role="button" aria-label="Focus TUI client, swarm list · hover · zoom, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="swarm list · hover · zoom" data-node-context="Architecture component">
@@ -5209,77 +5221,90 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="context" x="850" y="519" class="t-muted" font-size="9" text-anchor="middle">agents.json · bus.jsonl</text>
         </g>
 
+        <g id="node-home" data-node-id="home" data-node-label="⬢ hiver agent" tabindex="0" role="button" aria-label="Focus ⬢ hiver agent, ~/.hiver/agent · always on, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="~/.hiver/agent · always on" data-node-tag="hiver home" data-node-context="Architecture component">
+          <title>⬢ hiver agent · ~/.hiver/agent · always on · Architecture component · hiver home</title>
+          <rect x="270" y="480" width="150" height="70" rx="6" class="c-mask"/>
+          <rect x="270" y="480" width="150" height="70" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(276 486) scale(0.6875)">
+            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
+            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          </g>
+          <text data-node-label="" data-detail-anchor="" x="345" y="513" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">⬢ hiver agent</text>
+        <text data-detail="context" x="345" y="529" class="t-muted" font-size="9" text-anchor="middle">~/.hiver/agent · always on</text>
+        <text data-detail="fine" x="345" y="542" class="t-external" font-size="7" text-anchor="middle">hiver home</text>
+        </g>
+
         <g id="node-slackrelay" data-node-id="slackrelay" data-node-label="hiver.slack-relay" tabindex="0" role="button" aria-label="Focus hiver.slack-relay, Slack ⇄ bus, Addons: plugin panes in each swarm&#39;s space" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="Slack ⇄ bus" data-node-tag="addon" data-node-context="Addons: plugin panes in each swarm&#39;s space">
           <title>hiver.slack-relay · Slack ⇄ bus · Addons: plugin panes in each swarm&#39;s space · addon</title>
-          <rect x="270" y="640" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="270" y="640" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(276 646) scale(0.6875)">
+          <rect x="270" y="630" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="270" y="630" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(276 636) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="345" y="670" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">hiver.slack-relay</text>
-        <text data-detail="context" x="345" y="686" class="t-muted" font-size="9" text-anchor="middle">Slack ⇄ bus</text>
-        <text data-detail="fine" x="345" y="696" class="t-cloud" font-size="7" text-anchor="middle">addon</text>
+          <text data-node-label="" data-detail-anchor="" x="345" y="660" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">hiver.slack-relay</text>
+        <text data-detail="context" x="345" y="676" class="t-muted" font-size="9" text-anchor="middle">Slack ⇄ bus</text>
+        <text data-detail="fine" x="345" y="686" class="t-cloud" font-size="7" text-anchor="middle">addon</text>
         </g>
 
         <g id="node-githubaddon" data-node-id="githubaddon" data-node-label="hiver.github" tabindex="0" role="button" aria-label="Focus hiver.github, app repo + swarm repo, Addons: plugin panes in each swarm&#39;s space" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="app repo + swarm repo" data-node-tag="addon" data-node-context="Addons: plugin panes in each swarm&#39;s space">
           <title>hiver.github · app repo + swarm repo · Addons: plugin panes in each swarm&#39;s space · addon</title>
-          <rect x="540" y="640" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="540" y="640" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(546 646) scale(0.6875)">
+          <rect x="540" y="630" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="540" y="630" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(546 636) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="615" y="670" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">hiver.github</text>
-        <text data-detail="context" x="615" y="686" class="t-muted" font-size="9" text-anchor="middle">app repo + swarm repo</text>
-        <text data-detail="fine" x="615" y="696" class="t-cloud" font-size="7" text-anchor="middle">addon</text>
+          <text data-node-label="" data-detail-anchor="" x="615" y="660" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">hiver.github</text>
+        <text data-detail="context" x="615" y="676" class="t-muted" font-size="9" text-anchor="middle">app repo + swarm repo</text>
+        <text data-detail="fine" x="615" y="686" class="t-cloud" font-size="7" text-anchor="middle">addon</text>
         </g>
 
         <g id="node-dashboard" data-node-id="dashboard" data-node-label="hiver.dashboard" tabindex="0" role="button" aria-label="Focus hiver.dashboard, states · tokens · tasks, Addons: plugin panes in each swarm&#39;s space" aria-pressed="false" data-node-kind="cloud" data-node-sublabel="states · tokens · tasks" data-node-tag="addon" data-node-context="Addons: plugin panes in each swarm&#39;s space">
           <title>hiver.dashboard · states · tokens · tasks · Addons: plugin panes in each swarm&#39;s space · addon</title>
-          <rect x="775" y="640" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="775" y="640" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(781 646) scale(0.6875)">
+          <rect x="775" y="630" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="775" y="630" width="150" height="64" rx="6" class="c-cloud" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="cloud" class="semantic-sigil s-cloud" transform="translate(781 636) scale(0.6875)">
             <path d="M4.3 12.5h7.3a2.4 2.4 0 0 0 .2-4.8 4 4 0 0 0-7.5-1.3A3.1 3.1 0 0 0 4.3 12.5Z"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="850" y="670" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">hiver.dashboard</text>
-        <text data-detail="context" x="850" y="686" class="t-muted" font-size="9" text-anchor="middle">states · tokens · tasks</text>
-        <text data-detail="fine" x="850" y="696" class="t-cloud" font-size="7" text-anchor="middle">addon</text>
+          <text data-node-label="" data-detail-anchor="" x="850" y="660" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">hiver.dashboard</text>
+        <text data-detail="context" x="850" y="676" class="t-muted" font-size="9" text-anchor="middle">states · tokens · tasks</text>
+        <text data-detail="fine" x="850" y="686" class="t-cloud" font-size="7" text-anchor="middle">addon</text>
         </g>
 
         <g id="node-watcher" data-node-id="watcher" data-node-label="swarm.watcher" tabindex="0" role="button" aria-label="Focus swarm.watcher, skill addon: idle, budget, Addons: plugin panes in each swarm&#39;s space" aria-pressed="false" data-node-kind="external" data-node-sublabel="skill addon: idle, budget" data-node-tag="addon" data-node-context="Addons: plugin panes in each swarm&#39;s space">
           <title>swarm.watcher · skill addon: idle, budget · Addons: plugin panes in each swarm&#39;s space · addon</title>
-          <rect x="1015" y="640" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="1015" y="640" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1021 646) scale(0.6875)">
+          <rect x="1015" y="630" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="1015" y="630" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(1021 636) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="1090" y="670" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">swarm.watcher</text>
-        <text data-detail="context" x="1090" y="686" class="t-muted" font-size="9" text-anchor="middle">skill addon: idle, budget</text>
-        <text data-detail="fine" x="1090" y="696" class="t-external" font-size="7" text-anchor="middle">addon</text>
+          <text data-node-label="" data-detail-anchor="" x="1090" y="660" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">swarm.watcher</text>
+        <text data-detail="context" x="1090" y="676" class="t-muted" font-size="9" text-anchor="middle">skill addon: idle, budget</text>
+        <text data-detail="fine" x="1090" y="686" class="t-external" font-size="7" text-anchor="middle">addon</text>
         </g>
 
-        <g id="node-slack" data-node-id="slack" data-node-label="Slack" tabindex="0" role="button" aria-label="Focus Slack, #swarm-&lt;slug&gt;, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="#swarm-&lt;slug&gt;" data-node-context="Architecture component">
-          <title>Slack · #swarm-&lt;slug&gt; · Architecture component</title>
-          <rect x="270" y="800" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="270" y="800" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(276 806) scale(0.6875)">
+        <g id="node-slack" data-node-id="slack" data-node-label="Slack" tabindex="0" role="button" aria-label="Focus Slack, #swarm-&lt;slug&gt; · #hiver, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="#swarm-&lt;slug&gt; · #hiver" data-node-context="Architecture component">
+          <title>Slack · #swarm-&lt;slug&gt; · #hiver · Architecture component</title>
+          <rect x="270" y="785" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="270" y="785" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(276 791) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="345" y="830" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Slack</text>
-        <text data-detail="context" x="345" y="846" class="t-muted" font-size="9" text-anchor="middle">#swarm-&lt;slug&gt;</text>
+          <text data-node-label="" data-detail-anchor="" x="345" y="815" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Slack</text>
+        <text data-detail="context" x="345" y="831" class="t-muted" font-size="9" text-anchor="middle">#swarm-&lt;slug&gt; · #hiver</text>
         </g>
 
         <g id="node-github" data-node-id="github" data-node-label="GitHub" tabindex="0" role="button" aria-label="Focus GitHub, &lt;slug&gt; · &lt;slug&gt;-swarm, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="&lt;slug&gt; · &lt;slug&gt;-swarm" data-node-context="Architecture component">
           <title>GitHub · &lt;slug&gt; · &lt;slug&gt;-swarm · Architecture component</title>
-          <rect x="540" y="800" width="150" height="64" rx="6" class="c-mask"/>
-          <rect x="540" y="800" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(546 806) scale(0.6875)">
+          <rect x="540" y="785" width="150" height="64" rx="6" class="c-mask"/>
+          <rect x="540" y="785" width="150" height="64" rx="6" class="c-external" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(546 791) scale(0.6875)">
             <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
             <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
           </g>
-          <text data-node-label="" data-detail-anchor="" x="615" y="830" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">GitHub</text>
-        <text data-detail="context" x="615" y="846" class="t-muted" font-size="9" text-anchor="middle">&lt;slug&gt; · &lt;slug&gt;-swarm</text>
+          <text data-node-label="" data-detail-anchor="" x="615" y="815" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">GitHub</text>
+        <text data-detail="context" x="615" y="831" class="t-muted" font-size="9" text-anchor="middle">&lt;slug&gt; · &lt;slug&gt;-swarm</text>
         </g>
 
         <!-- Connection labels -->
@@ -5304,8 +5329,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="480" y="318" class="t-edge-emphasis" font-size="8" text-anchor="middle">socket API</text>
         </g>
         <g data-detail="context" data-edge-from="server" data-edge-to="engine" data-edge-label="swarm ops" data-edge-key="5" data-edge-id="server-engine">
-          <rect x="705.9" y="267" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="732.5" y="277" class="t-edge-emphasis" font-size="8" text-anchor="middle">swarm ops</text>
+          <rect x="705.9" y="258.95" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="732.5" y="268.95" class="t-edge-emphasis" font-size="8" text-anchor="middle">swarm ops</text>
         </g>
         <g data-detail="context" data-edge-from="server" data-edge-to="agents" data-edge-label="runs, detects state" data-edge-key="6" data-edge-id="server-agents">
           <rect x="507.79999999999995" y="133" width="101.2" height="14" rx="3" class="c-mask"/>
@@ -5328,24 +5353,36 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text x="810.2" y="435" class="t-edge-default" font-size="8" text-anchor="middle">log · roster</text>
         </g>
         <g data-detail="context" data-edge-from="server" data-edge-to="githubaddon" data-edge-label="opens addon panes" data-edge-key="11" data-edge-id="server-addons">
-          <rect x="517.4000000000001" y="510" width="91.6" height="14" rx="3" class="c-mask"/>
-          <text x="563.2" y="520" class="t-edge-dashed" font-size="8" text-anchor="middle">opens addon panes</text>
+          <rect x="517.4000000000001" y="505" width="91.6" height="14" rx="3" class="c-mask"/>
+          <text x="563.2" y="515" class="t-edge-dashed" font-size="8" text-anchor="middle">opens addon panes</text>
         </g>
         <g data-detail="context" data-edge-from="slackrelay" data-edge-to="cli" data-edge-label="msg send --from human" data-edge-key="12" data-edge-id="relay-cli">
-          <rect x="228.20000000000002" y="510" width="110.8" height="14" rx="3" class="c-mask"/>
-          <text x="283.6" y="520" class="t-edge-default" font-size="8" text-anchor="middle">msg send --from human</text>
+          <rect x="328.6" y="553" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="384" y="563" class="t-edge-default" font-size="8" text-anchor="middle">msg send --from human</text>
         </g>
         <g data-detail="context" data-edge-from="slack" data-edge-to="slackrelay" data-edge-label="@mentions ⇄ mirror" data-edge-key="13" data-edge-id="slack-relay">
-          <rect x="296.8" y="780" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
-          <text x="345" y="790" class="t-edge-default" font-size="8" text-anchor="middle">@mentions ⇄ mirror</text>
+          <rect x="296.8" y="765" width="96.39999999999999" height="14" rx="3" class="c-mask"/>
+          <text x="345" y="775" class="t-edge-default" font-size="8" text-anchor="middle">@mentions ⇄ mirror</text>
         </g>
         <g data-detail="context" data-edge-from="dashboard" data-edge-to="store" data-edge-label="reads log" data-edge-key="14" data-edge-id="dashboard-store">
-          <rect x="823.4" y="620" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
-          <text x="850" y="630" class="t-edge-default" font-size="8" text-anchor="middle">reads log</text>
+          <rect x="823.4" y="610" width="53.199999999999996" height="14" rx="3" class="c-mask"/>
+          <text x="850" y="620" class="t-edge-default" font-size="8" text-anchor="middle">reads log</text>
         </g>
         <g data-detail="context" data-edge-from="githubaddon" data-edge-to="github" data-edge-label="create + push" data-edge-key="15" data-edge-id="github-push">
-          <rect x="536.5999999999999" y="745" width="72.4" height="14" rx="3" class="c-mask"/>
-          <text x="572.8" y="755" class="t-edge-default" font-size="8" text-anchor="middle">create + push</text>
+          <rect x="536.5999999999999" y="732.5" width="72.4" height="14" rx="3" class="c-mask"/>
+          <text x="572.8" y="742.5" class="t-edge-default" font-size="8" text-anchor="middle">create + push</text>
+        </g>
+        <g data-detail="context" data-edge-from="user" data-edge-to="home" data-edge-label="asks · Slack #hiver" data-edge-key="16" data-edge-id="user-home">
+          <rect x="87.20000000000002" y="296" width="101.2" height="14" rx="3" class="c-mask"/>
+          <text x="137.8" y="306" class="t-edge-default" font-size="8" text-anchor="middle">asks · Slack #hiver</text>
+        </g>
+        <g data-detail="context" data-edge-from="home" data-edge-to="cli" data-edge-label="launch · status · msg" data-edge-key="17" data-edge-id="home-cli">
+          <rect x="236.25000000000003" y="451.5" width="110.8" height="14" rx="3" class="c-mask"/>
+          <text x="291.65000000000003" y="461.5" class="t-edge-emphasis" font-size="8" text-anchor="middle">launch · status · msg</text>
+        </g>
+        <g data-detail="context" data-edge-from="engine" data-edge-to="home" data-edge-label="keeps alive" data-edge-key="18" data-edge-id="engine-home">
+          <rect x="706.6" y="398" width="62.8" height="14" rx="3" class="c-mask"/>
+          <text x="738" y="408" class="t-edge-dashed" font-size="8" text-anchor="middle">keeps alive</text>
         </g>
 
         <!-- Boundary labels (foreground masks keep routes out of titles) -->
@@ -5355,36 +5392,36 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </g>
 
         <g data-graph-role="structural-frame-label" data-composition-frame-id="1" data-composition-frame-kind="region" data-composition-frame-label="Addons: plugin panes in each swarm&#39;s space">
-          <rect data-graph-role="structural-frame-label-mask" x="244" y="620" width="236.79999999999998" height="16" rx="3" class="c-mask"/>
-          <text data-boundary-label="" x="248" y="633" class="t-cloud" font-size="9" font-weight="600">Addons: plugin panes in each swarm&#39;s space</text>
+          <rect data-graph-role="structural-frame-label-mask" x="244" y="610" width="236.79999999999998" height="16" rx="3" class="c-mask"/>
+          <text data-boundary-label="" x="248" y="623" class="t-cloud" font-size="9" font-weight="600">Addons: plugin panes in each swarm&#39;s space</text>
         </g>
 
         <!-- Legend -->
         <g data-legend="" data-legend-bridge="">
-          <text x="40" y="896" class="t-primary" font-size="12" font-weight="650">Legend</text>
-          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="916" data-legend-width="83">
-            <rect x="40" y="907" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
-            <text x="62" y="916" class="t-muted" font-size="10" font-weight="500">Frontend</text>
+          <text x="40" y="881" class="t-primary" font-size="12" font-weight="650">Legend</text>
+          <g data-legend-semantic-kind="frontend" data-legend-kind="frontend" data-legend-label="Frontend" data-legend-x="40" data-legend-baseline="901" data-legend-width="83">
+            <rect x="40" y="892" width="16" height="10" rx="2.5" class="c-frontend" stroke-width="1"/>
+            <text x="62" y="901" class="t-muted" font-size="10" font-weight="500">Frontend</text>
           </g>
-          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="145" data-legend-baseline="916" data-legend-width="78">
-            <rect x="145" y="907" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
-            <text x="167" y="916" class="t-muted" font-size="10" font-weight="500">Backend</text>
+          <g data-legend-semantic-kind="backend" data-legend-kind="backend" data-legend-label="Backend" data-legend-x="145" data-legend-baseline="901" data-legend-width="78">
+            <rect x="145" y="892" width="16" height="10" rx="2.5" class="c-backend" stroke-width="1"/>
+            <text x="167" y="901" class="t-muted" font-size="10" font-weight="500">Backend</text>
           </g>
-          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="245" data-legend-baseline="916" data-legend-width="83">
-            <rect x="245" y="907" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
-            <text x="267" y="916" class="t-muted" font-size="10" font-weight="500">Database</text>
+          <g data-legend-semantic-kind="database" data-legend-kind="database" data-legend-label="Database" data-legend-x="245" data-legend-baseline="901" data-legend-width="83">
+            <rect x="245" y="892" width="16" height="10" rx="2.5" class="c-database" stroke-width="1"/>
+            <text x="267" y="901" class="t-muted" font-size="10" font-weight="500">Database</text>
           </g>
-          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="350" data-legend-baseline="916" data-legend-width="68">
-            <rect x="350" y="907" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
-            <text x="372" y="916" class="t-muted" font-size="10" font-weight="500">Cloud</text>
+          <g data-legend-semantic-kind="cloud" data-legend-kind="cloud" data-legend-label="Cloud" data-legend-x="350" data-legend-baseline="901" data-legend-width="68">
+            <rect x="350" y="892" width="16" height="10" rx="2.5" class="c-cloud" stroke-width="1"/>
+            <text x="372" y="901" class="t-muted" font-size="10" font-weight="500">Cloud</text>
           </g>
-          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="440" data-legend-baseline="916" data-legend-width="98">
-            <rect x="440" y="907" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
-            <text x="462" y="916" class="t-muted" font-size="10" font-weight="500">Message bus</text>
+          <g data-legend-semantic-kind="messagebus" data-legend-kind="messagebus" data-legend-label="Message bus" data-legend-x="440" data-legend-baseline="901" data-legend-width="98">
+            <rect x="440" y="892" width="16" height="10" rx="2.5" class="c-messagebus" stroke-width="1"/>
+            <text x="462" y="901" class="t-muted" font-size="10" font-weight="500">Message bus</text>
           </g>
-          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="560" data-legend-baseline="916" data-legend-width="83">
-            <rect x="560" y="907" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
-            <text x="582" y="916" class="t-muted" font-size="10" font-weight="500">External</text>
+          <g data-legend-semantic-kind="external" data-legend-kind="external" data-legend-label="External" data-legend-x="560" data-legend-baseline="901" data-legend-width="83">
+            <rect x="560" y="892" width="16" height="10" rx="2.5" class="c-external" stroke-width="1"/>
+            <text x="582" y="901" class="t-muted" font-size="10" font-weight="500">External</text>
           </g>
         </g>
       </svg>
@@ -5570,11 +5607,24 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         </div>
         <ul>
           <li>One space per swarm; click it to talk to its master</li>
-          <li>Message bus: delivery when idle, --fyi never wakes, --urgent now</li>
-          <li>Queues survive restarts; blocked agents escalate to the master</li>
-          <li>Pause/resume, relaunch, full resume commands after a restart</li>
-          <li>Mixed Claude Code + Codex agents (adapters)</li>
-          <li>Hover a swarm for its agents, Slack, vault, addons; ⌥ keys; double-click a title to zoom</li>
+          <li>Solo agents (★): one agent that is its own master (launch --solo)</li>
+          <li>Directory: what each swarm or agent does, skills, tools, busy or idle; ask the user before sending work</li>
+          <li>Message bus: delivery when idle, --fyi never wakes, --urgent now; queues survive restarts</li>
+          <li>Pause/resume, relaunch, resume after a restart; Claude Code + Codex adapters</li>
+          <li>hiver update: latest version with live handoff; install.sh for new machines</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div class="card-dot rose"></div>
+          <h3>⬢ The hiver agent</h3>
+        </div>
+        <ul>
+          <li>Always-on Claude in ~/.hiver/agent, the first space (hiver home)</li>
+          <li>Your main way into hiver: launch swarms, check status, ask coordinators</li>
+          <li>Reachable from Slack #hiver through the relay, even with no swarms running</li>
+          <li>The engine restarts it when it&#39;s gone (watchdog with backoff)</li>
         </ul>
       </div>
 

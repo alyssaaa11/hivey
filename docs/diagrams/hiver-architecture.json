@@ -2,14 +2,14 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "hiver: swarm runtime core and its addons",
+    "title": "hiver: swarm runtime core, the hiver agent and addons",
     "output": "docs/diagrams/hiver-architecture.html",
     "locale": "en",
     "quality_profile": "showcase",
     "repository": {
       "url": "git@github.com:jcsancho/hiver.git",
       "link_mode": "local-only",
-      "revision": "8fd65b6bb9d9ae3658a9c310047292d99f58023d"
+      "revision": "cdbed38e432345cf361b39ca9e37125967d613c1"
     }
   },
   "components": [
@@ -17,7 +17,7 @@
       "id": "agents",
       "type": "external",
       "label": "Agents in panes",
-      "sublabel": "Claude Code · Codex",
+      "sublabel": "swarms · ★ solo agents",
       "pos": [
         540,
         30
@@ -52,8 +52,8 @@
     {
       "id": "skill",
       "type": "external",
-      "label": "/swarm skill",
-      "sublabel": "team design · briefs",
+      "label": "Setup providers",
+      "sublabel": "/swarm · /agent-creator",
       "pos": [
         10,
         330
@@ -286,13 +286,48 @@
       ]
     },
     {
+      "id": "home",
+      "type": "external",
+      "label": "⬢ hiver agent",
+      "sublabel": "~/.hiver/agent · always on",
+      "pos": [
+        270,
+        480
+      ],
+      "size": [
+        150,
+        70
+      ],
+      "tag": "hiver home",
+      "sources": [
+        {
+          "path": "src/cli/swarm/home.rs",
+          "line": 198,
+          "end_line": 260,
+          "label": "hiver home start: launch or relaunch"
+        },
+        {
+          "path": "src/swarm/home.rs",
+          "line": 100,
+          "end_line": 140,
+          "label": "watchdog: restart when gone"
+        },
+        {
+          "path": "src/cli/swarm/home_brief.md",
+          "line": 1,
+          "end_line": 30,
+          "label": "its brief"
+        }
+      ]
+    },
+    {
       "id": "slackrelay",
       "type": "cloud",
       "label": "hiver.slack-relay",
       "sublabel": "Slack ⇄ bus",
       "pos": [
         270,
-        640
+        630
       ],
       "size": [
         150,
@@ -315,7 +350,7 @@
       "sublabel": "app repo + swarm repo",
       "pos": [
         540,
-        640
+        630
       ],
       "size": [
         150,
@@ -344,7 +379,7 @@
       "sublabel": "states · tokens · tasks",
       "pos": [
         775,
-        640
+        630
       ],
       "size": [
         150,
@@ -367,7 +402,7 @@
       "sublabel": "skill addon: idle, budget",
       "pos": [
         1015,
-        640
+        630
       ],
       "size": [
         150,
@@ -379,10 +414,10 @@
       "id": "slack",
       "type": "external",
       "label": "Slack",
-      "sublabel": "#swarm-<slug>",
+      "sublabel": "#swarm-<slug> · #hiver",
       "pos": [
         270,
-        800
+        785
       ],
       "size": [
         150,
@@ -396,7 +431,7 @@
       "sublabel": "<slug> · <slug>-swarm",
       "pos": [
         540,
-        800
+        785
       ],
       "size": [
         150,
@@ -528,6 +563,26 @@
       "from": "githubaddon",
       "to": "github",
       "label": "create + push"
+    },
+    {
+      "id": "user-home",
+      "from": "user",
+      "to": "home",
+      "label": "asks · Slack #hiver"
+    },
+    {
+      "id": "home-cli",
+      "from": "home",
+      "to": "cli",
+      "label": "launch · status · msg",
+      "variant": "emphasis"
+    },
+    {
+      "id": "engine-home",
+      "from": "engine",
+      "to": "home",
+      "label": "keeps alive",
+      "variant": "dashed"
     }
   ],
   "cards": [
@@ -536,11 +591,21 @@
       "title": "hiver core does",
       "items": [
         "One space per swarm; click it to talk to its master",
-        "Message bus: delivery when idle, --fyi never wakes, --urgent now",
-        "Queues survive restarts; blocked agents escalate to the master",
-        "Pause/resume, relaunch, full resume commands after a restart",
-        "Mixed Claude Code + Codex agents (adapters)",
-        "Hover a swarm for its agents, Slack, vault, addons; ⌥ keys; double-click a title to zoom"
+        "Solo agents (★): one agent that is its own master (launch --solo)",
+        "Directory: what each swarm or agent does, skills, tools, busy or idle; ask the user before sending work",
+        "Message bus: delivery when idle, --fyi never wakes, --urgent now; queues survive restarts",
+        "Pause/resume, relaunch, resume after a restart; Claude Code + Codex adapters",
+        "hiver update: latest version with live handoff; install.sh for new machines"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "⬢ The hiver agent",
+      "items": [
+        "Always-on Claude in ~/.hiver/agent, the first space (hiver home)",
+        "Your main way into hiver: launch swarms, check status, ask coordinators",
+        "Reachable from Slack #hiver through the relay, even with no swarms running",
+        "The engine restarts it when it's gone (watchdog with backoff)"
       ]
     },
     {
