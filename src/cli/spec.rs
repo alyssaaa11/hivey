@@ -115,8 +115,12 @@ fn write_requested_help(
 
 fn update_command() -> Command {
     Command::new("update")
-        .about("Download and install the latest version")
-        .arg(flag("handoff").help("Try live handoff after installing"))
+        .about(
+            "Update hiver from source: pull the fork, merge herdr, build, test, install, \
+             live-hand-off running sessions",
+        )
+        .arg(flag("yes").help("Don't ask before pushing, installing and handing off"))
+        .arg(flag("check").help("Only show what's new; change nothing"))
 }
 
 fn status_command() -> Command {

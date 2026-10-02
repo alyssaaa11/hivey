@@ -576,6 +576,9 @@ fn main() -> io::Result<()> {
     }
 
     if args.get(1).map(|s| s.as_str()) == Some("update") {
+        // hiver: update from source (sync-herdr.sh), not herdr's release download.
+        std::process::exit(hiver::run_update(&args[2..]));
+        #[allow(unreachable_code)] // hiver: herdr's updater below stays for easy upstream merges
         let options = match update::parse_self_update_args(&args[2..]) {
             Ok(options) => options,
             Err(err) if err.starts_with("usage:") => {

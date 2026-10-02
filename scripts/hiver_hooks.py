@@ -104,6 +104,26 @@ edit("src/update.rs",
      "        drop(events);\n"
      "        return;\n"
      "    }\n")
+
+# `hiver update`: update from source (scripts/sync-herdr.sh) instead of herdr's release download
+edit("src/main.rs",
+     '    if args.get(1).map(|s| s.as_str()) == Some("update") {\n        let options',
+     '    if args.get(1).map(|s| s.as_str()) == Some("update") {\n'
+     "        // hiver: update from source (sync-herdr.sh), not herdr's release download.\n"
+     "        std::process::exit(hiver::run_update(&args[2..]));\n"
+     "        #[allow(unreachable_code)] // hiver: herdr's updater below stays for easy upstream merges\n"
+     "        let options",
+     marker="hiver::run_update")
+edit("src/cli/spec.rs",
+     '        .about("Download and install the latest version")\n'
+     '        .arg(flag("handoff").help("Try live handoff after installing"))',
+     "        .about(\n"
+     '            "Update hiver from source: pull the fork, merge herdr, build, test, install, \\\n'
+     '             live-hand-off running sessions",\n'
+     "        )\n"
+     '        .arg(flag("yes").help("Don\'t ask before pushing, installing and handing off"))\n'
+     '        .arg(flag("check").help("Only show what\'s new; change nothing"))',
+     marker="Update hiver from source")
 print("p0 rename hooks applied")
 
 # ---------------------------------------------------------------------------

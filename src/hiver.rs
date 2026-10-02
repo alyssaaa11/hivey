@@ -7,6 +7,35 @@ pub(crate) const HIVER_ENV_VAR: &str = "HIVER_ENV";
 pub(crate) const SELF_UPDATE_DISABLED: &str =
     "hiver does not self-update; update from source: git pull && cargo build --release";
 
+/// `hiver update [--yes] [--check]`: runs `scripts/sync-herdr.sh` in the hiver repo (pull the
+/// fork, merge herdr, build, test, install, live handoff). The repo is where this binary was
+/// built, or `HIVER_REPO`. Never downloads herdr releases over hiver.
+pub(crate) fn run_update(args: &[String]) -> i32 {
+    let repo = std::env::var_os("HIVER_REPO")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    let script = repo.join("scripts").join("sync-herdr.sh");
+    if !script.is_file() {
+        eprintln!(
+            "hiver update: no {} — set HIVER_REPO to your hiver checkout",
+            script.display()
+        );
+        return 1;
+    }
+    match std::process::Command::new("bash")
+        .arg(&script)
+        .args(args)
+        .current_dir(&repo)
+        .status()
+    {
+        Ok(status) => status.code().unwrap_or(1),
+        Err(err) => {
+            eprintln!("hiver update: cannot run {}: {err}", script.display());
+            1
+        }
+    }
+}
+
 /// Variables a herdr pane exports that would point a hiver process at herdr's server.
 const INHERITED_HERDR_VARS: &[&str] = &[
     "HERDR_ENV",
