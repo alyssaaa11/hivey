@@ -557,10 +557,13 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
     args
 }
 
-/// Starts Claude and accepts its folder-trust dialog (the coordinator created the folder).
-/// Runs hiver's own `agent start`, which retries while a new pane's shell initializes and
-/// waits until the agent can take input, so the kickoff prompt isn't lost.
-fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> String {
+/// `hiver agent start …` for one agent; its JSON reply.
+fn run_agent_start(
+    name: &str,
+    pane: &str,
+    args: &[String],
+    kind: AgentKind,
+) -> std::io::Result<Value> {
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hiver"));
     let output = std::process::Command::new(exe)
         .args([
@@ -576,16 +579,46 @@ fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> Stri
             "--",
         ])
         .args(args)
-        .output();
-    let response: Value = match output {
-        Ok(output) => {
-            let text = if output.stdout.is_empty() {
-                output.stderr
-            } else {
-                output.stdout
-            };
-            serde_json::from_slice(&text).unwrap_or(Value::Null)
+        .output()?;
+    let text = if output.stdout.is_empty() {
+        output.stderr
+    } else {
+        output.stdout
+    };
+    Ok(serde_json::from_slice(&text).unwrap_or(Value::Null))
+}
+
+/// How long a new pane may stay "busy" before its agent start counts as failed: its shell is
+/// still running startup programs (`.zshrc` banners, `$(…)`, version managers), which `agent
+/// start` only waits out briefly, and many panes start at once during a launch.
+const PANE_BUSY_WAIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Runs `start` again while it answers `agent_pane_busy`, for up to `wait`; the last answer.
+fn retry_while_busy(
+    mut start: impl FnMut() -> std::io::Result<Value>,
+    wait: std::time::Duration,
+    pause: std::time::Duration,
+) -> std::io::Result<Value> {
+    let started = std::time::Instant::now();
+    loop {
+        let response = start()?;
+        if response["error"]["code"] != "agent_pane_busy" || started.elapsed() >= wait {
+            return Ok(response);
         }
+        std::thread::sleep(pause);
+    }
+}
+
+/// Starts Claude and accepts its folder-trust dialog (the coordinator created the folder).
+/// Runs hiver's own `agent start`, which waits until the agent can take input, so the kickoff
+/// prompt isn't lost; retried while the pane is still busy with its shell's startup.
+fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> String {
+    let response = match retry_while_busy(
+        || run_agent_start(name, pane, args, kind),
+        PANE_BUSY_WAIT,
+        std::time::Duration::from_millis(400),
+    ) {
+        Ok(response) => response,
         Err(err) => return format!("error: {err}"),
     };
     match response["error"]["code"].as_str() {
@@ -1089,6 +1122,47 @@ fn add_addons(slug: &str, addons: &[Addon]) -> Result<usize, String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn agent_start_waits_out_a_busy_pane() {
+        let busy = json!({ "error": { "code": "agent_pane_busy" } });
+        let ready = json!({ "result": { "agent": {} } });
+        let quick = std::time::Duration::ZERO;
+        let long = std::time::Duration::from_secs(5);
+
+        // Busy while the shell's startup runs, then ready: started
+        let mut answers = vec![busy.clone(), busy.clone(), ready.clone()].into_iter();
+        let mut calls = 0;
+        let response = retry_while_busy(
+            || {
+                calls += 1;
+                Ok(answers.next().unwrap_or(Value::Null))
+            },
+            long,
+            quick,
+        )
+        .expect("response");
+        assert_eq!((response, calls), (ready, 3));
+
+        // Still busy at the deadline: that answer is reported
+        let response = retry_while_busy(|| Ok(busy.clone()), quick, quick).expect("response");
+        assert_eq!(response, busy);
+
+        // Any other error is final at once
+        let other = json!({ "error": { "code": "agent_pane_not_found" } });
+        let mut calls = 0;
+        let response = retry_while_busy(
+            || {
+                calls += 1;
+                Ok(other.clone())
+            },
+            long,
+            quick,
+        )
+        .expect("response");
+        assert_eq!((response, calls), (other, 1));
+    }
+
     use super::*;
 
     #[test]
