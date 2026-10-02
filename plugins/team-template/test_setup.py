@@ -28,6 +28,39 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(cfg["heartbeat"], "")
         self.assertEqual(cfg["master_model"], "opus")
 
+    def test_wiki_is_asked_and_the_obsidian_folder_once(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp:
+            settings = Path(tmp, "wiki.json")
+            default = str(Path.home() / "Obsidian")
+            cases = [("ask", ["n"], None), ("ask", ["", ""], default),
+                     ("ask", ["", "/x/Obs"], "/x/Obs"), (False, [], None)]
+            with mock.patch.object(setup, "WIKI_SETTINGS", settings):
+                for mode, answers, expected in cases:
+                    replies = iter(answers)
+                    with mock.patch("builtins.input", lambda *_: next(replies)):
+                        self.assertEqual(setup.want_wiki({"wiki": mode}, "demo"), expected)
+                # Once the folder is known it isn't asked again
+                settings.write_text(json.dumps({"dir": "/remembered"}))
+                with mock.patch("builtins.input", lambda *_: ""):
+                    self.assertEqual(setup.want_wiki({"wiki": "ask"}, "demo"), "/remembered")
+
+    def test_make_wiki_creates_the_vault_and_links_the_team(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = [Path(tmp, name) for name in ("builder", "critic")]
+            for agent in agents:
+                agent.mkdir()
+                (agent / "CLAUDE.md").write_text(f"# {agent.name}\n")
+            # new_wiki.py remembers the folder in $HOME/.hiver: keep that in the scratch dir
+            from unittest import mock
+            with mock.patch.dict(os.environ, {"HOME": tmp}):
+                path = setup.make_wiki("demo", "a task", str(Path(tmp, "Obsidian")), agents)
+            self.assertTrue(Path(tmp, ".hiver", "wiki.json").is_file())
+            self.assertEqual(path, str(Path(tmp, "Obsidian", "demo-wiki")))
+            self.assertTrue(Path(path, "index.md").is_file())
+            for agent in agents:
+                self.assertIn(path, (agent / "CLAUDE.md").read_text())
+
     def test_briefs_name_the_team_and_hiver_messaging(self):
         brief = setup.BRIEF.format(agent="critic", slug="s", task="t", root="/r",
                                    job=setup.TEAM["critic"].format(root="/r"))

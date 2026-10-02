@@ -114,6 +114,16 @@ check `hiver plugin list` / `hiver swarm providers` before relying on them.
 | `swarm.skill` | /swarm skill as a setup provider |
 | `agent.creator` | /agent-creator skill: one solo agent in the current folder |
 
+**Creating a swarm or agent: always ask the user two things first** (one question each, then
+act on the answers):
+1. **Slack channel?** (see below)
+2. **Obsidian wiki memory?** A vault in the user's Obsidian where it keeps what it learns. If
+   yes and you don't know where their Obsidian is, ask once (default `~/Obsidian`; it's then
+   remembered in `~/.hiver/wiki.json`). Create it with the `agents-create-wiki` skill if it's
+   installed, else `python3 <this skill>/scripts/new_wiki.py <slug> [--dir <obsidian>] --agent
+   <agent folder> [--agent …] --about "<one line>"` (a team: one vault, every agent folder
+   linked). Do it after the agents' CLAUDE.md files exist, and tell the user the vault path.
+
 ## Slack
 
 ```bash
@@ -125,6 +135,9 @@ hiver home setup --slack          # #hiver for the hiver agent
 ```
 New channels invite the user (relay config `invite`: their Slack member id, set by `hiver slack
 connect` or worked out from shared channels), so they appear in their Slack at once.
+**Before creating a channel, check Slack is connected:** `hiver slack status`. Not connected →
+ask the user to run `hiver slack connect` first (once; the token stays saved, and hiver, its
+relays and the /swarm skill all use it), don't try and fail.
 **Rule for every agent and swarm:** a Slack channel you create must be visible to the user
 right away. Create channels only through hiver (`--slack`, `hiver slack add`, `hiver home
 setup --slack`), which invites them; if one was made another way (e.g. the /swarm skill's

@@ -9,6 +9,10 @@ const FILES: &[(&str, &str)] = &[
         "scripts/handoff.py",
         include_str!("../../../skills/hiver/scripts/handoff.py"),
     ),
+    (
+        "scripts/new_wiki.py",
+        include_str!("../../../skills/hiver/scripts/new_wiki.py"),
+    ),
 ];
 
 const USAGE: &str = "hiver skill commands:
@@ -136,6 +140,7 @@ mod tests {
             .starts_with("installed"));
         assert!(dir.join("SKILL.md").is_file());
         assert!(dir.join("scripts/handoff.py").is_file());
+        assert!(dir.join("scripts/new_wiki.py").is_file());
         assert!(install_into(&dir).expect("again").ends_with("up to date"));
     }
 

@@ -12,8 +12,9 @@ HIVER_SETUP_TASK and HIVER_SETUP_CWD set. Settings (all optional) in
 $HERDR_PLUGIN_CONFIG_DIR/config.json:
   {"model": "sonnet", "master_model": "opus", "heartbeat": "30m",
    "addons": ["hiver.dashboard"], "claude_args": "--dangerously-skip-permissions",
-   "slack": "ask"}
+   "slack": "ask", "wiki": "ask"}
   slack: "ask" (when Slack is connected: offer a channel #<slug>), true, or false.
+  wiki: "ask" (offer an Obsidian wiki vault as the team's memory), true, or false.
 """
 import json
 import os
@@ -30,6 +31,7 @@ DEFAULTS = {
     "addons": ["hiver.dashboard"],
     "claude_args": "--dangerously-skip-permissions",
     "slack": "ask",
+    "wiki": "ask",
 }
 
 # --- 1. DESIGN ------------------------------------------------------------------
@@ -83,6 +85,45 @@ def config():
         return dict(DEFAULTS)
 
 
+WIKI_SETTINGS = Path.home() / ".hiver" / "wiki.json"
+
+
+def new_wiki_script():
+    """The hiver skill's new_wiki.py: next to this plugin in the repo, else installed."""
+    here = Path(__file__).resolve().parents[2] / "skills" / "hiver" / "scripts" / "new_wiki.py"
+    installed = Path.home() / ".claude" / "skills" / "hiver" / "scripts" / "new_wiki.py"
+    return next((p for p in (here, installed) if p.is_file()), None)
+
+
+def want_wiki(cfg, slug):
+    """None, or the Obsidian folder for the team's wiki vault (asked the first time)."""
+    if cfg["wiki"] is False or new_wiki_script() is None:
+        return None
+    if cfg["wiki"] is not True and input(
+            f"Give it an Obsidian wiki as memory ({slug}-wiki, where the team keeps what it "
+            "learns)? [Y/n] ").strip().lower() in ("n", "no"):
+        return None
+    try:
+        return json.loads(WIKI_SETTINGS.read_text())["dir"]
+    except (OSError, ValueError, KeyError):
+        default = str(Path.home() / "Obsidian")
+        answer = input(f"Where is your Obsidian folder? [{default}] ").strip()
+        return answer or default
+
+
+def make_wiki(slug, task, obsidian, agent_dirs):
+    """Creates (or reuses) the vault and links every agent's CLAUDE.md to it; its path."""
+    cmd = [sys.executable, str(new_wiki_script()), slug, "--dir", obsidian, "--about", task[:80]]
+    for agent_dir in agent_dirs:
+        cmd += ["--agent", str(agent_dir)]
+    done = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        return json.loads(done.stdout)["path"]
+    except (ValueError, KeyError):
+        sys.stderr.write(done.stderr or "could not create the wiki\n")
+        return None
+
+
 def want_slack(cfg, hiver, slug):
     """Whether the swarm gets its own Slack channel #<slug> (`hiver swarm launch --slack`)."""
     if cfg["slack"] is False:
@@ -112,6 +153,7 @@ def main():
     if input("Launch this swarm? [Y/n] ").strip().lower() in ("n", "no"):
         sys.exit("cancelled")
     slack = want_slack(cfg, hiver, slug)
+    obsidian = want_wiki(cfg, slug)
 
     # --- 2. BRIEF -----------------------------------------------------------------
     (root / "app").mkdir(parents=True, exist_ok=True)
@@ -119,6 +161,9 @@ def main():
         (root / agent).mkdir(exist_ok=True)
         (root / agent / "CLAUDE.md").write_text(
             BRIEF.format(agent=agent, slug=slug, task=task, root=root, job=job.format(root=root)))
+    wiki = make_wiki(slug, task, obsidian, [root / agent for agent in TEAM]) if obsidian else None
+    if wiki:
+        print(f"wiki memory: {wiki}")
 
     # --- 3. LAUNCH ----------------------------------------------------------------
     cmd = [hiver, "swarm", "launch", str(root), "--slug", slug, *TEAM,
@@ -148,7 +193,9 @@ def main():
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     os.chdir(root)
     args = ["claude", *shlex.split(cfg["claude_args"]), "--model", cfg["master_model"],
-            MASTER.format(slug=slug, root=root, task=task)]
+            MASTER.format(slug=slug, root=root, task=task)
+            + (f"\nThe team's memory is the Obsidian wiki {wiki} (rules in its CLAUDE.md): "
+               "read it before planning and keep it updated." if wiki else "")]
     os.execvp("claude", args)
 
 

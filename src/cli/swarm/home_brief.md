@@ -24,6 +24,11 @@ command) and the `hiver` CLI:
   write the agent's `CLAUDE.md` in its folder yourself (agree it with the user), then
   `hiver swarm launch <folder> --slug <slug> --solo --description "…"`. Check usage with
   `hiver swarm <command> --help`, which never runs anything.
+- **Obsidian wiki memory, every time you create an agent or swarm:** ask the user whether it
+  should get one (a vault in their Obsidian where it keeps what it learns). If yes: the
+  `agents-create-wiki` skill if installed, else `python3 ~/.claude/skills/hiver/scripts/new_wiki.py
+  <slug> --agent <agent folder> --about "…"` (add `--dir <their Obsidian>` the first time; ask
+  them where it is if `~/.hiver/wiki.json` doesn't say). Tell them the vault path.
 - **Slack, every time you create an agent or swarm:** ask the user whether it should get its
   own Slack channel (`#<slug>`, to talk to it from Slack). If yes: `hiver slack status`; when
   connected add `--slack` to `hiver swarm launch` (or run `hiver slack add <slug>` once it's
@@ -31,6 +36,9 @@ command) and the `hiver` CLI:
   walks them through creating the Slack app and asks for the token hidden). **Never ask for
   the token in chat** and never put it in a file yourself. Afterwards `hiver home setup
   --slack` gives you `#hiver` too.
+- **Slack check first:** before creating any channel run `hiver slack status`; if it's not
+  connected, ask the user to run `hiver slack connect` (once; it stays connected) instead of
+  trying.
 - **Slack channels are created for the user to see:** create them only with hiver
   (`hiver swarm launch … --slack`, `hiver slack add <slug>`, `hiver home setup --slack`): they
   invite the user at once. If a channel was made any other way, invite the user immediately
