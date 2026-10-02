@@ -1356,6 +1356,97 @@ fn pets_tab_runs_hiver_pet_on_the_client() {
     assert!(outcome.actions.is_empty());
 }
 
+/// hiver: settings → plugins picks the swarm / agent creator through `hiver swarm providers`.
+#[test]
+fn plugins_tab_picks_the_creator_per_kind() {
+    use crate::swarm::creators::Creator;
+    let creator = |id: &str, agent: bool| Creator {
+        id: id.into(),
+        name: id.into(),
+        description: String::new(),
+        agent,
+    };
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut outcome = ClientShellInput::default();
+    state.open_settings_overlay();
+    state.select_settings_section(ClientSettingsSection::Plugins, &mut outcome);
+    if let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_mut() {
+        settings.creators = vec![
+            creator("hiver.swarm-creator", false),
+            creator("swarm.creator", false),
+            creator("hiver.agent-creator", true),
+        ];
+        settings.creator_current = (
+            Some("hiver.swarm-creator".into()),
+            Some("hiver.agent-creator".into()),
+        );
+    }
+    let mut outcome = ClientShellInput::default();
+    state.select_settings_choice(1);
+    state.apply_settings_choice(&mut outcome);
+    assert!(matches!(
+        &outcome.actions[..],
+        [ClientShellAction::RunHiver(args)]
+            if args == &["swarm", "providers", "--default", "swarm.creator"]
+    ));
+    let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_ref() else {
+        panic!("settings closed");
+    };
+    // Only the swarm creator changed
+    assert_eq!(
+        settings.creator_current,
+        (
+            Some("swarm.creator".into()),
+            Some("hiver.agent-creator".into())
+        )
+    );
+    assert!(settings.creator_message.is_some());
+    // Picking the one already used does nothing
+    let mut outcome = ClientShellInput::default();
+    state.apply_settings_choice(&mut outcome);
+    assert!(outcome.actions.is_empty());
+}
+
+/// hiver: settings → skills sets the library folder and online search through `hiver skills`.
+#[test]
+fn skills_tab_sets_the_library_and_online_search() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut outcome = ClientShellInput::default();
+    state.open_settings_overlay();
+    state.select_settings_section(ClientSettingsSection::Skills, &mut outcome);
+    if let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_mut() {
+        settings.skill_dirs = vec!["/lib/a".into(), "/lib/b".into()];
+        settings.skill_dir_current = Some("/lib/a".into());
+        settings.skills_online = true;
+    }
+    let run = |state: &mut ClientShellState, index: usize| {
+        let mut outcome = ClientShellInput::default();
+        state.select_settings_choice(index);
+        state.apply_settings_choice(&mut outcome);
+        outcome.actions
+    };
+    assert!(matches!(
+        &run(&mut state, 1)[..],
+        [ClientShellAction::RunHiver(args)] if args == &["skills", "dir", "/lib/b"]
+    ));
+    // The current folder again: nothing
+    assert!(run(&mut state, 1).is_empty());
+    // The last row toggles online search
+    assert!(matches!(
+        &run(&mut state, 2)[..],
+        [ClientShellAction::RunHiver(args)] if args == &["skills", "online", "off"]
+    ));
+    let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_ref() else {
+        panic!("settings closed");
+    };
+    assert!(!settings.skills_online);
+    assert_eq!(settings.skill_dir_current, Some("/lib/b".into()));
+}
+
 #[test]
 fn global_menu_opens_settings_on_the_pets_tab() {
     use super::super::global_menu::{global_menu_items, ClientGlobalMenuAction};

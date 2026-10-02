@@ -333,7 +333,7 @@
       "dot": "emerald",
       "title": "Included providers",
       "items": [
-        "swarm.skill: a Claude coordinator runs /swarm",
+        "swarm.creator: a Claude coordinator runs /swarm",
         "hiver.team-template: builder + critic, copy it",
         "Write your own: plugins/team-template is 140 lines"
       ]

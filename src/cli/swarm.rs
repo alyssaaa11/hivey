@@ -12,22 +12,30 @@ mod home;
 mod launch;
 mod pet;
 mod skill;
+mod skills;
 mod slack;
 pub(super) use home::run as run_home_command;
 pub(super) use pet::run as run_pet_command;
 pub(super) use skill::run_skill_command;
+pub(super) use skills::run as run_skills_command;
 pub(super) use slack::run as run_slack_command;
 
 const SWARM_HELP: &str = "\
 hiver swarm commands:
   hiver swarm new [--provider ID] [--default] <task…>
-                                     design + launch a swarm with a setup provider (e.g. /swarm)
-  hiver swarm providers              installed setup providers (plugins with a setup pane)
+                                     design + launch a swarm with the default swarm creator
+                                     (built in: hiver.swarm-creator)
+  hiver swarm new --agent [--provider ID] [--default] <task…>
+                                     one solo agent in this folder with the default agent creator
+                                     (built in: hiver.agent-creator)
+  hiver swarm providers [--default ID]
+                                     installed swarm and agent creators (* = used by swarm new);
+                                     --default ID makes ID the one used for its kind
   hiver swarm accept-trust [--pane P] [--kind claude|codex] [--timeout 60]
                                      answer an agent CLI's folder-trust prompt in a pane (providers)
   hiver swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
   hiver swarm launch <root> --slug S --solo [--model M]  start one agent in <root> (its own master)
-                                     add --slack for its own Slack channel #<slug>
+                                     gets its own Slack channel #<slug> when Slack is connected
   hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
   hiver swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
@@ -157,42 +165,44 @@ fn accept_trust(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
-/// Pane entrypoint that makes a plugin a swarm setup provider.
-const SETUP_ENTRYPOINT: &str = "setup";
+use crate::swarm::creators::{self, Creator, SETUP_ENTRYPOINT};
 
-fn providers() -> Result<Vec<(String, String)>, String> {
+/// The installed swarm and agent creators (plugins with a setup pane), from the server.
+fn providers() -> Result<Vec<Creator>, String> {
     let list = api("plugin.list", json!({}))?;
-    Ok(list["plugins"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|plugin| plugin["enabled"] != false)
-        .filter(|plugin| {
-            plugin["panes"]
-                .as_array()
-                .is_some_and(|panes| panes.iter().any(|pane| pane["id"] == SETUP_ENTRYPOINT))
-        })
-        .filter_map(|plugin| {
-            Some((
-                plugin["plugin_id"].as_str()?.to_string(),
-                plugin["description"].as_str().unwrap_or("").to_string(),
-            ))
-        })
-        .collect())
+    let plugins = list["plugins"].as_array().cloned().unwrap_or_default();
+    Ok(creators::from_plugins(&plugins))
 }
 
-fn default_provider_path() -> std::path::PathBuf {
-    crate::config::config_dir().join("swarm-setup.json")
+/// The creator `hiver swarm new` uses for a kind (see `creators::pick`).
+fn effective_provider(found: &[Creator], agent: bool) -> Result<String, String> {
+    let chosen = creators::chosen(agent);
+    let picked = creators::pick(found, agent, chosen.as_deref());
+    if let (Some(chosen), Ok(picked)) = (&chosen, &picked) {
+        if chosen != picked {
+            eprintln!("note: the chosen creator {chosen:?} is not installed; using {picked}");
+        }
+    }
+    picked
 }
 
-fn default_provider() -> Option<String> {
-    std::fs::read_to_string(default_provider_path())
-        .ok()
-        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
-        .and_then(|value| value["provider"].as_str().map(str::to_string))
+fn kind_name(agent: bool) -> &'static str {
+    if agent {
+        "agent"
+    } else {
+        "swarm"
+    }
 }
 
-fn list_providers() -> std::io::Result<i32> {
+fn list_providers(args: &[String]) -> std::io::Result<i32> {
+    let mut rest: Vec<String> = args.to_vec();
+    let set_default = match take_value(&mut rest, "--default") {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("error: {err}");
+            return Ok(2);
+        }
+    };
     let found = match providers() {
         Ok(found) => found,
         Err(err) => {
@@ -200,31 +210,44 @@ fn list_providers() -> std::io::Result<i32> {
             return Ok(1);
         }
     };
+    if let Some(id) = set_default {
+        let Some(creator) = found.iter().find(|creator| creator.id == id) else {
+            eprintln!("error: {id:?} is not installed (hiver swarm providers)");
+            return Ok(1);
+        };
+        creators::save_chosen(creator.agent, &id)?;
+        println!("{} creator: {id}", kind_name(creator.agent));
+        return Ok(0);
+    }
     if found.is_empty() {
         println!(
-            "no setup providers installed (a provider is a plugin with a \"setup\" pane;\n\
-                  e.g. hiver plugin link ~/.claude/skills/swarm/hiver-setup)"
+            "no swarm or agent creators installed (plugins with a \"setup\" pane; the built-in\n\
+             ones: hiver plugin link <hiver repo>/plugins/swarm-creator and …/agent-creator)"
         );
         return Ok(0);
     }
-    let default = default_provider();
-    for (id, description) in found {
-        let mark = if default.as_deref() == Some(id.as_str()) {
-            "*"
-        } else {
-            " "
-        };
-        println!("{mark} {id:<24} {description}");
+    for agent in [false, true] {
+        let current = creators::pick(&found, agent, creators::chosen(agent).as_deref()).ok();
+        println!("{} creators:", kind_name(agent));
+        for creator in found.iter().filter(|creator| creator.agent == agent) {
+            let mark = if current.as_deref() == Some(creator.id.as_str()) {
+                "*"
+            } else {
+                " "
+            };
+            println!("{mark} {:<24} {}", creator.id, creator.description);
+        }
     }
     Ok(0)
 }
 
-/// `hiver swarm new`: hand a task to a setup provider. The provider's "setup" pane opens as a
-/// new tab in the current folder with HIVER_SETUP_TASK set; it designs the team, writes the
-/// briefs and calls `hiver swarm launch`, which moves that pane into the swarm's own space.
+/// `hiver swarm new [--agent]`: hand a task to a swarm (or agent) creator. Its "setup" pane
+/// opens as a new tab in the current folder with HIVER_SETUP_TASK set; it designs the team (or
+/// the agent), writes the briefs and calls `hiver swarm launch`.
 fn new_swarm(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.to_vec();
     let make_default = take_flag(&mut rest, "--default");
+    let agent = take_flag(&mut rest, "--agent");
     let chosen = match take_value(&mut rest, "--provider") {
         Ok(value) => value,
         Err(err) => {
@@ -240,31 +263,27 @@ fn new_swarm(args: &[String]) -> std::io::Result<i32> {
             return Ok(1);
         }
     };
-    let ids: Vec<&str> = found.iter().map(|(id, _)| id.as_str()).collect();
-    let provider = match chosen.or_else(default_provider) {
-        Some(id) if ids.contains(&id.as_str()) => id,
+    let provider = match chosen {
+        Some(id) if found.iter().any(|creator| creator.id == id) => id,
         Some(id) => {
             eprintln!("error: setup provider {id:?} is not installed (hiver swarm providers)");
             return Ok(1);
         }
-        None if ids.len() == 1 => ids[0].to_string(),
-        None if ids.is_empty() => {
-            eprintln!("error: no setup provider installed (hiver swarm providers)");
-            return Ok(1);
-        }
-        None => {
-            eprintln!(
-                "error: several setup providers; pick one with --provider ({})",
-                ids.join(", ")
-            );
-            return Ok(2);
-        }
+        None => match effective_provider(&found, agent) {
+            Ok(id) => id,
+            Err(err) => {
+                eprintln!("error: {err}");
+                return Ok(1);
+            }
+        },
     };
     if make_default {
-        let text =
-            serde_json::to_string_pretty(&json!({ "provider": provider })).unwrap_or_default();
-        std::fs::write(default_provider_path(), text + "\n")?;
-        println!("default setup provider: {provider}");
+        let agent = found
+            .iter()
+            .find(|creator| creator.id == provider)
+            .is_some_and(|creator| creator.agent);
+        creators::save_chosen(agent, &provider)?;
+        println!("default {} creator: {provider}", kind_name(agent));
     }
     let cwd = std::env::current_dir()?;
     let mut params = json!({
@@ -636,7 +655,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
         Some("schedule") => schedule_command(&args[1..]),
         Some("new") => new_swarm(&args[1..]),
         Some("accept-trust") => accept_trust(&args[1..]),
-        Some("providers") => list_providers(),
+        Some("providers") => list_providers(&args[1..]),
         Some("pick") => pick_master(),
         Some("setup" | "install-keys") => install_keys(),
         Some("help" | "--help" | "-h") => {

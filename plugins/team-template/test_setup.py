@@ -16,6 +16,16 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(setup.slugify("¿?"), "swarm")
         self.assertLessEqual(len(setup.slugify("x" * 50)), 18)
 
+    def test_name_is_asked_with_a_suggestion_and_normalized(self):
+        from unittest import mock
+        cases = [([""], "build-a-todo-app-q"), (["Digital Marketer"], "digital-marketer"),
+                 (["9lives", "x" * 40, "ok"], "ok")]
+        for answers, expected in cases:
+            replies = iter(answers)
+            with mock.patch("builtins.input", lambda *_: next(replies)), \
+                    mock.patch("builtins.print"):
+                self.assertEqual(setup.ask_name("Build a TODO app, quickly!"), expected)
+
     def test_config_overrides_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "config.json").write_text(json.dumps({"model": "haiku", "heartbeat": ""}))

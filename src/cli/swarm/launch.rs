@@ -37,7 +37,7 @@ pub(super) const HELP: &str = "\
 usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
-         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack]
+         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack|--no-slack]
        hiver swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex] [options]
          [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hiver swarm directory)
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
@@ -46,8 +46,9 @@ usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
   --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
   before the agents start, with HIVER_SWARM_ROOT, HIVER_SWARM_SLUG and HIVER_SWARM_CHANNEL set:
   e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.
-  --slack: its own Slack channel #<slug> (created, or joined if it exists) with the Slack
-  relay, so the user can talk to it from Slack. Needs hiver slack connect once.
+  Slack: when Slack is connected (hiver slack connect, once) every launch gets its own channel
+  #<slug> (created, or joined if it exists) with the Slack relay, so the user can talk to it
+  from Slack. --slack makes that an error when Slack isn't connected; --no-slack skips it.
   --heartbeat 15m wakes the master every 15 min with a monitoring task and a status
   snapshot (hiver swarm schedule … adds more, e.g. a daily report at 09:00).
   --solo: a single agent, no workers. It runs in <root> itself (CLAUDE.md or AGENTS.md there)
@@ -81,8 +82,11 @@ struct Options {
     solo: bool,
     /// The hiver agent (`--solo --home`, used by `hiver home`): space pinned first, unfocused.
     home: bool,
-    /// `--slack`: its own channel #<slug> (created or joined) and the Slack relay.
+    /// `--slack`: its own channel #<slug> (created or joined) and the Slack relay; an error
+    /// when Slack isn't connected. Without it the same happens whenever Slack is connected.
     slack: bool,
+    /// `--no-slack`: no channel even when Slack is connected.
+    no_slack: bool,
     /// Directory entry (`--description`, `--skills`, `--tools`); kept when not given.
     profile: serde_json::Map<String, Value>,
 }
@@ -201,6 +205,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         solo: false,
         home: false,
         slack: false,
+        no_slack: false,
         profile: serde_json::Map::new(),
     };
     // `--model` / `--kind` (solo agent), keyed by slug once it is known.
@@ -234,6 +239,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--solo" => opts.solo = true,
             "--home" => opts.home = true,
             "--slack" => opts.slack = true,
+            "--no-slack" => opts.no_slack = true,
             "--description" => {
                 opts.profile
                     .insert("description".into(), json!(value("--description")?));
@@ -705,6 +711,28 @@ fn launch(opts: &Options) -> Result<Value, String> {
     let opts = if opts.slack {
         with_slack = add_slack(opts)?;
         &with_slack
+    } else if wants_auto_slack(opts) {
+        // Every new swarm or agent gets its channel when Slack is connected; a Slack problem
+        // is reported but never stops the launch.
+        if !super::slack::connected() {
+            eprintln!(
+                "  Slack is not connected: no channel #{0} (hiver slack connect, then \
+                 hiver slack add {0})",
+                opts.slug
+            );
+            opts
+        } else {
+            match add_slack(opts) {
+                Ok(added) => {
+                    with_slack = added;
+                    &with_slack
+                }
+                Err(err) => {
+                    eprintln!("  Slack channel #{} not created: {err}", opts.slug);
+                    opts
+                }
+            }
+        }
     } else {
         opts
     };
@@ -762,6 +790,12 @@ fn launch(opts: &Options) -> Result<Value, String> {
 }
 
 /// `--solo`: the agent runs in `root` in a new space and is the swarm's only member.
+/// A channel without `--slack`: not for the hiver agent (its channel is #hiver, set up by
+/// `hiver home setup`), not with `--no-slack`, and not when `--channel` already names one.
+fn wants_auto_slack(opts: &Options) -> bool {
+    !opts.no_slack && !opts.home && opts.channel.is_none()
+}
+
 /// `--slack`: the channel (#<slug> unless `--channel` names one) and the relay addon.
 fn add_slack(opts: &Options) -> Result<Options, String> {
     let mut opts = opts.clone();
@@ -1207,6 +1241,21 @@ mod tests {
             parse(&["/tmp/s".to_string()]).is_err(),
             "slug and agents required"
         );
+    }
+
+    #[test]
+    fn slack_channel_is_automatic_unless_opted_out_or_home_or_named() {
+        let opts = |extra: &[&str]| {
+            let mut args = vec!["/tmp/s", "--slug", "x", "a"];
+            args.extend_from_slice(extra);
+            parse(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>()).unwrap()
+        };
+        assert!(wants_auto_slack(&opts(&[])));
+        assert!(!wants_auto_slack(&opts(&["--no-slack"])));
+        assert!(!wants_auto_slack(&opts(&["--channel", "C1"])));
+        let mut home = opts(&[]);
+        home.home = true;
+        assert!(!wants_auto_slack(&home));
     }
 
     #[test]

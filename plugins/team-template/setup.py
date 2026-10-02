@@ -77,6 +77,22 @@ def slugify(task):
     return slug or "swarm"
 
 
+NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+
+
+def ask_name(task):
+    """The swarm's name, asked with a suggestion from the task. One name for everything: the
+    swarm slug, its Slack channel #<name> and its Obsidian vault <name>-wiki."""
+    suggestion = slugify(task)
+    while True:
+        answer = input(f"Name (swarm, Slack channel #name, Obsidian vault name-wiki) "
+                       f"[{suggestion}]: ").strip()
+        name = re.sub(r"[^a-z0-9]+", "-", answer.lower()).strip("-") if answer else suggestion
+        if NAME_RE.match(name):
+            return name
+        print("  a-z, 0-9 and -, starting with a letter, at most 32 characters")
+
+
 def config():
     path = Path(os.environ.get("HERDR_PLUGIN_CONFIG_DIR", ".")) / "config.json"
     try:
@@ -144,10 +160,10 @@ def main():
     task = os.environ.get("HIVER_SETUP_TASK", "").strip() or input("What should the swarm do? ").strip()
     if not task:
         sys.exit("no task")
-    slug = slugify(task)
+    slug = ask_name(task)
     root = Path(os.environ.get("HIVER_SETUP_CWD") or os.getcwd()) / f"swarm-{slug}"
 
-    print(f"hiver team template\n\n  task   {task}\n  root   {root}")
+    print(f"hiver team template\n\n  name   {slug}\n  task   {task}\n  root   {root}")
     print(f"  team   coordinator ({cfg['master_model']}) · builder ({cfg['model']}) · critic ({cfg['model']})")
     print(f"  addons {', '.join(cfg['addons']) or 'none'} · heartbeat {cfg['heartbeat'] or 'none'}\n")
     if input("Launch this swarm? [Y/n] ").strip().lower() in ("n", "no"):

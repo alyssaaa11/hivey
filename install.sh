@@ -5,14 +5,16 @@
 #   cd ~/hiver && ./install.sh
 #
 # Builds hiver, installs it as ~/.local/bin/hiver (HIVER_BIN_DIR to change), installs the hiver
-# skill for Claude Code / Codex, links the bundled plugins (dashboard, Slack relay, GitHub,
-# team template), turns on the swarm sidebar and Option keys, offers to connect Slack and to
-# choose a desktop pet (macOS), and sets up the hiver agent in ~/.hiver/agent (needs Claude
-# Code; Slack channel #hiver when connected). --no-setup skips the last four.
-# Run it again any time; later updates are just `hiver update`.
+# skill and the global find-skills skill for Claude Code, links the bundled plugins (dashboard,
+# Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the swarm
+# sidebar and Option keys, asks for your Slack bot token, your skills folder (default ~/SKILLS),
+# your Obsidian folder (agents' wiki vaults) and a desktop pet (macOS), and sets up the hiver
+# agent in ~/.hiver/agent (needs Claude Code; Slack channel #hiver when connected).
+# --no-setup skips the questions and the hiver agent. Run it again any time; later updates are
+# just `hiver update`.
 #
 # Needs: git, Rust (cargo, via https://rustup.rs), Zig 0.16.0 (https://ziglang.org/download,
-# or set ZIG=/path/to/zig), python3. macOS or Linux.
+# or set ZIG=/path/to/zig), python3, Node.js (npx, for skills.sh). macOS or Linux.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -23,7 +25,7 @@ SETUP=1
 for arg in "$@"; do
   case "$arg" in
     --no-setup) SETUP=0 ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option $arg (./install.sh [--no-setup])"; exit 2 ;;
   esac
 done
@@ -78,6 +80,19 @@ else
   echo "no Claude Code or Codex found: skipped (later: hiver skill install)"
 fi
 
+# find-skills (skills.sh) is the one skill installed globally: creators use it to find skills an
+# agent needs; those skills then go into the agent's own folder, never the global ones.
+say "find-skills (global Claude Code skill)"
+if [ -f "$HOME/.claude/skills/find-skills/SKILL.md" ]; then
+  echo "already installed"
+elif ! command -v npx >/dev/null; then
+  echo "npx not found (install Node.js): skipped (later: npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y)"
+elif npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y >"$LOG_DIR/hiver-find-skills.log" 2>&1; then
+  echo "installed"
+else
+  echo "could not install (see $LOG_DIR/hiver-find-skills.log; later: npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y)"
+fi
+
 say "bundled plugins"
 STARTED_SERVER=0
 if ! "$BIN" plugin list >/dev/null 2>&1; then
@@ -108,20 +123,91 @@ if [ "$SETUP" = 1 ]; then
   say "swarm sidebar and keys"
   "$BIN" swarm setup
 
-  say "Slack (optional: talk to hiver and your agents from Slack)"
+  say "Slack (talk to hiver and your agents from Slack; needed for Slack channels)"
   SLACK=0
   if "$BIN" slack status >/dev/null 2>&1; then
     "$BIN" slack status
     SLACK=1
-  elif [ -t 0 ]; then
-    printf 'Connect your Slack workspace now? [y/N] '
-    read -r answer || answer=""
+  elif [ -t 0 ] || (: </dev/tty) 2>/dev/null; then
+    # Asked on the terminal even when stdin is redirected (e.g. curl … | bash).
+    echo "Slack isn't connected on this machine: hiver needs your Slack app's bot token"
+    echo "(xoxb-…, typed hidden; the next step shows how to create the app if you have none)."
+    printf 'Connect Slack now? [Y/n] '
+    read -r answer </dev/tty || answer=n
     case "$answer" in
-      [yY]*) "$BIN" slack connect && SLACK=1 ;;
-      *) echo "skipped (later: hiver slack connect)" ;;
+      [nN]*) echo "skipped (later: hiver slack connect)" ;;
+      *) "$BIN" slack connect </dev/tty && SLACK=1 ;;
     esac
   else
-    echo "skipped: not a terminal (later: hiver slack connect)"
+    echo "skipped: no terminal to type the token in (later: hiver slack connect)"
+  fi
+
+  say "skills library (where creators pick each new agent's skills)"
+  if [ -t 0 ] || (: </dev/tty) 2>/dev/null; then
+    SKILLS_DIR=$("$BIN" skills dir 2>/dev/null || echo "$HOME/SKILLS")
+    printf 'Your skills folder [%s]: ' "$SKILLS_DIR"
+    read -r answer </dev/tty || answer=""
+    SKILLS_DIR="${answer:-$SKILLS_DIR}"
+    SKILLS_DIR="${SKILLS_DIR/#\~/$HOME}"
+    mkdir -p "$SKILLS_DIR"
+    "$BIN" skills dir "$SKILLS_DIR" || true
+    printf 'Search skills.sh for skills your library lacks (asks before installing any)? [Y/n] '
+    read -r answer </dev/tty || answer=""
+    case "$answer" in
+      [nN]*) "$BIN" skills online off ;;
+      *) "$BIN" skills online on ;;
+    esac
+  else
+    echo "skipped: no terminal (default $("$BIN" skills dir 2>/dev/null); later: hiver settings → skills)"
+  fi
+
+  say "Obsidian (where agents and swarms keep their wiki memory vaults)"
+  WIKI_SETTINGS="$HOME/.hiver/wiki.json"
+  if [ -t 0 ] || (: </dev/tty) 2>/dev/null; then
+    WIKI_DIR=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("dir",""))' \
+      "$WIKI_SETTINGS" 2>/dev/null || true)
+    WIKI_DIR="${WIKI_DIR:-$HOME/Obsidian}"
+    printf 'Your Obsidian folder (new vaults go in it) [%s]: ' "$WIKI_DIR"
+    read -r answer </dev/tty || answer=""
+    WIKI_DIR="${answer:-$WIKI_DIR}"
+    WIKI_DIR="${WIKI_DIR/#\~/$HOME}"
+    mkdir -p "$WIKI_DIR"
+    # New vaults copy the theme and Style Settings of one existing vault (Obsidian keeps the
+    # look per vault); offer the vaults in that folder that have a theme.
+    THEMED=()
+    for vault in "$WIKI_DIR"/*/; do
+      grep -qs '"cssTheme": *"[^"]' "$vault.obsidian/appearance.json" && THEMED+=("${vault%/}")
+    done
+    LOOK_FROM=""
+    if [ "${#THEMED[@]}" -gt 0 ]; then
+      echo "Vaults with a theme new vaults can copy:"
+      for i in "${!THEMED[@]}"; do echo "  $((i + 1))) $(basename "${THEMED[$i]}")"; done
+      printf 'Copy the look of which one? [1, 0 = none] '
+      read -r answer </dev/tty || answer=0
+      answer="${answer:-1}"
+      if [[ "$answer" =~ ^[0-9]+$ ]] && [ "$answer" -ge 1 ] && [ "$answer" -le "${#THEMED[@]}" ]; then
+        LOOK_FROM="${THEMED[$((answer - 1))]}"
+      fi
+    fi
+    python3 - "$WIKI_SETTINGS" "$WIKI_DIR" "$LOOK_FROM" <<'PY'
+import json, sys
+from pathlib import Path
+path, folder, look = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+try:
+    saved = json.loads(path.read_text())
+except (OSError, ValueError):
+    saved = {}
+saved["dir"] = folder
+if look:
+    saved["look_from"] = look
+else:
+    saved.pop("look_from", None)
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps(saved) + "\n")
+PY
+    echo "saved in $WIKI_SETTINGS: vaults in $WIKI_DIR${LOOK_FROM:+, look of $(basename "$LOOK_FROM")}"
+  else
+    echo "skipped: no terminal (agents ask for your Obsidian folder the first time)"
   fi
 
   say "desktop pet (optional)"
@@ -161,3 +247,8 @@ Start hiver:        hiver
 New swarm:          hiver swarm new "<task>"   (from the project folder)
 Update later:       hiver update
 EOF
+if [ "$SETUP" = 1 ] && [ "$SLACK" = 0 ]; then
+  echo
+  echo "Slack is NOT connected: agents can't get Slack channels until you run"
+  echo "  hiver slack connect      (asks for the Slack bot token, then: hiver home setup --slack)"
+fi

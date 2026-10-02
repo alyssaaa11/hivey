@@ -2,7 +2,7 @@
 
 hiver runs swarms; it doesn't decide **how a team is designed**. That's the job of a
 **setup provider**: a plugin you can write in any language, like the included `/swarm` skill
-(`swarm.skill`) or the example `hiver.team-template`.
+(`swarm.creator`) or the example `hiver.team-template`.
 
 See the flow as a diagram: [`diagrams/hiver-new-swarm.html`](diagrams/hiver-new-swarm.html).
 

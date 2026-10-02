@@ -28,9 +28,11 @@ cd ~/hiver && ./install.sh
 ```
 
 `install.sh` builds hiver, installs `~/.local/bin/hiver`, installs the hiver skill, links the
-bundled plugins (dashboard, Slack relay, GitHub, team template), turns on the swarm sidebar
-and Option keys, offers to connect Slack (`hiver slack connect`) and to choose a desktop pet
-(macOS), and sets up the hiver agent (`--no-setup` skips all that). Run it again any time.
+bundled plugins (dashboard, Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the
+swarm sidebar and Option keys, asks for your Slack bot token (`hiver slack connect`), your
+Obsidian folder for the agents' wiki vaults (and which vault's look new vaults copy) and a
+desktop pet (macOS), and sets up the hiver agent (`--no-setup` skips all that). Run it again
+any time.
 
 **Desktop pet (macOS, optional):** a small character on your desktop that acts out what your
 agents do: it reacts when a swarm starts, while agents work, when one finishes or needs you,
@@ -60,7 +62,7 @@ Check the install:
 ```bash
 hiver --version          # hiver 0.9.3
 hiver status             # server: running
-hiver plugin list        # hiver.slack-relay, hiver.dashboard, hiver.github, hiver.team-template
+hiver plugin list        # hiver.slack-relay, hiver.dashboard, hiver.github, hiver.team-template, hiver.agent-creator
 ```
 
 The **hiver skill** teaches Claude Code and Codex to run hiver for you (sessions, swarms,

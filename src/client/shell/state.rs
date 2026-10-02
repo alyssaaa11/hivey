@@ -395,6 +395,10 @@ pub(super) enum ClientSettingsSection {
     Integrations,
     // hiver: the desktop pet
     Pets,
+    // hiver: the swarm and agent creators `hiver swarm new` uses, and the skills plugin
+    Plugins,
+    // hiver: the skills library folder and online skill search
+    Skills,
 }
 
 impl ClientSettingsSection {
@@ -405,6 +409,8 @@ impl ClientSettingsSection {
         Self::Toast,
         Self::Integrations,
         Self::Pets,
+        Self::Plugins,
+        Self::Skills,
     ];
 
     pub(super) fn label(self) -> &'static str {
@@ -415,6 +421,8 @@ impl ClientSettingsSection {
             Self::Toast => "toasts",
             Self::Integrations => "integrations",
             Self::Pets => "pets",
+            Self::Plugins => "plugins",
+            Self::Skills => "skills",
         }
     }
 }
@@ -433,6 +441,20 @@ pub(super) struct ClientSettingsOverlay {
     /// choice started (the switch itself runs `hiver pet` in the background).
     pub(super) pet_current: Option<String>,
     pub(super) pet_message: Option<String>,
+    /// hiver: the installed swarm creators then agent creators, the one `hiver swarm new`
+    /// uses for each kind (swarm, agent), and what the last choice did.
+    pub(super) creators: Vec<crate::swarm::creators::Creator>,
+    pub(super) creator_current: (Option<String>, Option<String>),
+    pub(super) creator_message: Option<String>,
+    /// hiver: the skills plugins (listed after the creators) and the one creators follow.
+    pub(super) skill_providers: Vec<crate::swarm::skills_library::Provider>,
+    pub(super) skill_provider_current: Option<String>,
+    /// hiver: settings → skills: library folders to choose from, the current one, whether
+    /// online search is on, and what the last choice did.
+    pub(super) skill_dirs: Vec<std::path::PathBuf>,
+    pub(super) skill_dir_current: Option<std::path::PathBuf>,
+    pub(super) skills_online: bool,
+    pub(super) skills_message: Option<String>,
 }
 
 #[derive(Debug)]

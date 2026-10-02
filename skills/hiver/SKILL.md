@@ -52,9 +52,10 @@ Mouse: click a swarm in the sidebar → focuses its master; hover → info card.
 ## Swarms
 
 ```bash
-hiver swarm new "<task>"                      # a setup provider designs + launches it (asks first)
-hiver swarm new --provider <id> --default "<task>"
-hiver swarm providers                         # installed setup providers
+hiver swarm new "<task>"                      # the swarm creator designs + launches it (asks first)
+hiver swarm new --agent "<task>"              # one solo agent in this folder (agent creator)
+hiver swarm providers [--default <id>]        # swarm / agent creators; * = used (settings → plugins)
+hiver skills [list|guide|copy|add|find|dir|online]  # skills library for new agents (settings → skills)
 hiver swarm list [--json]                     # swarms, agents, roles, states, queued messages
 hiver swarm info [<slug>]                     # agents, Slack channel, vault, addons, budget, tasks…
 hiver swarm master [<slug>] [--focus]         # the master pane (focus it)
@@ -100,7 +101,7 @@ hiver swarm addon <slug> <id>[:<pane>]...       # open addons in a running swarm
 hiver swarm launch … --addon <id>               # open them at launch
 ```
 
-Bundled in the repo's `plugins/` (linked by `install.sh`): the four `hiver.*` ones. The others
+Bundled in the repo's `plugins/` (linked by `install.sh`): the seven `hiver.*` ones. The others
 come with the /swarm and /agent-creator skills and are only there when those are installed;
 check `hiver plugin list` / `hiver swarm providers` before relying on them.
 
@@ -110,19 +111,28 @@ check `hiver plugin list` / `hiver swarm providers` before relying on them.
 | `hiver.dashboard` | agents, states, tokens per agent, active time vs budget, tasks, messages |
 | `hiver.github` | product + swarm repos, asks before creating anything |
 | `hiver.team-template` | example setup provider (builder + critic); copy it |
+| `hiver.swarm-creator` | built-in Swarm creator: a coordinator designs a team for any task (always there) |
+| `hiver.agent-creator` | built-in Agent creator: one solo agent in the current folder (always there) |
+| `hiver.skills` | built-in skills plugin: how creators pick, find and install each agent's skills (`hiver skills guide`) |
 | `swarm.watcher` | /swarm skill addon: stalled-agent and budget alerts to the master |
-| `swarm.skill` | /swarm skill as a setup provider |
-| `agent.creator` | /agent-creator skill: one solo agent in the current folder |
+| `swarm.creator` | Swarm creator from the /swarm skill (setup provider) |
+| `agent.creator` | Agent creator from the /agent-creator skill: one solo agent in the current folder |
 
-**Creating a swarm or agent: always ask the user two things first** (one question each, then
+**Creating a swarm or agent: always ask the user three things first** (one question each, then
 act on the answers):
-1. **Slack channel?** (see below)
-2. **Obsidian wiki memory?** A vault in the user's Obsidian where it keeps what it learns. If
+1. **Name?** Suggest one from the task; normalize to `[a-z][a-z0-9-]{0,31}`. It's the one name
+   used everywhere: the swarm/agent slug (`--slug`), its Slack channel `#<name>` and its
+   Obsidian vault `<name>-wiki` (`new_wiki.py <name>`). Never pick a different name for any.
+2. **Slack channel?** (see below)
+3. **Obsidian wiki memory?** A vault in the user's Obsidian where it keeps what it learns. If
    yes and you don't know where their Obsidian is, ask once (default `~/Obsidian`; it's then
    remembered in `~/.hiver/wiki.json`). Create it with the `agents-create-wiki` skill if it's
    installed, else `python3 <this skill>/scripts/new_wiki.py <slug> [--dir <obsidian>] --agent
    <agent folder> [--agent …] --about "<one line>"` (a team: one vault, every agent folder
    linked). Do it after the agents' CLAUDE.md files exist, and tell the user the vault path.
+   New vaults copy the theme and Style Settings of the vault remembered as `look_from` in
+   `~/.hiver/wiki.json` (set it once with `--look-from <their main vault>`); on first open
+   the user must click "Turn on community plugins" for the folder colors to show.
 
 ## Slack
 
@@ -180,8 +190,9 @@ Settings: `~/.hiver/config.json`; its brief: `~/.hiver/agent/CLAUDE.md` (kept on
 
 A solo agent is a swarm with one member that is its own master: own space, ★ teal row in the
 sidebar, messages, schedules and heartbeats like a master. Create one from the folder it will
-live in: `cd <folder> && hiver swarm new --provider agent.creator "<task>"` (the designer pane
-stays; close it once the agent runs). Lower level: `hiver swarm launch <folder> --slug S --solo
+live in: `mkdir -p <folder> && cd <folder> && hiver swarm new --agent "<task>"` (the agent
+creator chosen in settings → plugins, else the built-in `hiver.agent-creator`). The designer
+pane stays; close it once the agent runs. Lower level: `hiver swarm launch <folder> --slug S --solo
 [--model M] [--kind codex] [--description … --skills … --tools …]`. Relaunch with
 `hiver swarm relaunch <slug>` (new space if its pane is gone).
 

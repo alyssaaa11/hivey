@@ -203,6 +203,12 @@ pub(super) fn render_settings_overlay(
         ClientSettingsSection::Pets => {
             render_pets(buffer, content, settings, palette, &mut choice_hits);
         }
+        ClientSettingsSection::Plugins => {
+            render_plugins(buffer, content, settings, palette, &mut choice_hits);
+        }
+        ClientSettingsSection::Skills => {
+            render_skills(buffer, content, settings, palette, &mut choice_hits);
+        }
     }
 
     let installable = settings
@@ -369,6 +375,157 @@ fn render_pets(
                 Style::default().fg(palette.accent).bg(palette.panel_bg),
             );
         }
+    }
+}
+
+/// hiver: the swarm and agent creators; ✓ marks the one `hiver swarm new` uses for each kind.
+fn render_plugins(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    let (swarm, agent) = &settings.creator_current;
+    let mark = |current: &Option<String>, id: &str| {
+        if current.as_deref() == Some(id) {
+            "✓"
+        } else {
+            " "
+        }
+    };
+    let labels: Vec<String> = settings
+        .creators
+        .iter()
+        .map(|creator| {
+            let current = if creator.agent { agent } else { swarm };
+            let kind = if creator.agent { "agent" } else { "swarm" };
+            format!(
+                "{} {kind}   {:<34} {}",
+                mark(current, &creator.id),
+                creator.name,
+                creator.id
+            )
+        })
+        .chain(settings.skill_providers.iter().map(|provider| {
+            format!(
+                "{} skills  {:<34} {}",
+                mark(&settings.skill_provider_current, &provider.id),
+                provider.name,
+                provider.id
+            )
+        }))
+        .collect();
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let description = if labels.is_empty() {
+        "no creators installed: hiver plugin link <hiver repo>/plugins/swarm-creator"
+    } else {
+        "↵ picks what new swarms / agents use (✓) · hiver's built-in ones when none is picked"
+    };
+    render_choice_section(
+        buffer,
+        area,
+        "swarm and agent creators, skills",
+        description,
+        &labels,
+        settings.selected,
+        None,
+        palette,
+        hits,
+    );
+    let row_gap = u16::from(labels.len() > 2);
+    let mut y = area.y + 3 + labels.len() as u16 * (1 + row_gap);
+    let mut lines = Vec::new();
+    if let Some(message) = &settings.creator_message {
+        lines.push((message.clone(), palette.accent));
+    }
+    lines.push((
+        "install more: hiver plugin install OWNER/REPO[/DIR] · hiver plugin link <folder>"
+            .to_string(),
+        palette.overlay1,
+    ));
+    for (text, color) in lines {
+        if y >= area.bottom() {
+            break;
+        }
+        put_text(
+            buffer,
+            area.x,
+            y,
+            area.width,
+            &format!(" {text}"),
+            Style::default().fg(color).bg(palette.panel_bg),
+        );
+        y += 1;
+    }
+}
+
+/// hiver: the skills library folder (✓ the current one) and online skill search.
+fn render_skills(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut labels: Vec<String> = settings
+        .skill_dirs
+        .iter()
+        .map(|dir| {
+            let mark = if settings.skill_dir_current.as_ref() == Some(dir) {
+                "✓"
+            } else {
+                " "
+            };
+            let shown = dir.display().to_string();
+            let shown = match shown.strip_prefix(&home) {
+                Some(rest) if !home.is_empty() => format!("~{rest}"),
+                _ => shown,
+            };
+            let count = crate::swarm::skills_library::list(dir).len();
+            format!("{mark} library  {shown:<32} {count} skills")
+        })
+        .collect();
+    labels.push(format!(
+        "{} online   search skills.sh for skills the library lacks (asks first)",
+        if settings.skills_online { "✓" } else { " " }
+    ));
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    render_choice_section(
+        buffer,
+        area,
+        "skills for new agents",
+        "where creators pick each agent's skills · installed in the agent's folder, never global",
+        &labels,
+        settings.selected,
+        None,
+        palette,
+        hits,
+    );
+    let row_gap = u16::from(labels.len() > 2);
+    let mut y = area.y + 3 + labels.len() as u16 * (1 + row_gap);
+    let mut lines = Vec::new();
+    if let Some(message) = &settings.skills_message {
+        lines.push((message.clone(), palette.accent));
+    }
+    lines.push((
+        "another folder: hiver skills dir <folder>".to_string(),
+        palette.overlay1,
+    ));
+    for (text, color) in lines {
+        if y >= area.bottom() {
+            break;
+        }
+        put_text(
+            buffer,
+            area.x,
+            y,
+            area.width,
+            &format!(" {text}"),
+            Style::default().fg(color).bg(palette.panel_bg),
+        );
+        y += 1;
     }
 }
 

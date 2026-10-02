@@ -64,7 +64,108 @@ pub(super) fn chosen_pet() -> Option<String> {
         .map(str::to_string)
 }
 
+/// The installed creators, swarm creators first, and the one used for each kind.
+pub(super) fn load_creators() -> (
+    Vec<crate::swarm::creators::Creator>,
+    (Option<String>, Option<String>),
+) {
+    use crate::swarm::creators;
+    let mut found = creators::installed();
+    found.sort_by(|a, b| (a.agent, &a.name).cmp(&(b.agent, &b.name)));
+    let current = |agent| creators::pick(&found, agent, creators::chosen(agent).as_deref()).ok();
+    let current = (current(false), current(true));
+    (found, current)
+}
+
+/// The installed skills plugins and the one creators follow.
+pub(super) fn load_skill_providers() -> (Vec<crate::swarm::skills_library::Provider>, Option<String>) {
+    use crate::swarm::skills_library as library;
+    let found = library::providers();
+    let current = library::pick_provider(&found, library::chosen_provider().as_deref())
+        .map(|provider| provider.id.clone());
+    (found, current)
+}
+
 impl ClientShellState {
+    /// Settings → skills: a library folder (rows before the last) or online search (the last
+    /// row, toggled), saved with `hiver skills` in the background.
+    fn choose_skills_setting(&mut self, selected: usize, outcome: &mut ClientShellInput) {
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        let args = if let Some(dir) = settings.skill_dirs.get(selected).cloned() {
+            if settings.skill_dir_current.as_ref() == Some(&dir) {
+                return;
+            }
+            settings.skills_message = Some(format!("skills library: {}", dir.display()));
+            settings.skill_dir_current = Some(dir.clone());
+            vec!["skills".into(), "dir".into(), dir.display().to_string()]
+        } else if selected == settings.skill_dirs.len() {
+            settings.skills_online = !settings.skills_online;
+            let value = if settings.skills_online { "on" } else { "off" };
+            settings.skills_message = Some(format!("online skill search {value}"));
+            vec!["skills".into(), "online".into(), value.into()]
+        } else {
+            return;
+        };
+        outcome.actions.push(ClientShellAction::RunHiver(args));
+        outcome.repaint = true;
+    }
+
+    /// Makes the selected creator the one `hiver swarm new` uses for its kind, with
+    /// `hiver swarm providers --default` in the background.
+    fn choose_creator(&mut self, selected: usize, outcome: &mut ClientShellInput) {
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        let Some(creator) = settings.creators.get(selected).cloned() else {
+            // Rows after the creators are the skills plugins.
+            let Some(provider) = settings
+                .skill_providers
+                .get(selected.saturating_sub(settings.creators.len()))
+                .cloned()
+            else {
+                return;
+            };
+            if selected < settings.creators.len()
+                || settings.skill_provider_current.as_deref() == Some(provider.id.as_str())
+            {
+                return;
+            }
+            settings.skill_provider_current = Some(provider.id.clone());
+            settings.creator_message = Some(format!("new agents get their skills with {}", provider.name));
+            outcome.actions.push(ClientShellAction::RunHiver(vec![
+                "skills".into(),
+                "providers".into(),
+                "--default".into(),
+                provider.id,
+            ]));
+            outcome.repaint = true;
+            return;
+        };
+        let current = if creator.agent {
+            &mut settings.creator_current.1
+        } else {
+            &mut settings.creator_current.0
+        };
+        if current.as_deref() == Some(creator.id.as_str()) {
+            return;
+        }
+        *current = Some(creator.id.clone());
+        settings.creator_message = Some(format!(
+            "new {}s now use {}",
+            if creator.agent { "agent" } else { "swarm" },
+            creator.name
+        ));
+        outcome.actions.push(ClientShellAction::RunHiver(vec![
+            "swarm".into(),
+            "providers".into(),
+            "--default".into(),
+            creator.id,
+        ]));
+        outcome.repaint = true;
+    }
+
     /// Switches the pet (or turns it off) with `hiver pet` in the background.
     fn choose_pet(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         let Some(&(label, id, _)) = PET_CHOICES.get(selected) else {
@@ -101,6 +202,15 @@ impl ClientShellState {
             installing_integrations: false,
             pet_current: chosen_pet(),
             pet_message: None,
+            creators: Vec::new(),
+            creator_current: (None, None),
+            creator_message: None,
+            skill_providers: Vec::new(),
+            skill_provider_current: None,
+            skill_dirs: Vec::new(),
+            skill_dir_current: None,
+            skills_online: true,
+            skills_message: None,
         }));
     }
 
@@ -118,6 +228,8 @@ impl ClientShellState {
                     .position(|(_, id, _)| *id == current.as_deref())
                     .unwrap_or(PET_CHOICES.len() - 1)
             }
+            ClientSettingsSection::Plugins => 0,
+            ClientSettingsSection::Skills => 0,
         }
     }
 
@@ -139,6 +251,20 @@ impl ClientShellState {
         if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() {
             settings.section = section;
             settings.selected = selected;
+            if section == ClientSettingsSection::Plugins {
+                // Read fresh each time: plugins may have been installed meanwhile.
+                (settings.creators, settings.creator_current) = load_creators();
+                (settings.skill_providers, settings.skill_provider_current) =
+                    load_skill_providers();
+                settings.creator_message = None;
+            }
+            if section == ClientSettingsSection::Skills {
+                use crate::swarm::skills_library as library;
+                settings.skill_dirs = library::candidates();
+                settings.skill_dir_current = Some(library::dir());
+                settings.skills_online = library::online();
+                settings.skills_message = None;
+            }
         }
         if request_integrations {
             self.queue_integration_list(outcome, true);
@@ -168,6 +294,10 @@ impl ClientShellState {
                 ClientSettingsSection::Integrations => settings.integrations.len(),
                 ClientSettingsSection::Pets if PETS_SUPPORTED => PET_CHOICES.len(),
                 ClientSettingsSection::Pets => 0,
+                ClientSettingsSection::Plugins => {
+                    settings.creators.len() + settings.skill_providers.len()
+                }
+                ClientSettingsSection::Skills => settings.skill_dirs.len() + 1,
             },
             _ => 0,
         }
@@ -292,6 +422,8 @@ impl ClientShellState {
             }
             ClientSettingsSection::Integrations => self.install_recommended_integrations(outcome),
             ClientSettingsSection::Pets => self.choose_pet(selected, outcome),
+            ClientSettingsSection::Plugins => self.choose_creator(selected, outcome),
+            ClientSettingsSection::Skills => self.choose_skills_setting(selected, outcome),
         }
     }
 

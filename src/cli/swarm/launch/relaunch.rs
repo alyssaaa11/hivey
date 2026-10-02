@@ -352,6 +352,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         solo,
         home: manifest["home"] == true,
         slack: false,
+        no_slack: true,
         profile: serde_json::Map::new(),
     };
 

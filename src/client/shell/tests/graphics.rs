@@ -320,6 +320,15 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
             installing_integrations: false,
             pet_current: None,
             pet_message: None,
+            creators: Vec::new(),
+            creator_current: (None, None),
+            creator_message: None,
+            skill_providers: Vec::new(),
+            skill_provider_current: None,
+            skill_dirs: Vec::new(),
+            skill_dir_current: None,
+            skills_online: true,
+            skills_message: None,
         }),
     ];
     for overlay in overlays {

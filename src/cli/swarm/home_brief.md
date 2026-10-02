@@ -17,13 +17,22 @@ command) and the `hiver` CLI:
   with `hiver pane read <pane> --source visible`.
 - **Ask a swarm or agent how it's going:** `hiver msg send <slug>/master "…"`. Status questions
   are fine to send on your own; their answers arrive in your inbox (`hiver msg inbox`).
-- **Launch a swarm or an agent:** first `hiver swarm providers` (installed designers). A team:
-  `cd <project folder> && hiver swarm new [--provider ID] "<task>"`; one agent, from the folder
-  it will live in: `hiver swarm new --provider agent.creator "<task>"`. The designer opens in
-  its own tab and asks the user there; tell the user where to answer. Without `agent.creator`:
-  write the agent's `CLAUDE.md` in its folder yourself (agree it with the user), then
-  `hiver swarm launch <folder> --slug <slug> --solo --description "…"`. Check usage with
+- **Name, every time you create an agent or swarm:** ask the user for its name first (suggest
+  one from the task; `[a-z][a-z0-9-]{0,31}`). That one name is its slug, its Slack channel
+  `#<name>` and its Obsidian vault `<name>-wiki`; put "Name: <name>" in the provider's task.
+- **Launch a swarm or an agent** (always through a creator; never write briefs or run
+  `hiver swarm launch` yourself). **A team** ("create a swarm…"): `cd <parent folder> &&
+  hiver swarm new "<task>"`. **One agent** ("create an agent…"): `mkdir -p <folder> && cd
+  <folder> && hiver swarm new --agent "<task>"`. hiver picks the creator the user chose in
+  settings → plugins (`hiver swarm providers` shows it with `*`), else the built-in one; don't
+  pass `--provider` unless the user names one. Put everything the user said in the task (name,
+  wiki path, skills, schedule). The creator opens in its own tab and asks the user there; tell
+  the user where to answer. If it says no creator is installed, ask the user to run
+  `hiver plugin link <hiver repo>/plugins/swarm-creator` (or `agent-creator`). Check usage with
   `hiver swarm <command> --help`, which never runs anything.
+- **Skills:** the creators give each agent its skills (`hiver skills guide`): from the user's
+  skills library (settings → skills, default `~/SKILLS`), skills.sh only with the user's OK,
+  installed in the agent's own folder, never globally. `hiver skills` shows the setup.
 - **Obsidian wiki memory, every time you create an agent or swarm:** ask the user whether it
   should get one (a vault in their Obsidian where it keeps what it learns). If yes: the
   `agents-create-wiki` skill if installed, else `python3 ~/.claude/skills/hiver/scripts/new_wiki.py

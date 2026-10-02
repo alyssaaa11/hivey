@@ -87,7 +87,7 @@ The swarm manifest `<root>/.swarm/agents.json` is hiver's; a provider may add:
 Step-by-step guide and an example to copy: [`../docs/hiver-providers.md`](../docs/hiver-providers.md)
 (`hiver.team-template`, a fixed builder + critic team).
 
-Included: **`swarm.skill`** (`~/.claude/skills/swarm/hiver-setup`) opens a Claude coordinator
+Included: **`swarm.creator`** (`~/.claude/skills/swarm/hiver-setup`) opens a Claude coordinator
 running the `/swarm` skill. It writes its own kickoff and monitoring texts, and `info` with the
 swarm's Slack channel and Obsidian vault.
 

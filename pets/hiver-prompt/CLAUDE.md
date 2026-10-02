@@ -28,7 +28,7 @@ Hiver's cursor blinks slowly while idle and pulses while working. Its movements 
 
 ## Overview
 
-A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face, directional lighting (key light upper-left, floor bounce light underneath, soft specular), soft contact shadow. Three smaller shaded agent spheres (emerald + muted mint) surround it at different heights and depths — some behind Hiver, some nearer the viewer. No orbits or rings. Professional, composed, precise. Watches hiver and acts out its swarms, agents and messages. Sibling of `~/projects/hiver_pet` (separate app, bundle id `com.hiver.prompt`, so both can run at once). Single `main.swift` (AppKit + Core Graphics).
+A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face, directional lighting (key light upper-left, floor bounce light underneath, soft specular), soft contact shadow. Three smaller shaded agent spheres (emerald + muted mint) surround it at different heights and depths — some behind Hiver, some nearer the viewer. No orbits or rings. Professional, composed, precise. Watches hiver and acts out its swarms, agents and messages. Sibling of the other pets in `pets/` (separate app, bundle id `com.hiver.prompt`, so all can run at once). Single `main.swift` (AppKit + Core Graphics).
 
 ## Files
 - `main.swift` — the whole app: `drawSphere`/`drawShadow` 3D shading, pet animation, terminal-style speech bubble, `say` voice.
