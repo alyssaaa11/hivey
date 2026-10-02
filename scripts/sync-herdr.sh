@@ -32,6 +32,7 @@ for arg in "$@"; do
 done
 
 say() { printf '\n== %s\n' "$*"; }
+. scripts/ensure-rust-toolchain.sh
 # "hiver 0.9.3 (fc6681b0)": the installed binary's version plus the commit it was built from.
 INSTALLED_FILE="$HOME/.local/state/hiver/installed-commit"
 installed() {
@@ -82,8 +83,13 @@ if [ "$CHECK" = 0 ]; then
     exit 0
   fi
   echo "updating hiver…"
-  cargo build --release -q 2>&1 | grep -vE "external contributor policy|^warning: hiver@" || true
-  [ -x "$NEWBIN" ] || { echo "hiver update: build failed"; exit 1; }
+  ensure_rust_toolchain || { echo "hiver update: Rust is not ready (see above)"; exit 1; }
+  BUILD_LOG="${TMPDIR:-/tmp}"; BUILD_LOG="${BUILD_LOG%/}/hiver-update-build.log"
+  if ! cargo build --release -q >"$BUILD_LOG" 2>&1; then
+    grep -E -A5 "^error" "$BUILD_LOG" | head -30
+    echo "hiver update: build failed, hiver was not changed (full log: $BUILD_LOG)"
+    exit 1
+  fi
   install_and_handoff 1
   echo "hiver updated: $BEFORE → $(installed)"
   if [ "$(git rev-parse HEAD)" != "$OLD_HEAD" ]; then
@@ -146,6 +152,7 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 
 say "build"
+ensure_rust_toolchain || { echo "hiver update: Rust is not ready (see above)"; exit 1; }
 cargo build --release 2>&1 | grep -vE "external contributor policy" | tail -2
 UNPUSHED=$(git rev-list --count origin/main..HEAD)
 if cmp -s "$NEWBIN" "$BIN" && [ "$UNPUSHED" = 0 ]; then

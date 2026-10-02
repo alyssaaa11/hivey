@@ -30,6 +30,8 @@ done
 say() { printf '\n== %s\n' "$*"; }
 fail() { printf 'install: %s\n' "$*" >&2; exit 1; }
 
+LOG_DIR="${TMPDIR:-/tmp}"; LOG_DIR="${LOG_DIR%/}"
+
 say "check requirements"
 case "$(uname -s)" in Darwin|Linux) ;; *) fail "hiver installs on macOS or Linux only" ;; esac
 command -v git >/dev/null || fail "git not found"
@@ -39,8 +41,11 @@ ZIG_BIN="${ZIG:-zig}"
 command -v "$ZIG_BIN" >/dev/null || fail "zig not found: hiver needs Zig 0.16.0 (https://ziglang.org/download), or set ZIG=/path/to/zig"
 ZIG_VERSION=$("$ZIG_BIN" version)
 [ "$ZIG_VERSION" = "0.16.0" ] || fail "zig $ZIG_VERSION found, hiver needs Zig 0.16.0 exactly (set ZIG=/path/to/zig-0.16.0)"
-echo "git, python3, $(cargo --version), zig $ZIG_VERSION: ok"
 [ -d .git ] || fail "run this from a git clone of hiver (hiver update needs it)"
+
+. scripts/ensure-rust-toolchain.sh
+ensure_rust_toolchain || fail "Rust is not ready (see above)"
+echo "git, python3, $(cargo --version), zig $ZIG_VERSION: ok"
 
 # The upstream remote is only for maintainers (hiver update --check merges herdr); never pushed to.
 if ! git remote get-url upstream >/dev/null 2>&1; then
@@ -49,8 +54,13 @@ if ! git remote get-url upstream >/dev/null 2>&1; then
 fi
 
 say "build (the first build takes a few minutes)"
-cargo build --release 2>&1 | grep -vE "external contributor policy|^warning: hiver@" | tail -3
-[ -x target/release/hiver ] || fail "build failed"
+BUILD_LOG="$LOG_DIR/hiver-install-build.log"
+if ! cargo build --release >"$BUILD_LOG" 2>&1; then
+  grep -vE "external contributor policy|^warning: hiver@" "$BUILD_LOG" | grep -E -A5 "^error" | head -30 >&2
+  fail "build failed (full log: $BUILD_LOG)"
+fi
+grep -vE "external contributor policy|^warning: hiver@" "$BUILD_LOG" | tail -3
+[ -x target/release/hiver ] || fail "build finished but target/release/hiver is missing"
 
 say "install $BIN"
 mkdir -p "$BIN_DIR"
