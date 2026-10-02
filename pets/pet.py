@@ -18,6 +18,7 @@ import json
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -67,10 +68,23 @@ def save_choice(pet):
     choice_path().write_text(json.dumps({"pet": pet}) + "\n")
 
 
+def pids(pet):
+    """Processes whose executable is this pet's app. `pgrep -a` also searches our ancestors: a
+    switch from a pet's menu runs as that pet's child, and macOS pgrep skips ancestors by
+    default. Matching the executable (`ps -o comm=`), not the command line, keeps a shell whose
+    command merely mentions the app from ever matching."""
+    marker = f"{PETS[pet]['app']}/Contents/MacOS/"
+    found = subprocess.run(["pgrep", "-a", "-f", marker], capture_output=True, text=True)
+    result = []
+    for pid in found.stdout.split():
+        comm = subprocess.run(["ps", "-o", "comm=", "-p", pid], capture_output=True, text=True)
+        if marker in comm.stdout:
+            result.append(int(pid))
+    return result
+
+
 def running(pet):
-    out = subprocess.run(["pgrep", "-f", f"{PETS[pet]['app']}/Contents/MacOS/"],
-                         capture_output=True, text=True)
-    return out.returncode == 0
+    return bool(pids(pet))
 
 
 def sources(pet):
@@ -113,19 +127,19 @@ def build(pet):
 def quit_pet(pet):
     """Quit with a signal, not AppleScript: a switch started from a pet's own menu runs inside
     that app, and macOS may block (or silently ask about) one app scripting another."""
-    pattern = f"{PETS[pet]['app']}/Contents/MacOS/"
-    if not running(pet):
-        return
-    subprocess.run(["pkill", "-TERM", "-f", pattern], capture_output=True)
-    for _ in range(15):
-        if not running(pet):
+    for sig, tries in ((signal.SIGTERM, 15), (signal.SIGKILL, 10)):
+        targets = pids(pet)
+        if not targets:
             return
-        time.sleep(0.2)
-    subprocess.run(["pkill", "-KILL", "-f", pattern], capture_output=True)
-    for _ in range(10):
-        if not running(pet):
-            return
-        time.sleep(0.2)
+        for pid in targets:
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                pass
+        for _ in range(tries):
+            if not running(pet):
+                return
+            time.sleep(0.2)
     print(f"could not quit {PETS[pet]['name']}", file=sys.stderr)
 
 
