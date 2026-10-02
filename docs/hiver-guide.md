@@ -16,24 +16,32 @@ hiver is a terminal workspace for **swarms of AI agents** (Claude Code and Codex
 
 ---
 
-## 1. Check the install
+## 1. Install and update
+
+Needs git, Rust ([rustup.rs](https://rustup.rs)), Zig **0.16.0**
+([ziglang.org/download](https://ziglang.org/download), or `ZIG=/path/to/zig`) and python3,
+on macOS or Linux.
 
 ```bash
-hiver --version          # hiver 0.9.3 (herdr fork)
-hiver status             # server: running
-hiver plugin list        # hiver.slack-relay, hiver.dashboard, hiver.github, swarm.watcher
+git clone git@github.com:jcsancho/hiver.git ~/hiver
+cd ~/hiver && ./install.sh
 ```
 
-If something is missing:
+`install.sh` builds hiver, installs `~/.local/bin/hiver`, installs the hiver skill, links the
+bundled plugins (dashboard, Slack relay, GitHub, team template) and turns on the swarm sidebar
+and Option keys (`--no-setup` skips that). Run it again any time.
+
+**Update:** `hiver update` gets the latest hiver, installs it and moves running sessions to it
+live (agents keep running): `hiver updated: hiver 0.9.3 (fc6681b0) → hiver 0.9.3 (92e4d32a)`.
+Maintainers use `hiver update --check`: it also merges new herdr commits, runs the tests and a
+smoke test, and asks before pushing and installing.
+
+Check the install:
 
 ```bash
-cd ~/projects/swarmAgents/hiver
-cargo build --release && cp target/release/hiver ~/.local/bin/hiver.new && mv ~/.local/bin/hiver.new ~/.local/bin/hiver
-hiver plugin link ~/projects/swarmAgents/hiver/plugins/slack-relay
-hiver plugin link ~/projects/swarmAgents/hiver/plugins/dashboard
-hiver plugin link ~/projects/swarmAgents/hiver/plugins/github
-hiver swarm setup                        # swarm sidebar + Option keys (see section 4)
-                                         # + the hiver skill for Claude Code and Codex
+hiver --version          # hiver 0.9.3
+hiver status             # server: running
+hiver plugin list        # hiver.slack-relay, hiver.dashboard, hiver.github, hiver.team-template
 ```
 
 The **hiver skill** teaches Claude Code and Codex to run hiver for you (sessions, swarms,

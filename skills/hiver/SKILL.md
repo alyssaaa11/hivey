@@ -21,8 +21,8 @@ and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hi
 - Prefer detach + attach. A stopped swarm comes back with `hiver swarm relaunch <slug>`
   (agents continue their conversations).
 - Confirm before anything outward-facing (Slack posts, GitHub repos); the GitHub addon already asks.
-- Never run `hiver integration install` (it rewrites shared agent hooks) or `hiver update`
-  (disabled in the fork; rebuild from the repo instead).
+- Never run `hiver integration install` (it rewrites shared agent hooks). `hiver update` is safe
+  (builds from the user's hiver clone, hands sessions off live); `--check` pushes, so ask first.
 - Secrets: never write tokens into files or prompts; plugins read them via `token_command`
   (e.g. envsave). Key *names* are fine.
 
@@ -182,5 +182,6 @@ Workflow for a new plugin:
   `hiver msg log --swarm <slug>`.
 - **Update this skill:** `hiver skill install` (it ships inside the hiver binary; source
   `skills/hiver/` in the repo).
-- **After rebuilding hiver:** `cargo build --release` in the repo, copy to `~/.local/bin/hiver`;
-  running sessions keep the old code until handoff/restart.
+- **Install / update hiver:** first install from a clone: `./install.sh`. Update: `hiver update`
+  (latest hiver, installed, running sessions handed off live; prints old → new version).
+  Maintainer: `hiver update --check` (merges herdr, tests, asks before push + install).

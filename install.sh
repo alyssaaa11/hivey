@@ -60,7 +60,11 @@ git rev-parse --short HEAD >"$HOME/.local/state/hiver/installed-commit"
 "$BIN" --version
 
 say "hiver skill (Claude Code / Codex)"
-"$BIN" skill install
+if [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ]; then
+  "$BIN" skill install
+else
+  echo "no Claude Code or Codex found: skipped (later: hiver skill install)"
+fi
 
 say "bundled plugins"
 STARTED_SERVER=0
@@ -101,6 +105,4 @@ cat <<EOF
 Start hiver:        hiver
 New swarm:          hiver swarm new "<task>"   (from the project folder)
 Update later:       hiver update
-Option keys (⌥S ⌥M ⌥A …) need Option sent as Meta in your terminal:
-  Terminal.app: Profiles → Keyboard → "Use Option as Meta key";  iTerm2: Left Option = Esc+.
 EOF
