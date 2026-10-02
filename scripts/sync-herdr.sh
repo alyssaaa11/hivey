@@ -1,40 +1,112 @@
 #!/usr/bin/env bash
 # Update hiver from source. `hiver update` runs this script.
 #
-#   hiver update            pull the fork (origin), merge new herdr commits (upstream) on branch
-#                           sync-herdr, reapply the hiver renames, build, test, smoke-test in a
-#                           throwaway session, then ask once before: merging into main + push,
-#                           installing ~/.local/bin/hiver, refreshing the hiver skill and live
-#                           handoff of every running session (agents keep running).
-#   hiver update --yes      same, without the question.
-#   hiver update --check    only show what's new (fork and herdr); change nothing.
+#   hiver update                  get the latest hiver (origin/main), build, install
+#                                 ~/.local/bin/hiver, refresh the hiver skill and live-hand-off
+#                                 running sessions (agents keep running). No tests, no questions:
+#                                 it prints "hiver updated: <old> → <new>".
+#   hiver update --check          maintainer: also merge new herdr commits (on branch sync-herdr),
+#                                 reapply the hiver renames, build, test, smoke-test in a throwaway
+#                                 session, then ask before merging into main + push + install.
+#   hiver update --check --yes    same, without the question.
 #
-# On a merge conflict it stops on branch sync-herdr: fix the files, `git commit`, then run
-# `hiver update` again and it continues from there.
+# --check stops on a merge conflict on branch sync-herdr: fix the files, `git commit`, then run
+# `hiver update --check` again and it continues from there.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 BRANCH=sync-herdr
 BIN="$HOME/.local/bin/hiver"
+NEWBIN="$ROOT/target/release/hiver"
 HANDOFF="$HOME/.claude/skills/hiver/scripts/handoff.py"
 YES=0
 CHECK=0
 for arg in "$@"; do
   case "$arg" in
-    --yes|-y) YES=1 ;;
     --check) CHECK=1 ;;
-    --finish) YES=1 ;;  # older name: continue and publish without asking
+    --yes|-y) YES=1 ;;
     -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unknown option $arg (hiver update [--yes] [--check])"; exit 2 ;;
+    *) echo "unknown option $arg (hiver update [--check [--yes]])"; exit 2 ;;
   esac
 done
 
 say() { printf '\n== %s\n' "$*"; }
+# "hiver 0.9.3 (fc6681b0)": the installed binary's version plus the commit it was built from.
+INSTALLED_FILE="$HOME/.local/state/hiver/installed-commit"
+installed() {
+  local version commit
+  version=$("$BIN" --version 2>/dev/null || echo "hiver ?")
+  commit=$(cat "$INSTALLED_FILE" 2>/dev/null || echo "?")
+  echo "$version ($commit)"
+}
+install_and_handoff() {
+  local quiet=$1
+  # cp over the running binary reuses its inode and macOS then SIGKILLs every new exec.
+  cp "$NEWBIN" "$BIN.new" && mv -f "$BIN.new" "$BIN"
+  mkdir -p "$(dirname "$INSTALLED_FILE")"
+  git rev-parse --short HEAD >"$INSTALLED_FILE"
+  "$BIN" skill install >/dev/null
+  local sessions
+  sessions=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}')
+  for session in $sessions; do
+    if [ "$quiet" = 1 ]; then
+      python3 "$HANDOFF" "$session" >/dev/null 2>&1 || echo "  $session: handoff failed (reattach or restart it)"
+    else
+      printf '%s: ' "$session"
+      python3 "$HANDOFF" "$session" | tail -1
+    fi
+  done
+  [ -z "$sessions" ] || echo "running sessions now use it: $(echo $sessions | tr ' ' ',' | sed 's/,/, /g') (reattach open windows: ⌥Q, then hiver)"
+}
+
+# ---------------------------------------------------------------------------------------------
+# hiver update: the latest hiver, no checks, no questions
+# ---------------------------------------------------------------------------------------------
+if [ "$CHECK" = 0 ]; then
+  if [ "$(git branch --show-current)" != main ] || [ -n "$(git status --porcelain)" ]; then
+    echo "hiver update: the hiver repo ($ROOT) is not on a clean main branch."
+    echo "Finish your work there (or run hiver update --check), then try again."
+    exit 1
+  fi
+  BEFORE=$(installed)
+  OLD_HEAD=$(git rev-parse HEAD)
+  git fetch -q origin
+  if ! git merge -q --ff-only origin/main 2>/dev/null; then
+    echo "hiver update: local main has commits that aren't on origin; publish them with hiver update --check"
+    exit 1
+  fi
+  if [ "$(git rev-parse HEAD)" = "$OLD_HEAD" ] && [ "$(git rev-parse --short HEAD)" = "$(cat "$INSTALLED_FILE" 2>/dev/null)" ] \
+     && cmp -s "$NEWBIN" "$BIN"; then
+    echo "hiver is up to date: $BEFORE"
+    exit 0
+  fi
+  echo "updating hiver…"
+  cargo build --release -q 2>&1 | grep -vE "external contributor policy|^warning: hiver@" || true
+  [ -x "$NEWBIN" ] || { echo "hiver update: build failed"; exit 1; }
+  install_and_handoff 1
+  echo "hiver updated: $BEFORE → $(installed)"
+  if [ "$(git rev-parse HEAD)" != "$OLD_HEAD" ]; then
+    git log --oneline --no-decorate "$OLD_HEAD..HEAD" | head -15 | sed 's/^/  /'
+  fi
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------------------------
+# hiver update --check: maintainer flow (merge herdr, test, ask, publish, install)
+# ---------------------------------------------------------------------------------------------
 # Known failures that also fail on main before any merge (local agent-detection override and
 # live-handoff test setup on this machine); anything else failing stops the update.
 KNOWN='test(server_reload_agent_manifests_reports_runtime_override) | test(agent_explain_evaluates_with_server_manifest_cache) | test(/^live_handoff_(ignores_leaked_default|preserves_client_socket_env|preserves_installed_plugins|preserves_http_servers|preserves_named_session)/)'
 
+if [ -e .git/MERGE_HEAD ]; then
+  echo "a merge is in progress: fix the conflicts, git add … && git commit, then run hiver update --check again"
+  git diff --name-only --diff-filter=U
+  exit 1
+fi
+[ -z "$(git status --porcelain)" ] || { echo "the hiver repo ($ROOT) has uncommitted changes:"; git status --short; exit 1; }
+
+BEFORE=$(installed)
 say "fetch"
 git fetch -q origin
 git fetch -q upstream
@@ -44,14 +116,6 @@ HERDR_NEW=$(git rev-list --count HEAD..upstream/master)
 echo "fork (origin/main): $FORK_NEW new commit(s)"
 echo "herdr (upstream):   $HERDR_NEW new commit(s)"
 [ "$HERDR_NEW" = 0 ] || git log --oneline HEAD..upstream/master | sed 's/^/  /'
-[ "$CHECK" = 1 ] && exit 0
-
-if [ -e .git/MERGE_HEAD ]; then
-  echo "a merge is in progress: fix the conflicts, git add … && git commit, then run hiver update again"
-  git diff --name-only --diff-filter=U
-  exit 1
-fi
-[ -z "$(git status --porcelain)" ] || { echo "the hiver repo ($ROOT) has uncommitted changes:"; git status --short; exit 1; }
 
 if [ "$CURRENT" = main ]; then
   if [ "$FORK_NEW" != 0 ]; then
@@ -70,7 +134,7 @@ if [ "$(git branch --show-current)" = "$BRANCH" ] && [ "$(git rev-list --count H
   if ! git merge --no-edit upstream/master; then
     echo
     echo "Conflicts in:"; git diff --name-only --diff-filter=U
-    echo "Keep herdr's change and put the hiver part back on top, then: git add … && git commit && hiver update"
+    echo "Keep herdr's change and put the hiver part back on top, then: git add … && git commit && hiver update --check"
     exit 1
   fi
 fi
@@ -83,11 +147,10 @@ fi
 
 say "build"
 cargo build --release 2>&1 | grep -vE "external contributor policy" | tail -2
-NEWBIN="$ROOT/target/release/hiver"
 UNPUSHED=$(git rev-list --count origin/main..HEAD)
 if cmp -s "$NEWBIN" "$BIN" && [ "$UNPUSHED" = 0 ]; then
-  say "hiver is up to date ($("$BIN" --version))"
-  [ "$(git branch --show-current)" = "$BRANCH" ] && git switch -q main && git branch -d "$BRANCH" >/dev/null
+  say "hiver is up to date: $BEFORE"
+  if [ "$(git branch --show-current)" = "$BRANCH" ]; then git switch -q main && git branch -d "$BRANCH" >/dev/null; fi
   exit 0
 fi
 
@@ -110,14 +173,14 @@ sleep 4
 "$NEWBIN" --session "$SESSION" swarm directory >/dev/null && echo "server answers"
 "$NEWBIN" session stop "$SESSION" >/dev/null && "$NEWBIN" session delete "$SESSION" >/dev/null
 
-RUNNING=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}' | tr '\n' ' ')
 if [ "$YES" != 1 ]; then
+  RUNNING=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}' | tr '\n' ' ')
   echo
   echo "Ready. Next: $( [ "$(git branch --show-current)" = "$BRANCH" ] && echo "merge into main, " )push to origin,"
   echo "install $BIN and hand off running sessions: ${RUNNING:-none} (agents keep running)."
-  if [ ! -t 0 ]; then echo "not interactive: rerun with --yes"; exit 1; fi
+  if [ ! -t 0 ]; then echo "not interactive: rerun with --check --yes"; exit 1; fi
   read -r -p "Go ahead? [Y/n] " answer
-  case "$answer" in n|N|no|No) echo "stopped; run hiver update again to continue"; exit 0 ;; esac
+  case "$answer" in n|N|no|No) echo "stopped; run hiver update --check again to continue"; exit 0 ;; esac
 fi
 
 if [ "$(git branch --show-current)" = "$BRANCH" ]; then
@@ -132,14 +195,5 @@ if [ "$(git rev-list --count origin/main..main)" != 0 ]; then
 fi
 
 say "install"
-# cp over the running binary reuses its inode and macOS then SIGKILLs every new exec.
-cp "$NEWBIN" "$BIN.new" && mv -f "$BIN.new" "$BIN"
-"$BIN" --version
-"$BIN" skill install
-
-say "live handoff of running sessions"
-for session in $RUNNING; do
-  printf '%s: ' "$session"
-  python3 "$HANDOFF" "$session" | tail -1
-done
-say "done: detach (⌥Q) and reattach open hiver windows to get the new client"
+install_and_handoff 0
+say "hiver updated: $BEFORE → $(installed)"

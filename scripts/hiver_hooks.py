@@ -118,12 +118,12 @@ edit("src/cli/spec.rs",
      '        .about("Download and install the latest version")\n'
      '        .arg(flag("handoff").help("Try live handoff after installing"))',
      "        .about(\n"
-     '            "Update hiver from source: pull the fork, merge herdr, build, test, install, \\\n'
-     '             live-hand-off running sessions",\n'
+     '            "Update hiver to the latest version: build, install and live-hand-off running \\\n'
+     '             sessions",\n'
      "        )\n"
-     '        .arg(flag("yes").help("Don\'t ask before pushing, installing and handing off"))\n'
-     '        .arg(flag("check").help("Only show what\'s new; change nothing"))',
-     marker="Update hiver from source")
+     '        .arg(flag("check").help("Maintainer: merge herdr, test, ask, then publish and install"))\n'
+     '        .arg(flag("yes").help("With --check: don\'t ask before publishing"))',
+     marker="Update hiver to the latest version")
 print("p0 rename hooks applied")
 
 # ---------------------------------------------------------------------------

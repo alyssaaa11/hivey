@@ -116,11 +116,11 @@ fn write_requested_help(
 fn update_command() -> Command {
     Command::new("update")
         .about(
-            "Update hiver from source: pull the fork, merge herdr, build, test, install, \
-             live-hand-off running sessions",
+            "Update hiver to the latest version: build, install and live-hand-off running \
+             sessions",
         )
-        .arg(flag("yes").help("Don't ask before pushing, installing and handing off"))
-        .arg(flag("check").help("Only show what's new; change nothing"))
+        .arg(flag("check").help("Maintainer: merge herdr, test, ask, then publish and install"))
+        .arg(flag("yes").help("With --check: don't ask before publishing"))
 }
 
 fn status_command() -> Command {
