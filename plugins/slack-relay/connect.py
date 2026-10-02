@@ -89,6 +89,34 @@ def save_token(token):
     return token_file
 
 
+def remember_you(token):
+    """Who hiver invites to the channels it creates (config "invite"), so they show up in your
+    Slack: the person the bot already shares channels with, else your member id, asked once."""
+    import create_channel  # same folder
+    config = relay.load_config()
+    if config.get("invite"):
+        return
+    try:
+        found = create_channel.shared_people(relay.Slack(token))[:1]
+    except (RuntimeError, OSError):
+        found = []
+    if not found:
+        print("\nhiver invites you to the channels it creates, so they appear in your Slack.")
+        try:
+            answer = input("Your Slack member ID (your profile → ⋯ → Copy member ID; "
+                           "Enter to skip): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        found = [answer] if answer.startswith(("U", "W")) else []
+    if found:
+        config["invite"] = found
+        (config_dir() / "config.json").write_text(json.dumps(config, indent=2) + "\n")
+        print(f"new channels will invite: {', '.join(found)}")
+    else:
+        print("skipped: new channels won't invite anyone (set \"invite\" in "
+              f"{config_dir() / 'config.json'})")
+
+
 def walk_through():
     print(f"""
 Connect hiver to Slack (about 2 minutes):
@@ -143,6 +171,7 @@ def connect(force):
         missing = sorted(NEEDED_SCOPES - scopes) if scopes else []
         print(describe({"connected": True, "team": data.get("team"), "user": data.get("user"),
                         "missing_scopes": missing}))
+        remember_you(token)
         return 0
     print("Slack not connected (later: hiver slack connect)")
     return 1

@@ -6,7 +6,10 @@ usage: create_channel.py <name> [--purpose TEXT]
 Uses the relay's token (config.json token_command, or $SLACK_TOKEN; `hiver slack connect` sets
 it); needs channels:manage, plus channels:read and channels:join to find and join an existing
 channel. Run by `hiver slack add`, `hiver swarm launch --slack` and `hiver home setup --slack`.
-Output: {"ok": true, "channel_id": "C…", "name": "hiver", "existing": false}
+The user is invited, so the channel shows up in their Slack right away: config.json "invite"
+(Slack member ids; `hiver slack connect` sets it, else it's worked out once from the people in
+the channels the bot already shares with them).
+Output: {"ok": true, "channel_id": "C…", "name": "hiver", "existing": false, "invited": ["U…"]}
 """
 import argparse
 import json
@@ -31,6 +34,57 @@ def find(slack, name):
             return None
 
 
+def config_path():
+    return Path(os.environ["HERDR_PLUGIN_CONFIG_DIR"]) / "config.json"
+
+
+def shared_people(slack):
+    """Humans in the channels the bot is in, most shared first (the bot itself excluded)."""
+    bot = slack.call("auth.test").get("user_id")
+    counts = {}
+    data = slack.call("conversations.list", http="GET", types="public_channel",
+                      exclude_archived="true", limit=1000)
+    for channel in data.get("channels", []):
+        if not channel.get("is_member"):
+            continue
+        members = slack.call("conversations.members", http="GET", channel=channel["id"])
+        for member in members.get("members", []):
+            if member != bot:
+                counts[member] = counts.get(member, 0) + 1
+    return sorted(counts, key=lambda member: -counts[member])
+
+
+def invitees(slack, config):
+    """Who to invite: config "invite", else the person the bot shares the most channels with
+    (then remembered in config.json)."""
+    people = config.get("invite")
+    if isinstance(people, str):
+        people = [people]
+    if people:
+        return people
+    try:
+        found = shared_people(slack)[:1]
+    except RuntimeError:
+        return []
+    if found:
+        config["invite"] = found
+        config_path().write_text(json.dumps(config, indent=2) + "\n")
+    return found
+
+
+def invite(slack, channel_id, people):
+    """Invites the people not in the channel yet; returns the ones invited now."""
+    invited = []
+    for person in people:
+        try:
+            slack.call("conversations.invite", channel=channel_id, users=person)
+            invited.append(person)
+        except RuntimeError as err:
+            if "already_in_channel" not in str(err):
+                print(f"cannot invite {person}: {err}", file=sys.stderr)
+    return invited
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("name")
@@ -40,7 +94,8 @@ def main():
         # Run outside a plugin pane: use the installed relay's config.
         os.environ["HERDR_PLUGIN_CONFIG_DIR"] = str(
             Path.home() / ".config" / "hiver" / "plugins" / "config" / "hiver.slack-relay")
-    token = relay.resolve_token(relay.load_config())
+    config = relay.load_config()
+    token = relay.resolve_token(config)
     if not token:
         print(json.dumps({"ok": False, "error": "Slack is not connected: run hiver slack connect "
                           "in a terminal"}))
@@ -69,8 +124,9 @@ def main():
             slack.call("conversations.setPurpose", channel=channel["id"], purpose=args.purpose[:250])
         except RuntimeError:
             pass
+    invited = invite(slack, channel["id"], invitees(slack, config))
     print(json.dumps({"ok": True, "channel_id": channel["id"], "name": args.name,
-                      "existing": existing}))
+                      "existing": existing, "invited": invited}))
     return 0
 
 

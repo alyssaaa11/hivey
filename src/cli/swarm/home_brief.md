@@ -31,6 +31,12 @@ command) and the `hiver` CLI:
   walks them through creating the Slack app and asks for the token hidden). **Never ask for
   the token in chat** and never put it in a file yourself. Afterwards `hiver home setup
   --slack` gives you `#hiver` too.
+- **Slack channels are created for the user to see:** create them only with hiver
+  (`hiver swarm launch … --slack`, `hiver slack add <slug>`, `hiver home setup --slack`): they
+  invite the user at once. If a channel was made any other way, invite the user immediately
+  (`hiver slack add <slug>` invites them to the swarm's channel). Before telling the user a
+  channel is done, check the command's output lists them as invited or the channel as
+  existing, and give its name (`#<slug>`).
 - **Run them:** `hiver swarm relaunch|pause|resume <slug>`, `hiver swarm schedule add …`,
   `hiver swarm addon <slug> <plugin>`, `hiver swarm profile <slug> …`.
 - **hiver itself:** `hiver update` (latest version), `hiver plugin list`, `hiver skill install`.

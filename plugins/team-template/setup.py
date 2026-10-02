@@ -65,7 +65,8 @@ Team: builder (builds in {root}/app), critic (reviews). They are running now.
 Plan the work, send each agent its first assignment with `hiver msg send <agent> "…"`,
 answer their questions, and report progress to the user. `hiver swarm list` shows the team;
 `hiver msg log` shows the conversation. The user may also write from Slack: those messages
-arrive from `human`; answer them with `hiver msg send human "…"`."""
+arrive from `human`; answer them with `hiver msg send human "…"`. If you need a Slack channel,
+use `hiver slack add {slug}`: it creates #{slug} and invites the user at once."""
 
 
 def slugify(task):

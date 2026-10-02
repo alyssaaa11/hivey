@@ -123,6 +123,13 @@ hiver swarm launch … --slack      # new swarm/agent with its own channel #<slu
 hiver slack add <slug>            # channel for one that's already running
 hiver home setup --slack          # #hiver for the hiver agent
 ```
+New channels invite the user (relay config `invite`: their Slack member id, set by `hiver slack
+connect` or worked out from shared channels), so they appear in their Slack at once.
+**Rule for every agent and swarm:** a Slack channel you create must be visible to the user
+right away. Create channels only through hiver (`--slack`, `hiver slack add`, `hiver home
+setup --slack`), which invites them; if one was made another way (e.g. the /swarm skill's
+`swarm_slack.py create`, which also invites), make sure the user is in it (`hiver slack add
+<slug>`) before saying it's done.
 When creating a swarm or agent, ask the user whether it should get a Slack channel. Never ask
 for the Slack token in chat: the user types it into `hiver slack connect`.
 
