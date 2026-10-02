@@ -91,6 +91,12 @@ if [ "$CHECK" = 0 ]; then
     exit 1
   fi
   install_and_handoff 1
+  # Users who ran `hiver swarm setup` get new Option keys (e.g. ⌥P); the pet is rebuilt when
+  # its code changed.
+  if grep -q "# hiver: swarm keybindings" "$HOME/.config/hiver/config.toml" 2>/dev/null; then
+    "$BIN" swarm setup >/dev/null 2>&1 || true
+  fi
+  "$BIN" pet refresh || true
   echo "hiver updated: $BEFORE → $(installed)"
   if [ "$(git rev-parse HEAD)" != "$OLD_HEAD" ]; then
     git log --oneline --no-decorate "$OLD_HEAD..HEAD" | head -15 | sed 's/^/  /'

@@ -4,6 +4,8 @@ use super::*;
 pub(super) enum ClientGlobalMenuAction {
     Binding(crate::input::KeybindAction),
     WhatsNew,
+    /// hiver: settings, opened on the pets tab
+    Pets,
 }
 
 pub(super) fn global_menu_attention(snapshot: &ClientShellSnapshot) -> bool {
@@ -50,6 +52,10 @@ pub(super) fn global_menu_items(
         "detach",
         ClientGlobalMenuAction::Binding(crate::input::KeybindAction::Detach),
     ));
+    // hiver: last, so herdr's items keep their places
+    if super::settings::PETS_SUPPORTED {
+        items.push(("pets", ClientGlobalMenuAction::Pets));
+    }
     items
 }
 
@@ -104,6 +110,10 @@ impl ClientShellState {
                 self.record_binding(crate::input::KeybindMatch::Action(binding), outcome)
             }
             ClientGlobalMenuAction::WhatsNew => self.open_release_notes(),
+            ClientGlobalMenuAction::Pets => {
+                self.open_settings_overlay();
+                self.select_settings_section(ClientSettingsSection::Pets, outcome);
+            }
         }
         outcome.repaint = true;
     }

@@ -6,8 +6,9 @@
 #
 # Builds hiver, installs it as ~/.local/bin/hiver (HIVER_BIN_DIR to change), installs the hiver
 # skill for Claude Code / Codex, links the bundled plugins (dashboard, Slack relay, GitHub,
-# team template), turns on the swarm sidebar and Option keys, and sets up the hiver agent in
-# ~/.hiver/agent (needs Claude Code). --no-setup skips the last two.
+# team template), turns on the swarm sidebar and Option keys, offers to connect Slack and to
+# choose a desktop pet (macOS), and sets up the hiver agent in ~/.hiver/agent (needs Claude
+# Code; Slack channel #hiver when connected). --no-setup skips the last four.
 # Run it again any time; later updates are just `hiver update`.
 #
 # Needs: git, Rust (cargo, via https://rustup.rs), Zig 0.16.0 (https://ziglang.org/download,
@@ -22,7 +23,7 @@ SETUP=1
 for arg in "$@"; do
   case "$arg" in
     --no-setup) SETUP=0 ;;
-    -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option $arg (./install.sh [--no-setup])"; exit 2 ;;
   esac
 done
@@ -100,17 +101,51 @@ for manifest in plugins/*/herdr-plugin.toml; do
     echo "  $id: could not link (try later: hiver plugin link $dir)"
   fi
 done
-if [ "$STARTED_SERVER" = 1 ]; then "$BIN" server stop >/dev/null 2>&1 || true; fi
+# Stopped on exit: the Slack and hiver-agent steps below talk to it too.
+if [ "$STARTED_SERVER" = 1 ]; then trap '"$BIN" server stop >/dev/null 2>&1 || true' EXIT; fi
 
 if [ "$SETUP" = 1 ]; then
   say "swarm sidebar and keys"
   "$BIN" swarm setup
 
+  say "Slack (optional: talk to hiver and your agents from Slack)"
+  SLACK=0
+  if "$BIN" slack status >/dev/null 2>&1; then
+    "$BIN" slack status
+    SLACK=1
+  elif [ -t 0 ]; then
+    printf 'Connect your Slack workspace now? [y/N] '
+    read -r answer || answer=""
+    case "$answer" in
+      [yY]*) "$BIN" slack connect && SLACK=1 ;;
+      *) echo "skipped (later: hiver slack connect)" ;;
+    esac
+  else
+    echo "skipped: not a terminal (later: hiver slack connect)"
+  fi
+
+  say "desktop pet (optional)"
+  if [ "$(uname -s)" != Darwin ]; then
+    echo "pets are macOS apps: skipped"
+  elif [ -t 0 ]; then
+    # Builds the chosen pet (about a minute), starts it and opens it at login.
+    "$BIN" pet choose || echo "no pet for now (later: hiver pet choose, or ⌥P)"
+  else
+    echo "skipped: not a terminal (later: hiver pet choose)"
+  fi
+
   say "the hiver agent (~/.hiver/agent)"
   if command -v claude >/dev/null; then
-    # Turned on for the default session; it starts with hiver (no Slack until --slack).
-    "$BIN" home setup --no-start
-    echo "Slack: once the hiver.slack-relay token is set, run: hiver home setup --slack"
+    # Turned on for the default session; it starts with hiver. With Slack: channel #hiver.
+    if [ "$SLACK" = 1 ]; then
+      "$BIN" home setup --no-start --slack || {
+        echo "could not set up Slack #hiver (later: hiver home setup --slack)"
+        "$BIN" home setup --no-start
+      }
+    else
+      "$BIN" home setup --no-start
+      echo "Slack #hiver later: hiver slack connect, then hiver home setup --slack"
+    fi
   else
     echo "Claude Code not found: skipped (later: hiver home setup)"
   fi

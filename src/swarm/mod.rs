@@ -4,6 +4,7 @@
 //! (`import`, `forget`, `list`, `master`, `msg.send`, `msg.inbox`, `msg.log`).
 
 pub(crate) mod adapter;
+pub(crate) mod addons;
 pub(crate) mod bus;
 pub(crate) mod engine;
 pub(crate) mod home;

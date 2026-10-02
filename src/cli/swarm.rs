@@ -10,9 +10,13 @@ use crate::swarm::SwarmParams;
 mod directory;
 mod home;
 mod launch;
+mod pet;
 mod skill;
+mod slack;
 pub(super) use home::run as run_home_command;
+pub(super) use pet::run as run_pet_command;
 pub(super) use skill::run_skill_command;
+pub(super) use slack::run as run_slack_command;
 
 const SWARM_HELP: &str = "\
 hiver swarm commands:
@@ -23,6 +27,7 @@ hiver swarm commands:
                                      answer an agent CLI's folder-trust prompt in a pane (providers)
   hiver swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
   hiver swarm launch <root> --slug S --solo [--model M]  start one agent in <root> (its own master)
+                                     add --slack for its own Slack channel #<slug>
   hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
   hiver swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
@@ -40,8 +45,9 @@ hiver swarm commands:
                                      wake the master (or AGENT) with a task on a schedule
   hiver swarm schedule list|remove|run [<swarm>] [<id>]
   hiver swarm pick                   choose a swarm and jump to its master (interactive)
-  hiver swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥F ⌥Q)
-  hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)";
+  hiver swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥P ⌥F ⌥Q)
+  hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)
+  Slack: hiver slack connect (once), hiver slack add <slug> (channel for a running one)";
 
 const MSG_HELP: &str = "\
 hiver msg commands:
@@ -456,16 +462,24 @@ fn sub_help(help: &str, command: &str, sub: &str) -> String {
         "forget" => "unregister",
         other => other,
     };
+    let indent_of = |line: &str| line.len() - line.trim_start().len();
     let mut lines = Vec::new();
-    let mut in_entry = false;
+    // Indent of the current entry's usage line; continuation lines are indented deeper.
+    let mut entry_indent = None;
     for line in help.lines() {
-        let usage = line.trim_start().trim_start_matches("usage:").trim_start();
+        let line = line.strip_prefix("usage:").unwrap_or(line);
+        let usage = line.trim_start();
         if let Some(after) = usage.strip_prefix(command) {
             let word = after.split_whitespace().next().unwrap_or("");
-            in_entry = word.split('|').any(|name| name == sub);
+            entry_indent = word
+                .split('|')
+                .any(|name| name == sub)
+                .then(|| indent_of(line));
+        } else if entry_indent.is_some_and(|indent| indent_of(line) <= indent) {
+            entry_indent = None;
         }
-        if in_entry {
-            lines.push(line.trim_start_matches("usage:"));
+        if entry_indent.is_some() {
+            lines.push(line);
         }
     }
     if lines.is_empty() {
@@ -513,6 +527,10 @@ fn ago(ms: u64) -> String {
 pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
     if let Some(sub) = args.first().filter(|_| wants_help(&rest)) {
+        if sub == "launch" {
+            println!("{}", launch::HELP);
+            return Ok(0);
+        }
         println!("{}", sub_help(SWARM_HELP, "hiver swarm", sub));
         return Ok(0);
     }
@@ -1021,6 +1039,7 @@ const KEYS: &[(&str, &str)] = &[
     ("⌥A", "send a message"),
     ("⌥I", "swarm info (agents, Slack, vault, addons)"),
     ("⌥L", "message log"),
+    ("⌥P", "choose your desktop pet (or none)"),
     ("⌥F", "zoom this pane to full size and back"),
     ("⌥Q", "quit (detach; everything keeps running)"),
 ];
@@ -1028,7 +1047,7 @@ const KEYS: &[(&str, &str)] = &[
 fn keybindings_toml() -> String {
     format!(
         r#"
-{KEYS_MARKER} v2 (hiver swarm setup)
+{KEYS_MARKER} v3 (hiver swarm setup)
 [[keys.command]]
 key = "alt+s"
 type = "popup"
@@ -1066,6 +1085,14 @@ command = "\"$HERDR_BIN_PATH\" msg log --limit 60; printf '\\n(enter to close) '
 description = "hiver: message log of this swarm"
 width = "90%"
 height = "80%"
+
+[[keys.command]]
+key = "alt+p"
+type = "popup"
+command = "\"$HERDR_BIN_PATH\" pet choose; printf '\\n(enter to close) '; read _"
+description = "hiver: choose your desktop pet (or none)"
+width = "80%"
+height = "50%"
 {KEYS_END}
 "#
     )
@@ -1173,6 +1200,11 @@ mod help_tests {
 
         let launch = sub_help(SWARM_HELP, "hiver swarm", "launch");
         assert_eq!(launch.matches("hiver swarm launch").count(), 2);
+        // A less indented line after an entry ends it.
+        let help = "usage: x a   first\n         more\n       x b   second\n  footer";
+        assert_eq!(sub_help(help, "x", "b"), "usage: x b   second");
+        let first = sub_help(help, "x", "a");
+        assert!(first.contains("more") && !first.contains("second"));
 
         let resume = sub_help(SWARM_HELP, "hiver swarm", "resume");
         assert!(resume.contains("pause|resume"));

@@ -28,8 +28,18 @@ cd ~/hiver && ./install.sh
 ```
 
 `install.sh` builds hiver, installs `~/.local/bin/hiver`, installs the hiver skill, links the
-bundled plugins (dashboard, Slack relay, GitHub, team template) and turns on the swarm sidebar
-and Option keys (`--no-setup` skips that). Run it again any time.
+bundled plugins (dashboard, Slack relay, GitHub, team template), turns on the swarm sidebar
+and Option keys, offers to connect Slack (`hiver slack connect`) and to choose a desktop pet
+(macOS), and sets up the hiver agent (`--no-setup` skips all that). Run it again any time.
+
+**Desktop pet (macOS, optional):** a small character on your desktop that acts out what your
+agents do: it reacts when a swarm starts, while agents work, when one finishes or needs you,
+and to every message (also from Slack), and says the important ones out loud. Choose one of
+three: **Hiver H** (a 3D H whose sections slide apart), **Hiver** (a dot whose agents ride a
+signal wave) or **Hiver Prompt** (a `>_` sphere leading three agents), or none. Change it any
+time: right-click the pet (Switch pet, Turn off pet, Speak aloud), hiver's menu → **pets**,
+`⌥P`, or `hiver pet` (`hiver pet use hiver-dot`, `hiver pet off`). Needs Apple's command
+line tools to build it (`xcode-select --install`).
 
 **Update:** `hiver update` gets the latest hiver, installs it and moves running sessions to it
 live (agents keep running): `hiver updated: hiver 0.9.3 (fc6681b0) → hiver 0.9.3 (92e4d32a)`.
@@ -126,6 +136,7 @@ macOS terminals keep them and never pass them to programs.
 | `⌥A` | send a message (to an agent, `@all`, `@role:…`; normal / fyi / urgent) |
 | `⌥I` | swarm info: agents, Slack channel, Obsidian vault, addons, budget, tasks, repos |
 | `⌥L` | this swarm's message log |
+| `⌥P` | choose your desktop pet, or none (macOS) |
 | `⌥F` | zoom the focused pane to full size, and back |
 | `⌥Q` (or `ctrl+b` `q`) | quit (detach; everything keeps running; `hiver` reattaches) |
 
@@ -220,7 +231,8 @@ The layout comes back, and agents with a conversation resume **with their origin
 hiver swarm relaunch <swarm>
 ```
 
-to restart any agent that came back as a plain shell, and to reopen the dashboard and relay.
+to restart any agent that came back as a plain shell. Addons (dashboard, Slack relay) are
+reopened by hiver on its own about 45 seconds after the server starts.
 
 ## 6. Publish to GitHub (two repos)
 

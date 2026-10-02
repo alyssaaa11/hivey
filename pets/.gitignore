@@ -1,0 +1,3 @@
+# Built by each pet's build.sh (hiver pet use builds them)
+*.app/
+dist/

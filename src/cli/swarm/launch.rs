@@ -37,7 +37,7 @@ pub(super) const HELP: &str = "\
 usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
-         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]]
+         [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack]
        hiver swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex] [options]
          [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hiver swarm directory)
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
@@ -46,12 +46,15 @@ usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
   --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
   before the agents start, with HIVER_SWARM_ROOT, HIVER_SWARM_SLUG and HIVER_SWARM_CHANNEL set:
   e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.
+  --slack: its own Slack channel #<slug> (created, or joined if it exists) with the Slack
+  relay, so the user can talk to it from Slack. Needs hiver slack connect once.
   --heartbeat 15m wakes the master every 15 min with a monitoring task and a status
   snapshot (hiver swarm schedule … adds more, e.g. a daily report at 09:00).
   --solo: a single agent, no workers. It runs in <root> itself (CLAUDE.md or AGENTS.md there)
   as agent <slug>, in a new space <slug>, and is its own master (messages, schedules and
   heartbeats go to it). The calling pane stays where it is.";
 
+#[derive(Clone)]
 struct Options {
     root: PathBuf,
     slug: String,
@@ -78,6 +81,8 @@ struct Options {
     solo: bool,
     /// The hiver agent (`--solo --home`, used by `hiver home`): space pinned first, unfocused.
     home: bool,
+    /// `--slack`: its own channel #<slug> (created or joined) and the Slack relay.
+    slack: bool,
     /// Directory entry (`--description`, `--skills`, `--tools`); kept when not given.
     profile: serde_json::Map<String, Value>,
 }
@@ -195,6 +200,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         heartbeat_task: None,
         solo: false,
         home: false,
+        slack: false,
         profile: serde_json::Map::new(),
     };
     // `--model` / `--kind` (solo agent), keyed by slug once it is known.
@@ -227,6 +233,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--no-move" => opts.move_master = false,
             "--solo" => opts.solo = true,
             "--home" => opts.home = true,
+            "--slack" => opts.slack = true,
             "--description" => {
                 opts.profile
                     .insert("description".into(), json!(value("--description")?));
@@ -661,6 +668,13 @@ fn launch(opts: &Options) -> Result<Value, String> {
     let root = std::fs::canonicalize(&opts.root)
         .map_err(|err| format!("{}: {err}", opts.root.display()))?;
     check(opts, &root)?;
+    let with_slack;
+    let opts = if opts.slack {
+        with_slack = add_slack(opts)?;
+        &with_slack
+    } else {
+        opts
+    };
     if opts.solo {
         return launch_solo(opts, &root);
     }
@@ -715,6 +729,34 @@ fn launch(opts: &Options) -> Result<Value, String> {
 }
 
 /// `--solo`: the agent runs in `root` in a new space and is the swarm's only member.
+/// `--slack`: the channel (#<slug> unless `--channel` names one) and the relay addon.
+fn add_slack(opts: &Options) -> Result<Options, String> {
+    let mut opts = opts.clone();
+    if opts.channel.is_none() {
+        if !super::slack::connected() {
+            return Err(
+                "--slack: Slack is not connected; run hiver slack connect in a \
+                        terminal (or launch without --slack and add it later with \
+                        hiver slack add <slug>)"
+                    .into(),
+            );
+        }
+        let purpose = match opts.profile.get("description").and_then(Value::as_str) {
+            Some(description) => format!("hiver {}: {description}", opts.slug),
+            None => format!("hiver: talk to {}", opts.slug),
+        };
+        opts.channel = Some(super::slack::create_channel(&opts.slug, &purpose)?);
+    }
+    if !opts
+        .addons
+        .iter()
+        .any(|(plugin, _)| plugin == super::slack::RELAY)
+    {
+        opts.addons.push((super::slack::RELAY.to_string(), None));
+    }
+    Ok(opts)
+}
+
 fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     let slug = &opts.slug;
     let created = api(

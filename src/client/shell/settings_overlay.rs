@@ -166,6 +166,7 @@ pub(super) fn render_settings_overlay(
                 "choose color dots or distinct symbols for each state",
                 &["color dots  ● ● ● ○ ·", "distinct symbols  × ◐ ✓ ○ ·"],
                 settings.selected,
+                None,
                 palette,
                 &mut choice_hits,
             );
@@ -178,6 +179,7 @@ pub(super) fn render_settings_overlay(
                 "play sounds when agents change state in background",
                 &["on", "off"],
                 settings.selected,
+                None,
                 palette,
                 &mut choice_hits,
             );
@@ -190,12 +192,16 @@ pub(super) fn render_settings_overlay(
                 "choose where background popup notifications should appear",
                 &["off", "inside herdr", "via terminal", "via system"],
                 settings.selected,
+                None,
                 palette,
                 &mut choice_hits,
             );
         }
         ClientSettingsSection::Integrations => {
             render_integrations(buffer, content, settings, palette);
+        }
+        ClientSettingsSection::Pets => {
+            render_pets(buffer, content, settings, palette, &mut choice_hits);
         }
     }
 
@@ -261,6 +267,7 @@ fn render_choice_section(
     description: &str,
     choices: &[&str],
     selected: usize,
+    current: Option<usize>,
     palette: &Palette,
     hits: &mut Vec<(Rect, usize)>,
 ) {
@@ -290,8 +297,78 @@ fn render_choice_section(
             break;
         }
         let rect = Rect::new(area.x, y, area.width, 1);
-        draw_choice(buffer, rect, choice, index == selected, false, palette);
+        draw_choice(
+            buffer,
+            rect,
+            choice,
+            index == selected,
+            current == Some(index),
+            palette,
+        );
         hits.push((rect, index));
+    }
+}
+
+/// hiver: the desktop pet, one of the hiver pets or none (✓ marks the current one).
+fn render_pets(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    use super::super::settings::{PETS_SUPPORTED, PET_CHOICES};
+    if !PETS_SUPPORTED {
+        render_choice_section(
+            buffer,
+            area,
+            "desktop pet",
+            "hiver pets are macOS apps; there is none for this computer",
+            &[],
+            0,
+            None,
+            palette,
+            hits,
+        );
+        return;
+    }
+    let labels: Vec<String> = PET_CHOICES
+        .iter()
+        .map(|(label, _, about)| {
+            if about.is_empty() {
+                (*label).to_string()
+            } else {
+                format!("{label:<13} {about}")
+            }
+        })
+        .collect();
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let current = PET_CHOICES
+        .iter()
+        .position(|(_, id, _)| *id == settings.pet_current.as_deref());
+    render_choice_section(
+        buffer,
+        area,
+        "desktop pet",
+        "acts out what your agents do · right-click the pet for more",
+        &labels,
+        settings.selected,
+        current,
+        palette,
+        hits,
+    );
+    if let Some(message) = &settings.pet_message {
+        let y = area.y + 3 + PET_CHOICES.len() as u16 * 2;
+        if y < area.bottom() {
+            put_text(
+                buffer,
+                area.x,
+                y,
+                area.width,
+                &format!(" {message}"),
+                Style::default().fg(palette.accent).bg(palette.panel_bg),
+            );
+        }
     }
 }
 

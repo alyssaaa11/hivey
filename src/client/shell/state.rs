@@ -250,6 +250,9 @@ pub(crate) enum ClientShellAction {
     },
     ClipboardWrite(Vec<u8>),
     OpenSafeWebUrl(String),
+    /// hiver: run this hiver binary with these arguments, detached, on the client's computer
+    /// (the desktop pet lives where the user sits, not where the server runs).
+    RunHiver(Vec<String>),
     ActivateEndpoint {
         endpoint_id: ClientEndpointId,
         target: Option<ClientEndpointFocusTarget>,
@@ -390,6 +393,8 @@ pub(super) enum ClientSettingsSection {
     Sound,
     Toast,
     Integrations,
+    // hiver: the desktop pet
+    Pets,
 }
 
 impl ClientSettingsSection {
@@ -399,6 +404,7 @@ impl ClientSettingsSection {
         Self::Sound,
         Self::Toast,
         Self::Integrations,
+        Self::Pets,
     ];
 
     pub(super) fn label(self) -> &'static str {
@@ -408,6 +414,7 @@ impl ClientSettingsSection {
             Self::Sound => "sound",
             Self::Toast => "toasts",
             Self::Integrations => "integrations",
+            Self::Pets => "pets",
         }
     }
 }
@@ -422,6 +429,10 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) integration_messages: Vec<String>,
     pub(super) loading_integrations: bool,
     pub(super) installing_integrations: bool,
+    /// hiver: the pet chosen on this computer (`~/.hiver/pet.json`), and what the last
+    /// choice started (the switch itself runs `hiver pet` in the background).
+    pub(super) pet_current: Option<String>,
+    pub(super) pet_message: Option<String>,
 }
 
 #[derive(Debug)]

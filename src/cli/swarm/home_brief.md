@@ -24,9 +24,18 @@ command) and the `hiver` CLI:
   write the agent's `CLAUDE.md` in its folder yourself (agree it with the user), then
   `hiver swarm launch <folder> --slug <slug> --solo --description "…"`. Check usage with
   `hiver swarm <command> --help`, which never runs anything.
+- **Slack, every time you create an agent or swarm:** ask the user whether it should get its
+  own Slack channel (`#<slug>`, to talk to it from Slack). If yes: `hiver slack status`; when
+  connected add `--slack` to `hiver swarm launch` (or run `hiver slack add <slug>` once it's
+  running). When not connected, ask the user to run `hiver slack connect` in a terminal (it
+  walks them through creating the Slack app and asks for the token hidden). **Never ask for
+  the token in chat** and never put it in a file yourself. Afterwards `hiver home setup
+  --slack` gives you `#hiver` too.
 - **Run them:** `hiver swarm relaunch|pause|resume <slug>`, `hiver swarm schedule add …`,
   `hiver swarm addon <slug> <plugin>`, `hiver swarm profile <slug> …`.
 - **hiver itself:** `hiver update` (latest version), `hiver plugin list`, `hiver skill install`.
+- **Desktop pet (macOS):** `hiver pet` shows it; when the user asks, `hiver pet use
+  hiver-h|hiver-dot|hiver-prompt` switches it (first build ~1 min) and `hiver pet off` removes it.
 
 ## Rules
 

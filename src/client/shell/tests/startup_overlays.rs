@@ -1314,3 +1314,72 @@ fn client_settings_preview_restore_and_endpoint_integrations_are_owned_by_overla
         })) if integration_messages == &["installed codex"]
     ));
 }
+
+/// hiver: settings → pets switches the desktop pet through `hiver pet` on the client.
+#[test]
+fn pets_tab_runs_hiver_pet_on_the_client() {
+    use super::super::settings::{PETS_SUPPORTED, PET_CHOICES};
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut outcome = ClientShellInput::default();
+    state.open_settings_overlay();
+    state.select_settings_section(ClientSettingsSection::Pets, &mut outcome);
+    if let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_mut() {
+        settings.pet_current = Some("hiver-h".into());
+    }
+    // Hiver (the dot), then no pet
+    for (index, expected) in [
+        (1, vec!["pet", "use", "hiver-dot"]),
+        (3, vec!["pet", "off"]),
+    ] {
+        let mut outcome = ClientShellInput::default();
+        state.select_settings_choice(index);
+        state.apply_settings_choice(&mut outcome);
+        if !PETS_SUPPORTED {
+            assert!(outcome.actions.is_empty());
+            continue;
+        }
+        assert!(matches!(
+            &outcome.actions[..],
+            [ClientShellAction::RunHiver(args)] if args == &expected
+        ));
+        let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_ref() else {
+            panic!("settings closed");
+        };
+        assert_eq!(settings.pet_current.as_deref(), PET_CHOICES[index].1);
+        assert!(settings.pet_message.is_some());
+    }
+    // Choosing the pet you already have does nothing
+    let mut outcome = ClientShellInput::default();
+    state.apply_settings_choice(&mut outcome);
+    assert!(outcome.actions.is_empty());
+}
+
+#[test]
+fn global_menu_opens_settings_on_the_pets_tab() {
+    use super::super::global_menu::{global_menu_items, ClientGlobalMenuAction};
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let items = global_menu_items(state.snapshot.as_deref().expect("snapshot"));
+    let index = items
+        .iter()
+        .position(|(_, action)| *action == ClientGlobalMenuAction::Pets);
+    let Some(index) = index.filter(|_| super::super::settings::PETS_SUPPORTED) else {
+        assert!(index.is_none(), "pets only where pets run");
+        return;
+    };
+    // After herdr's own items, which keep their places
+    assert_eq!(index, items.len() - 1);
+    assert_eq!(items[index].0, "pets");
+    let mut outcome = ClientShellInput::default();
+    state.activate_global_menu_item(index, &mut outcome);
+    assert!(matches!(
+        state.overlay,
+        Some(ClientShellOverlay::Settings(ClientSettingsOverlay {
+            section: ClientSettingsSection::Pets,
+            ..
+        }))
+    ));
+}

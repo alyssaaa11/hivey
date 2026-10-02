@@ -114,6 +114,31 @@ check `hiver plugin list` / `hiver swarm providers` before relying on them.
 | `swarm.skill` | /swarm skill as a setup provider |
 | `agent.creator` | /agent-creator skill: one solo agent in the current folder |
 
+## Slack
+
+```bash
+hiver slack connect [--force]     # once per machine, in a terminal: Slack app + bot token (hidden)
+hiver slack status                # connected? workspace, bot, missing scopes
+hiver swarm launch … --slack      # new swarm/agent with its own channel #<slug> + Slack relay
+hiver slack add <slug>            # channel for one that's already running
+hiver home setup --slack          # #hiver for the hiver agent
+```
+When creating a swarm or agent, ask the user whether it should get a Slack channel. Never ask
+for the Slack token in chat: the user types it into `hiver slack connect`.
+
+## Desktop pet (macOS)
+
+```bash
+hiver pet                         # chosen pet, running or not, the pets to choose from
+hiver pet use hiver-h|hiver-dot|hiver-prompt   # switch (built the first time, ~1 min; opens at login)
+hiver pet off                     # quit it and stop opening it at login
+hiver pet choose                  # interactive picker (also ⌥P, and hiver menu → pets)
+```
+The pet watches hiver (swarm starts, working, finished, needs you, messages incl. Slack) and
+says the important ones aloud; right-click it for Switch pet / Turn off pet / Speak aloud.
+Sources: `pets/<id>/` + `pets/shared/HiverWatch.swift` in the hiver repo. Only switch or turn
+it off when the user asks.
+
 ## The hiver agent (`hiver home`)
 
 An always-on Claude in `~/.hiver/agent` (solo agent `hiver`, ⬢ mauve, first space): the user's

@@ -3,8 +3,9 @@
 
 usage: create_channel.py <name> [--purpose TEXT]
 
-Uses the relay's token (config.json token_command, or $SLACK_TOKEN); needs the channels:write
-scope (channels:read to find an existing channel). `hiver home setup --slack` runs it for #hiver.
+Uses the relay's token (config.json token_command, or $SLACK_TOKEN; `hiver slack connect` sets
+it); needs channels:manage, plus channels:read and channels:join to find and join an existing
+channel. Run by `hiver slack add`, `hiver swarm launch --slack` and `hiver home setup --slack`.
 Output: {"ok": true, "channel_id": "C…", "name": "hiver", "existing": false}
 """
 import argparse
@@ -41,8 +42,8 @@ def main():
             Path.home() / ".config" / "hiver" / "plugins" / "config" / "hiver.slack-relay")
     token = relay.resolve_token(relay.load_config())
     if not token:
-        print(json.dumps({"ok": False, "error": "no Slack token: set token_command in the "
-                          "hiver.slack-relay config (hiver plugin config-dir hiver.slack-relay)"}))
+        print(json.dumps({"ok": False, "error": "Slack is not connected: run hiver slack connect "
+                          "in a terminal"}))
         return 1
     slack = relay.Slack(token)
     existing = False
@@ -56,6 +57,13 @@ def main():
         if channel is None:
             print(json.dumps({"ok": False, "error": "name_taken (archived or private channel)"}))
             return 1
+        if not channel.get("is_member"):
+            # The relay reads the channel's history: the bot has to be in it.
+            try:
+                slack.call("conversations.join", channel=channel["id"])
+            except RuntimeError as err:
+                print(json.dumps({"ok": False, "error": f"cannot join #{args.name}: {err}"}))
+                return 1
     if args.purpose and not existing:
         try:
             slack.call("conversations.setPurpose", channel=channel["id"], purpose=args.purpose[:250])

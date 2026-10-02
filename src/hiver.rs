@@ -7,13 +7,18 @@ pub(crate) const HIVER_ENV_VAR: &str = "HIVER_ENV";
 pub(crate) const SELF_UPDATE_DISABLED: &str =
     "hiver does not self-update; update from source: git pull && cargo build --release";
 
+/// The hiver checkout this binary was built from, or `HIVER_REPO`.
+pub(crate) fn repo() -> std::path::PathBuf {
+    std::env::var_os("HIVER_REPO")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+}
+
 /// `hiver update [--yes] [--check]`: runs `scripts/sync-herdr.sh` in the hiver repo (pull the
 /// fork, merge herdr, build, test, install, live handoff). The repo is where this binary was
 /// built, or `HIVER_REPO`. Never downloads herdr releases over hiver.
 pub(crate) fn run_update(args: &[String]) -> i32 {
-    let repo = std::env::var_os("HIVER_REPO")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+    let repo = repo();
     let script = repo.join("scripts").join("sync-herdr.sh");
     if !script.is_file() {
         eprintln!(

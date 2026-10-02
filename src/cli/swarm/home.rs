@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use super::{launch, sub_help, swarms, take_flag, take_value, wants_help};
+use super::{launch, slack, sub_help, swarms, take_flag, take_value, wants_help};
 use crate::swarm::home::{self as engine_home, SLUG};
 
 const HELP: &str = "\
@@ -76,7 +76,7 @@ fn save_config(config: &Value) -> Result<(), String> {
 }
 
 fn setup(rest: &mut Vec<String>) -> Result<(), String> {
-    let slack = take_flag(rest, "--slack");
+    let want_slack = take_flag(rest, "--slack");
     let no_start = take_flag(rest, "--no-start");
     let force = take_flag(rest, "--force");
     let model = take_value(rest, "--model")?;
@@ -117,8 +117,15 @@ fn setup(rest: &mut Vec<String>) -> Result<(), String> {
     // Kept alive by the server of the session this runs in (`hiver --session X home setup`).
     config["session"] = json!(crate::session::active_name()
         .unwrap_or_else(|| crate::session::DEFAULT_SESSION_NAME.to_string()));
-    if slack {
-        let id = create_channel()?;
+    if want_slack {
+        if !slack::connected() {
+            return Err(
+                "Slack is not connected: run hiver slack connect in a terminal, then \
+                        hiver home setup --slack"
+                    .into(),
+            );
+        }
+        let id = slack::create_channel("hiver", "Talk to the hiver agent (hiver home)")?;
         config["channel"] = json!(id);
     } else if let Some(channel) = channel {
         config["channel"] = json!(channel);
@@ -140,48 +147,6 @@ fn setup(rest: &mut Vec<String>) -> Result<(), String> {
         return Ok(());
     }
     start(false)
-}
-
-/// #hiver through the Slack relay plugin's create_channel.py; returns the channel id.
-fn create_channel() -> Result<String, String> {
-    let plugins = super::api("plugin.list", json!({}))?;
-    let root = plugins["plugins"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .find(|plugin| plugin["plugin_id"] == "hiver.slack-relay")
-        .and_then(|plugin| plugin["plugin_root"].as_str())
-        .map(PathBuf::from)
-        .ok_or("the hiver.slack-relay plugin is not installed (hiver plugin list)")?;
-    let output = std::process::Command::new("python3")
-        .arg(root.join("create_channel.py"))
-        .args(["hiver", "--purpose", "Talk to the hiver agent (hiver home)"])
-        .env(
-            "HERDR_PLUGIN_CONFIG_DIR",
-            crate::plugin_paths::plugin_config_dir("hiver.slack-relay"),
-        )
-        .output()
-        .map_err(|err| format!("cannot run create_channel.py: {err}"))?;
-    let reply: Value = serde_json::from_slice(&output.stdout).unwrap_or(Value::Null);
-    match reply["channel_id"].as_str() {
-        Some(id) => {
-            println!(
-                "Slack #hiver: {id}{}",
-                if reply["existing"] == true {
-                    " (existing)"
-                } else {
-                    " (created)"
-                }
-            );
-            Ok(id.to_string())
-        }
-        None => Err(format!(
-            "could not create #hiver: {}",
-            reply["error"]
-                .as_str()
-                .unwrap_or(&String::from_utf8_lossy(&output.stderr))
-        )),
-    }
 }
 
 fn home_swarm() -> std::io::Result<Option<Value>> {
@@ -256,46 +221,16 @@ fn start(quiet: bool) -> Result<(), String> {
             .map(|s| s.to_string())
             .collect();
             if let Some(channel) = channel {
-                args.extend(
-                    ["--addon", "hiver.slack-relay", "--channel", channel].map(str::to_string),
-                );
+                args.extend(["--addon", slack::RELAY, "--channel", channel].map(str::to_string));
             }
             launch::launch_quietly(&args)?;
         }
     }
     if let Some(channel) = channel {
-        ensure_relay(&agent, channel)?;
+        slack::ensure_relay(SLUG, &agent, channel)?;
     }
     if !quiet {
         status()?;
-    }
-    Ok(())
-}
-
-/// The Slack relay addon, when a channel was set after the agent was first launched.
-fn ensure_relay(agent: &Path, channel: &str) -> Result<(), String> {
-    let path = crate::swarm::model::manifest_path(agent);
-    let mut manifest: Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .ok_or_else(|| format!("cannot read {}", path.display()))?;
-    let has_relay = manifest["addons"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .any(|addon| addon["plugin"] == "hiver.slack-relay");
-    if has_relay && manifest["channel_id"] == channel {
-        return Ok(());
-    }
-    manifest["channel_id"] = json!(channel);
-    std::fs::write(
-        &path,
-        serde_json::to_string_pretty(&manifest).unwrap_or_default() + "\n",
-    )
-    .map_err(|err| err.to_string())?;
-    if !has_relay {
-        launch::run_addon(&[SLUG.to_string(), "hiver.slack-relay".to_string()])
-            .map_err(|err| err.to_string())?;
     }
     Ok(())
 }

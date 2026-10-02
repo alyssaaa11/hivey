@@ -11,7 +11,9 @@ hiver opens this pane for `hiver swarm new --provider hiver.team-template "<task
 HIVER_SETUP_TASK and HIVER_SETUP_CWD set. Settings (all optional) in
 $HERDR_PLUGIN_CONFIG_DIR/config.json:
   {"model": "sonnet", "master_model": "opus", "heartbeat": "30m",
-   "addons": ["hiver.dashboard"], "claude_args": "--dangerously-skip-permissions"}
+   "addons": ["hiver.dashboard"], "claude_args": "--dangerously-skip-permissions",
+   "slack": "ask"}
+  slack: "ask" (when Slack is connected: offer a channel #<slug>), true, or false.
 """
 import json
 import os
@@ -27,6 +29,7 @@ DEFAULTS = {
     "heartbeat": "30m",
     "addons": ["hiver.dashboard"],
     "claude_args": "--dangerously-skip-permissions",
+    "slack": "ask",
 }
 
 # --- 1. DESIGN ------------------------------------------------------------------
@@ -61,7 +64,8 @@ Task: {task}
 Team: builder (builds in {root}/app), critic (reviews). They are running now.
 Plan the work, send each agent its first assignment with `hiver msg send <agent> "…"`,
 answer their questions, and report progress to the user. `hiver swarm list` shows the team;
-`hiver msg log` shows the conversation."""
+`hiver msg log` shows the conversation. The user may also write from Slack: those messages
+arrive from `human`; answer them with `hiver msg send human "…"`."""
 
 
 def slugify(task):
@@ -78,6 +82,20 @@ def config():
         return dict(DEFAULTS)
 
 
+def want_slack(cfg, hiver, slug):
+    """Whether the swarm gets its own Slack channel #<slug> (`hiver swarm launch --slack`)."""
+    if cfg["slack"] is False:
+        return False
+    if subprocess.run([hiver, "slack", "status"], capture_output=True).returncode != 0:
+        print(f"Slack is not connected, so no channel (later: hiver slack connect, "
+              f"then hiver slack add {slug})")
+        return False
+    if cfg["slack"] is True:
+        return True
+    return input(f"Give it a Slack channel #{slug}, to talk to it from Slack? [Y/n] "
+                 ).strip().lower() not in ("n", "no")
+
+
 def main():
     cfg = config()
     hiver = os.environ.get("HERDR_BIN_PATH", "hiver")
@@ -92,6 +110,7 @@ def main():
     print(f"  addons {', '.join(cfg['addons']) or 'none'} · heartbeat {cfg['heartbeat'] or 'none'}\n")
     if input("Launch this swarm? [Y/n] ").strip().lower() in ("n", "no"):
         sys.exit("cancelled")
+    slack = want_slack(cfg, hiver, slug)
 
     # --- 2. BRIEF -----------------------------------------------------------------
     (root / "app").mkdir(parents=True, exist_ok=True)
@@ -108,6 +127,8 @@ def main():
         cmd += ["--addon", addon]
     if cfg["heartbeat"]:
         cmd += ["--heartbeat", cfg["heartbeat"]]
+    if slack:
+        cmd += ["--slack"]
     launched = subprocess.run(cmd, capture_output=True, text=True)
     sys.stderr.write(launched.stderr)
     if launched.returncode != 0:

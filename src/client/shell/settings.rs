@@ -31,7 +31,64 @@ pub(super) fn integration_needs_install(info: &crate::api::schema::IntegrationIn
         || info.available && info.state == crate::api::schema::IntegrationState::NotInstalled
 }
 
+/// hiver pets (macOS apps built from the hiver repo's `pets/`): label, id (`None`: no pet),
+/// and a short description.
+pub(super) const PET_CHOICES: &[(&str, Option<&str>, &str)] = &[
+    (
+        "Hiver H",
+        Some("hiver-h"),
+        "a 3D H; its sections slide apart to hand out work",
+    ),
+    (
+        "Hiver",
+        Some("hiver-dot"),
+        "a dot; its agents ride a signal wave around it",
+    ),
+    (
+        "Hiver Prompt",
+        Some("hiver-prompt"),
+        "a >_ sphere leading three agent spheres",
+    ),
+    ("no pet", None, "nothing on the desktop"),
+];
+
+/// Pets are macOS desktop apps.
+pub(super) const PETS_SUPPORTED: bool = cfg!(target_os = "macos");
+
+/// The pet chosen on this computer (`~/.hiver/pet.json`, written by `hiver pet`).
+pub(super) fn chosen_pet() -> Option<String> {
+    let home = std::env::var_os("HOME")?;
+    let text = std::fs::read_to_string(std::path::Path::new(&home).join(".hiver/pet.json")).ok()?;
+    serde_json::from_str::<serde_json::Value>(&text).ok()?["pet"]
+        .as_str()
+        .map(str::to_string)
+}
+
 impl ClientShellState {
+    /// Switches the pet (or turns it off) with `hiver pet` in the background.
+    fn choose_pet(&mut self, selected: usize, outcome: &mut ClientShellInput) {
+        let Some(&(label, id, _)) = PET_CHOICES.get(selected) else {
+            return;
+        };
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        if !PETS_SUPPORTED || settings.pet_current.as_deref() == id {
+            return;
+        }
+        let args = match id {
+            Some(id) => vec!["pet".to_string(), "use".to_string(), id.to_string()],
+            None => vec!["pet".to_string(), "off".to_string()],
+        };
+        settings.pet_current = id.map(str::to_string);
+        settings.pet_message = Some(match id {
+            Some(_) => format!("switching to {label}… (the first time it builds, about a minute)"),
+            None => "pet turned off".to_string(),
+        });
+        outcome.actions.push(ClientShellAction::RunHiver(args));
+        outcome.repaint = true;
+    }
+
     pub(super) fn open_settings_overlay(&mut self) {
         self.overlay = Some(ClientShellOverlay::Settings(ClientSettingsOverlay {
             section: ClientSettingsSection::Theme,
@@ -42,6 +99,8 @@ impl ClientShellState {
             integration_messages: Vec::new(),
             loading_integrations: false,
             installing_integrations: false,
+            pet_current: chosen_pet(),
+            pet_message: None,
         }));
     }
 
@@ -52,6 +111,13 @@ impl ClientShellState {
             ClientSettingsSection::Sound => usize::from(!self.config.sound_enabled),
             ClientSettingsSection::Toast => toast_index(self.config.toast_delivery),
             ClientSettingsSection::Integrations => 0,
+            ClientSettingsSection::Pets => {
+                let current = chosen_pet();
+                PET_CHOICES
+                    .iter()
+                    .position(|(_, id, _)| *id == current.as_deref())
+                    .unwrap_or(PET_CHOICES.len() - 1)
+            }
         }
     }
 
@@ -100,6 +166,8 @@ impl ClientShellState {
                 ClientSettingsSection::Indicators | ClientSettingsSection::Sound => 2,
                 ClientSettingsSection::Toast => 4,
                 ClientSettingsSection::Integrations => settings.integrations.len(),
+                ClientSettingsSection::Pets if PETS_SUPPORTED => PET_CHOICES.len(),
+                ClientSettingsSection::Pets => 0,
             },
             _ => 0,
         }
@@ -223,6 +291,7 @@ impl ClientShellState {
                 );
             }
             ClientSettingsSection::Integrations => self.install_recommended_integrations(outcome),
+            ClientSettingsSection::Pets => self.choose_pet(selected, outcome),
         }
     }
 

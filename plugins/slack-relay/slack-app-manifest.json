@@ -1,0 +1,30 @@
+{
+  "display_information": {
+    "name": "hiver",
+    "description": "Talk to your hiver agents and swarms from Slack",
+    "background_color": "#2d2a3e"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "hiver",
+      "always_online": true
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "channels:history",
+        "channels:join",
+        "channels:manage",
+        "channels:read",
+        "chat:write",
+        "groups:history"
+      ]
+    }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

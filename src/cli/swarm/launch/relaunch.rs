@@ -351,6 +351,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         heartbeat_task: None,
         solo,
         home: manifest["home"] == true,
+        slack: false,
         profile: serde_json::Map::new(),
     };
 

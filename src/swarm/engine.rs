@@ -87,6 +87,8 @@ struct State {
     last_reload: Option<Instant>,
     /// Keeps the hiver agent (`hiver home`) alive.
     home_watch: super::home::Watch,
+    /// Reopens addons (Slack relays, dashboards) once after a server restart.
+    addons_restore: super::addons::Restore,
 }
 
 pub(crate) fn start(api_tx: ApiRequestSender) {
@@ -427,6 +429,8 @@ fn tick(api_tx: &ApiRequestSender) {
             .filter_map(Swarm::master)
             .any(|master| state.live(master).is_some());
         super::home::watch(&mut state.home_watch, home_alive);
+        let fields = &mut *state;
+        super::addons::restore(&mut fields.addons_restore, &fields.swarms);
         if state
             .last_schedule_check
             .is_none_or(|at| at.elapsed() >= SCHEDULE_CHECK)
