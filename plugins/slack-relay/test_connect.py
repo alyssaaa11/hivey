@@ -41,7 +41,7 @@ class ConnectTest(unittest.TestCase):
 
     def test_connected_reports_missing_scopes(self):
         connect.save_token("xoxb-ok")
-        reply = ({"ok": True, "team": "Acme", "user": "hiver"}, {"chat:write"})
+        reply = ({"ok": True, "team": "Acme", "user": "hivey"}, {"chat:write"})
         with mock.patch.object(connect, "auth_test", return_value=reply):
             state = connect.current()
         self.assertTrue(state["connected"])

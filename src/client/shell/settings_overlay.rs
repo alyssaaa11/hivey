@@ -315,7 +315,7 @@ fn render_choice_section(
     }
 }
 
-/// hiver: the desktop pet, one of the hiver pets or none (✓ marks the current one).
+/// hivey: the desktop pet, one of the hivey pets or none (✓ marks the current one).
 fn render_pets(
     buffer: &mut Buffer,
     area: Rect,
@@ -329,7 +329,7 @@ fn render_pets(
             buffer,
             area,
             "desktop pet",
-            "hiver pets are macOS apps; there is none for this computer",
+            "hivey pets are macOS apps; there is none for this computer",
             &[],
             0,
             None,
@@ -378,7 +378,7 @@ fn render_pets(
     }
 }
 
-/// hiver: the swarm and agent creators; ✓ marks the one `hiver swarm new` uses for each kind.
+/// hivey: the swarm and agent creators; ✓ marks the one `hivey swarm new` uses for each kind.
 fn render_plugins(
     buffer: &mut Buffer,
     area: Rect,
@@ -418,9 +418,9 @@ fn render_plugins(
         .collect();
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
     let description = if labels.is_empty() {
-        "no creators installed: hiver plugin link <hiver repo>/plugins/swarm-creator"
+        "no creators installed: hivey plugin link <hivey repo>/plugins/swarm-creator"
     } else {
-        "↵ picks what new swarms / agents use (✓) · hiver's built-in ones when none is picked"
+        "↵ picks what new swarms / agents use (✓) · hivey's built-in ones when none is picked"
     };
     render_choice_section(
         buffer,
@@ -440,7 +440,7 @@ fn render_plugins(
         lines.push((message.clone(), palette.accent));
     }
     lines.push((
-        "install more: hiver plugin install OWNER/REPO[/DIR] · hiver plugin link <folder>"
+        "install more: hivey plugin install OWNER/REPO[/DIR] · hivey plugin link <folder>"
             .to_string(),
         palette.overlay1,
     ));
@@ -460,7 +460,7 @@ fn render_plugins(
     }
 }
 
-/// hiver: the skills library folder (✓ the current one) and online skill search.
+/// hivey: the skills library folder (✓ the current one) and online skill search.
 fn render_skills(
     buffer: &mut Buffer,
     area: Rect,
@@ -510,7 +510,7 @@ fn render_skills(
         lines.push((message.clone(), palette.accent));
     }
     lines.push((
-        "another folder: hiver skills dir <folder>".to_string(),
+        "another folder: hivey skills dir <folder>".to_string(),
         palette.overlay1,
     ));
     for (text, color) in lines {

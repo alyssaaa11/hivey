@@ -2,8 +2,8 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "hiver: swarm runtime core, the hiver agent and addons",
-    "output": "docs/diagrams/hiver-architecture.html",
+    "title": "hivey: swarm runtime core, the hivey agent and addons",
+    "output": "docs/diagrams/hivey-architecture.html",
     "locale": "en",
     "quality_profile": "showcase",
     "repository": {
@@ -100,7 +100,7 @@
     {
       "id": "cli",
       "type": "frontend",
-      "label": "hiver CLI",
+      "label": "hivey CLI",
       "sublabel": "swarm launch · msg send",
       "pos": [
         270,
@@ -115,13 +115,13 @@
           "path": "src/cli/swarm.rs",
           "line": 135,
           "end_line": 246,
-          "label": "hiver swarm …"
+          "label": "hivey swarm …"
         },
         {
           "path": "src/cli/swarm.rs",
           "line": 277,
           "end_line": 395,
-          "label": "hiver msg …"
+          "label": "hivey msg …"
         },
         {
           "path": "src/cli/swarm/launch.rs",
@@ -288,8 +288,8 @@
     {
       "id": "home",
       "type": "external",
-      "label": "⬢ hiver agent",
-      "sublabel": "~/.hiver/agent · always on",
+      "label": "⬢ hivey agent",
+      "sublabel": "~/.hivey/agent · always on",
       "pos": [
         270,
         480
@@ -298,13 +298,13 @@
         150,
         70
       ],
-      "tag": "hiver home",
+      "tag": "hivey home",
       "sources": [
         {
           "path": "src/cli/swarm/home.rs",
           "line": 198,
           "end_line": 260,
-          "label": "hiver home start: launch or relaunch"
+          "label": "hivey home start: launch or relaunch"
         },
         {
           "path": "src/swarm/home.rs",
@@ -323,7 +323,7 @@
     {
       "id": "slackrelay",
       "type": "cloud",
-      "label": "hiver.slack-relay",
+      "label": "hivey.slack-relay",
       "sublabel": "Slack ⇄ bus",
       "pos": [
         270,
@@ -346,7 +346,7 @@
     {
       "id": "githubaddon",
       "type": "cloud",
-      "label": "hiver.github",
+      "label": "hivey.github",
       "sublabel": "app repo + swarm repo",
       "pos": [
         540,
@@ -375,7 +375,7 @@
     {
       "id": "dashboard",
       "type": "cloud",
-      "label": "hiver.dashboard",
+      "label": "hivey.dashboard",
       "sublabel": "states · tokens · tasks",
       "pos": [
         775,
@@ -414,7 +414,7 @@
       "id": "slack",
       "type": "external",
       "label": "Slack",
-      "sublabel": "#swarm-<slug> · #hiver",
+      "sublabel": "#swarm-<slug> · #hivey",
       "pos": [
         270,
         785
@@ -442,7 +442,7 @@
   "boundaries": [
     {
       "kind": "region",
-      "label": "hiver server process (Rust, herdr fork)",
+      "label": "hivey server process (Rust, herdr fork)",
       "wraps": [
         "server",
         "engine",
@@ -568,7 +568,7 @@
       "id": "user-home",
       "from": "user",
       "to": "home",
-      "label": "asks · Slack #hiver"
+      "label": "asks · Slack #hivey"
     },
     {
       "id": "home-cli",
@@ -588,23 +588,23 @@
   "cards": [
     {
       "dot": "emerald",
-      "title": "hiver core does",
+      "title": "hivey core does",
       "items": [
         "One space per swarm; click it to talk to its master",
         "Solo agents (★): one agent that is its own master (launch --solo)",
         "Directory: what each swarm or agent does, skills, tools, busy or idle; ask the user before sending work",
         "Message bus: delivery when idle, --fyi never wakes, --urgent now; queues survive restarts",
         "Pause/resume, relaunch, resume after a restart; Claude Code + Codex adapters",
-        "hiver update: latest version with live handoff; install.sh for new machines"
+        "hivey update: latest version with live handoff; install.sh for new machines"
       ]
     },
     {
       "dot": "rose",
-      "title": "⬢ The hiver agent",
+      "title": "⬢ The hivey agent",
       "items": [
-        "Always-on Claude in ~/.hiver/agent, the first space (hiver home)",
-        "Your main way into hiver: launch swarms, check status, ask coordinators",
-        "Reachable from Slack #hiver through the relay, even with no swarms running",
+        "Always-on Claude in ~/.hivey/agent, the first space (hivey home)",
+        "Your main way into hivey: launch swarms, check status, ask coordinators",
+        "Reachable from Slack #hivey through the relay, even with no swarms running",
         "The engine restarts it when it's gone (watchdog with backoff)"
       ]
     },
@@ -612,9 +612,9 @@
       "dot": "cyan",
       "title": "Addons (plugins)",
       "items": [
-        "hiver.slack-relay: Slack @mentions → bus; mirror of master traffic",
-        "hiver.dashboard: live states, token bars, budget, tasks, messages",
-        "hiver.github: product and workspace as two repos, gitleaks gate",
+        "hivey.slack-relay: Slack @mentions → bus; mirror of master traffic",
+        "hivey.dashboard: live states, token bars, budget, tasks, messages",
+        "hivey.github: product and workspace as two repos, gitleaks gate",
         "swarm.watcher (/swarm skill): idle, stall and budget alerts"
       ]
     },
@@ -623,8 +623,8 @@
       "title": "Addon contract",
       "items": [
         "Any herdr-format plugin with a pane; opened by launch --addon or swarm addon",
-        "Gets HIVER_SWARM_ROOT, _SLUG, _CHANNEL",
-        "Talks in with `hiver msg send`; reads out from .swarm/bus.jsonl"
+        "Gets HIVEY_SWARM_ROOT, _SLUG, _CHANNEL",
+        "Talks in with `hivey msg send`; reads out from .swarm/bus.jsonl"
       ]
     },
     {

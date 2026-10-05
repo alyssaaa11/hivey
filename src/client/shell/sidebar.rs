@@ -211,7 +211,7 @@ pub(crate) fn render_sidebar(
     } else {
         Rect::new(area.right().saturating_sub(1), area.y, 1, area.height)
     };
-    // hiver: with ui.swarm_sidebar the list is titled "swarms" and uses the full height; the
+    // hivey: with ui.swarm_sidebar the list is titled "swarms" and uses the full height; the
     // agents panel is hidden (agents are the panes on the right).
     let (workspace_area, detail_area) = if config.swarm_sidebar {
         (
@@ -235,7 +235,7 @@ pub(crate) fn render_sidebar(
             " swarms"
         } else {
             " spaces"
-        }, // hiver
+        }, // hivey
         Style::default()
             .fg(palette.overlay0)
             .add_modifier(Modifier::BOLD),
@@ -451,7 +451,7 @@ pub(crate) fn render_sidebar(
         snapshot,
         config,
         state.agent_scroll,
-        state.swarm_tree, // hiver
+        state.swarm_tree, // hivey
         hits,
     );
 

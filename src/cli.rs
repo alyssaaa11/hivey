@@ -36,7 +36,7 @@ mod server;
 mod server_not_running;
 mod spec;
 mod status;
-mod swarm; // hiver
+mod swarm; // hivey
 mod tab;
 mod target;
 mod workspace;
@@ -126,13 +126,13 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "tab" => tab::run_tab_command(&args[2..])?,
         "notification" => notification::run_notification_command(&args[2..])?,
         "agent" => agent::run_agent_command(&args[2..])?,
-        "skill" => swarm::run_skill_command(&args[2..])?, // hiver
-        "swarm" => swarm::run_swarm_command(&args[2..])?, // hiver
-        "msg" => swarm::run_msg_command(&args[2..])?,     // hiver
-        "home" => swarm::run_home_command(&args[2..])?,   // hiver
-        "slack" => swarm::run_slack_command(&args[2..])?, // hiver
-        "pet" => swarm::run_pet_command(&args[2..])?,     // hiver
-        "skills" => swarm::run_skills_command(&args[2..])?, // hiver
+        "skill" => swarm::run_skill_command(&args[2..])?, // hivey
+        "swarm" => swarm::run_swarm_command(&args[2..])?, // hivey
+        "msg" => swarm::run_msg_command(&args[2..])?,     // hivey
+        "home" => swarm::run_home_command(&args[2..])?,   // hivey
+        "slack" => swarm::run_slack_command(&args[2..])?, // hivey
+        "pet" => swarm::run_pet_command(&args[2..])?,     // hivey
+        "skills" => swarm::run_skills_command(&args[2..])?, // hivey
         "terminal" => run_terminal_command(&args[2..])?,
         "pane" => pane::run_pane_command(&args[2..])?,
         "plugin" => plugin::run_plugin_command(&args[2..])?,

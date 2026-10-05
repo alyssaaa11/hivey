@@ -1,5 +1,5 @@
 [package]
-name = "hiver"
+name = "hivey"
 version = "0.9.12"
 edition = "2021"
 build = "build.rs"

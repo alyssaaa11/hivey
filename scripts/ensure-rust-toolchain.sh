@@ -1,4 +1,4 @@
-# Sourced by install.sh and scripts/sync-herdr.sh (hiver update). Defines ensure_rust_toolchain.
+# Sourced by install.sh and scripts/sync-herdr.sh (hivey update). Defines ensure_rust_toolchain.
 #
 # rust-toolchain.toml pins the Rust version, and the first cargo call would otherwise install it
 # silently. When something else installs the same toolchain at the same moment (an editor's
@@ -9,7 +9,7 @@
 
 RUST_CHANNEL=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml 2>/dev/null | head -1)
 RUSTUP_LOG="${TMPDIR:-/tmp}"
-RUSTUP_LOG="${RUSTUP_LOG%/}/hiver-rustup.log"
+RUSTUP_LOG="${RUSTUP_LOG%/}/hivey-rustup.log"
 
 # RUSTUP_AUTO_INSTALL=0: a check must never start a hidden toolchain download.
 rust_toolchain_ok() {

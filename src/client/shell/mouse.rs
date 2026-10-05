@@ -679,7 +679,7 @@ impl ClientShellState {
     pub(super) fn handle_mouse(&mut self, mouse: MouseEvent, outcome: &mut ClientShellInput) {
         self.update_link_hover(mouse, outcome);
         let point = (mouse.column, mouse.row);
-        // hiver: hovering a swarm row shows its info card.
+        // hivey: hovering a swarm row shows its info card.
         if mouse.kind == MouseEventKind::Moved {
             let hovered = self
                 .hits
@@ -691,7 +691,7 @@ impl ClientShellState {
                 outcome.repaint = true;
             }
         }
-        // hiver: double-click a pane's title bar (its top border) to zoom it, and back.
+        // hivey: double-click a pane's title bar (its top border) to zoom it, and back.
         if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
             let title_bar = self.hits.panes.iter().find(|hit| {
                 !hit.popup
@@ -2176,7 +2176,7 @@ impl ClientShellState {
                 if self.handle_endpoint_agent_click(point, outcome) {
                     return;
                 }
-                // hiver: swarm headers; the chevron toggles, the rest focuses the master.
+                // hivey: swarm headers; the chevron toggles, the rest focuses the master.
                 let swarm_header = self
                     .hits
                     .swarm_headers

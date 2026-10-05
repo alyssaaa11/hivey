@@ -468,7 +468,7 @@ impl Default for SpacesSidebarConfig {
         Self {
             rows: vec![
                 vec![SpaceSidebarToken::StateIcon, SpaceSidebarToken::Workspace],
-                // hiver: `$swarm` is the swarm summary (●working/total ⚠ ✉ ⏸) the engine reports.
+                // hivey: `$swarm` is the swarm summary (●working/total ⚠ ✉ ⏸) the engine reports.
                 vec![
                     SpaceSidebarToken::Custom("swarm".into()),
                     SpaceSidebarToken::Branch,

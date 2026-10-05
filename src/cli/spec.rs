@@ -116,7 +116,7 @@ fn write_requested_help(
 fn update_command() -> Command {
     Command::new("update")
         .about(
-            "Update hiver to the latest version: build, install and live-hand-off running \
+            "Update hivey to the latest version: build, install and live-hand-off running \
              sessions",
         )
         .arg(flag("check").help("Maintainer: merge herdr, test, ask, then publish and install"))

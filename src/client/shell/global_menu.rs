@@ -4,7 +4,7 @@ use super::*;
 pub(super) enum ClientGlobalMenuAction {
     Binding(crate::input::KeybindAction),
     WhatsNew,
-    /// hiver: settings, opened on the pets tab
+    /// hivey: settings, opened on the pets tab
     Pets,
 }
 
@@ -52,7 +52,7 @@ pub(super) fn global_menu_items(
         "detach",
         ClientGlobalMenuAction::Binding(crate::input::KeybindAction::Detach),
     ));
-    // hiver: last, so herdr's items keep their places
+    // hivey: last, so herdr's items keep their places
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));
     }

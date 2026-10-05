@@ -1,7 +1,7 @@
-//! Swarm roster loaded from `<root>/.swarm/agents.json`, hiver's swarm manifest (written by
-//! `hiver swarm launch` or a setup provider; format in plugins/README.md).
+//! Swarm roster loaded from `<root>/.swarm/agents.json`, hivey's swarm manifest (written by
+//! `hivey swarm launch` or a setup provider; format in plugins/README.md).
 //!
-//! The manifest format is owned by the skill; hiver only reads it and accepts a few
+//! The manifest format is owned by the skill; hivey only reads it and accepts a few
 //! optional additions (`role` per agent, `command` for script entries).
 
 use std::path::{Path, PathBuf};
@@ -86,7 +86,7 @@ pub(crate) struct SwarmAgent {
     pub model: Option<String>,
     /// Pane recorded at launch; live panes are resolved by herdr name first.
     pub pane_id: Option<String>,
-    /// Arguments the agent was launched with (manifest `args`), re-applied when hiver
+    /// Arguments the agent was launched with (manifest `args`), re-applied when hivey
     /// resumes the agent after a restart.
     pub args: Vec<String>,
     /// Which CLI runs the agent (manifest `kind`: claude, codex).
@@ -99,10 +99,10 @@ pub(crate) struct Swarm {
     pub root: PathBuf,
     /// Manifest `"state": "paused"`: deliveries are held (still queued and logged).
     pub paused: bool,
-    /// Manifest `"solo": true`: a single agent (`hiver swarm launch --solo`) that is its own
+    /// Manifest `"solo": true`: a single agent (`hivey swarm launch --solo`) that is its own
     /// master; shown as one row in the sidebar instead of a swarm tree.
     pub solo: bool,
-    /// Manifest `"home": true`: the hiver agent (`hiver home`), kept alive by the server.
+    /// Manifest `"home": true`: the hivey agent (`hivey home`), kept alive by the server.
     pub home: bool,
     /// Manifest `"profile"`: what the swarm or agent does, for the directory other agents
     /// read before asking for help (`description`, `skills`, `tools`).
@@ -146,7 +146,7 @@ impl Swarm {
                     herdr_name: Some(name.to_string()),
                     role: Role::Master,
                     model: None,
-                    // Written by `hiver swarm launch`; finds the master even if not renamed.
+                    // Written by `hivey swarm launch`; finds the master even if not renamed.
                     pane_id: manifest
                         .get("coordinator_pane_id")
                         .and_then(Value::as_str)
@@ -169,7 +169,7 @@ impl Swarm {
                 });
             }
         }
-        // Addons opened by `hiver swarm launch --addon` (relays etc.) are script panes.
+        // Addons opened by `hivey swarm launch --addon` (relays etc.) are script panes.
         for addon in manifest
             .get("addons")
             .and_then(Value::as_array)
@@ -291,7 +291,7 @@ mod tests {
                 "watch": {"command": ["python3", "w.py"]}
             },
             "relay_pane_id": "wB:pE",
-            "addons": [{"plugin": "hiver.slack-relay", "entrypoint": "relay", "pane_id": "wB:pF"}]
+            "addons": [{"plugin": "hivey.slack-relay", "entrypoint": "relay", "pane_id": "wB:pF"}]
         })
     }
 

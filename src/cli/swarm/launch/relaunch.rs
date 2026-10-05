@@ -1,6 +1,6 @@
-//! `hiver swarm relaunch`: bring a swarm's agents (and addons) back after a restart.
+//! `hivey swarm relaunch`: bring a swarm's agents (and addons) back after a restart.
 //!
-//! A hiver restart restores the layout, but agents without a resumable session come back as
+//! A hivey restart restores the layout, but agents without a resumable session come back as
 //! plain shells, and addon processes don't survive. Relaunch starts each missing agent in its
 //! pane again, continuing its previous Claude conversation when there is one (every agent has
 //! its own folder, so `claude --continue` picks the right conversation), and reopens addons.
@@ -17,25 +17,25 @@ use super::{
 use crate::swarm::adapter::{strip_session_args, AgentKind};
 
 pub(in crate::cli::swarm) const HELP: &str = "\
-usage: hiver swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons | --addons-only] [--kickoff TEXT]
+usage: hivey swarm relaunch <swarm> [<agent>...] [--fresh] [--no-addons | --addons-only] [--kickoff TEXT]
          [--claude-args \"...\"]
   Restarts the swarm's agents that aren't running (or the named ones, including the master)
   in their panes, continuing each agent's previous Claude conversation (--fresh: start new),
   and reopens addons whose pane is gone (--no-addons: leave them).";
 
-const RESUME_PROMPT: &str = "hiver restarted this swarm and you were relaunched. Catch up: \
-run `hiver msg inbox`, re-read your brief (CLAUDE.md or AGENTS.md) for where you were, then \
-continue. Tell the coordinator you're back with `hiver msg send coordinator --fyi \"back\"`.";
+const RESUME_PROMPT: &str = "hivey restarted this swarm and you were relaunched. Catch up: \
+run `hivey msg inbox`, re-read your brief (CLAUDE.md or AGENTS.md) for where you were, then \
+continue. Tell the coordinator you're back with `hivey msg send coordinator --fyi \"back\"`.";
 const FRESH_PROMPT: &str = "You were (re)started in a running swarm. Read your brief \
 (CLAUDE.md or AGENTS.md) carefully; if it records earlier work, you are resuming. Run \
-`hiver msg inbox`, then continue (or start your mission). Tell the coordinator with \
-`hiver msg send coordinator --fyi \"started\"`.";
-const SOLO_RESUME_PROMPT: &str = "hiver restarted and you were relaunched. Catch up: run \
-`hiver msg inbox`, re-read your brief (CLAUDE.md or AGENTS.md) and its Status section for \
+`hivey msg inbox`, then continue (or start your mission). Tell the coordinator with \
+`hivey msg send coordinator --fyi \"started\"`.";
+const SOLO_RESUME_PROMPT: &str = "hivey restarted and you were relaunched. Catch up: run \
+`hivey msg inbox`, re-read your brief (CLAUDE.md or AGENTS.md) and its Status section for \
 where you were, then continue.";
 const SOLO_FRESH_PROMPT: &str = "You were (re)started. Read your brief (CLAUDE.md or \
 AGENTS.md) carefully; if its Status section records earlier work, resume from it. Run \
-`hiver msg inbox`, then continue (or start your mission).";
+`hivey msg inbox`, then continue (or start your mission).";
 
 struct Request {
     slug: String,
@@ -241,7 +241,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         .flatten()
         .find(|swarm| swarm["slug"] == request.slug.as_str())
         .cloned()
-        .ok_or_else(|| format!("no swarm {:?} (hiver swarm list)", request.slug))?;
+        .ok_or_else(|| format!("no swarm {:?} (hivey swarm list)", request.slug))?;
     let root = PathBuf::from(swarm["root"].as_str().unwrap_or_default());
     let mut manifest: Value = std::fs::read_to_string(manifest_path(&root))
         .ok()
@@ -294,7 +294,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         fresh_space = new_space(&request.slug, &root);
         beside = fresh_space.clone();
     }
-    let beside = beside.ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hiver swarm launch`")?;
+    let beside = beside.ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hivey swarm launch`")?;
 
     let claude_args = request.claude_args.clone().unwrap_or_else(|| {
         manifest["claude_args"]
@@ -581,8 +581,8 @@ mod tests {
 
     #[test]
     fn finds_claude_conversations_by_mangled_folder() {
-        let home = std::env::temp_dir().join(format!("hiver-relaunch-home-{}", std::process::id()));
-        let work = std::env::temp_dir().join(format!("hiver_relaunch.work-{}", std::process::id()));
+        let home = std::env::temp_dir().join(format!("hivey-relaunch-home-{}", std::process::id()));
+        let work = std::env::temp_dir().join(format!("hivey_relaunch.work-{}", std::process::id()));
         std::fs::create_dir_all(&work).unwrap();
         let canonical = std::fs::canonicalize(&work).unwrap();
         let mangled: String = canonical

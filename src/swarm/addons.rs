@@ -1,6 +1,6 @@
 //! Addons (Slack relay, dashboard) don't survive a server restart: their panes come back as
 //! bare shells, so a Slack relay silently stops relaying. Once per server start, after restored
-//! agents had time to come back, the engine runs `hiver swarm relaunch <slug> --addons-only`
+//! agents had time to come back, the engine runs `hivey swarm relaunch <slug> --addons-only`
 //! for every swarm with addons; it reopens only addons that aren't running. Only once: an addon
 //! the user closes later stays closed.
 
@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use super::model::{manifest_path, Swarm};
 
-/// Wait after the server starts: restored agents (and the hiver agent) come back first.
+/// Wait after the server starts: restored agents (and the hivey agent) come back first.
 const GRACE: Duration = Duration::from_secs(45);
 
 /// When to run the one restore pass. Pure, so the timing is unit-tested.
@@ -55,7 +55,7 @@ fn has_addons(root: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// `hiver swarm relaunch <slug> --addons-only` against this server, detached; its output goes
+/// `hivey swarm relaunch <slug> --addons-only` against this server, detached; its output goes
 /// to `<root>/.swarm/addons-restore.log`.
 fn spawn_relaunch(slug: &str, root: &Path) {
     let Ok(exe) = std::env::current_exe() else {
@@ -102,14 +102,14 @@ mod tests {
 
     #[test]
     fn only_swarms_with_addons_need_it() {
-        let dir = std::env::temp_dir().join(format!("hiver-addons-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hivey-addons-{}", std::process::id()));
         std::fs::create_dir_all(dir.join(".swarm")).unwrap();
         assert!(!has_addons(&dir));
         std::fs::write(manifest_path(&dir), r#"{"addons": []}"#).unwrap();
         assert!(!has_addons(&dir));
         std::fs::write(
             manifest_path(&dir),
-            r#"{"addons": [{"plugin": "hiver.slack-relay", "pane_id": "w3:p2"}]}"#,
+            r#"{"addons": [{"plugin": "hivey.slack-relay", "pane_id": "w3:p2"}]}"#,
         )
         .unwrap();
         assert!(has_addons(&dir));

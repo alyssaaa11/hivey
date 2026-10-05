@@ -1,13 +1,13 @@
 import AppKit
 
-// Hiver — a dark graphite dot with mint agents riding a signal wave around it. Watches hiver:
-// its dots are hiver's agents, and swarms, messages and finished work drive its moves.
-// CLI:  hiver            → launch the pet
-//       hiver say "hi"   → make the running pet say something
-//       hiver agent|leave|swarm|pulse|done ["text"]   → play that move (and say the text)
+// Hivey — a dark graphite dot with mint agents riding a signal wave around it. Watches hivey:
+// its dots are hivey's agents, and swarms, messages and finished work drive its moves.
+// CLI:  hivey            → launch the pet
+//       hivey say "hi"   → make the running pet say something
+//       hivey agent|leave|swarm|pulse|done ["text"]   → play that move (and say the text)
 
-let sayNote = Notification.Name("com.hiver.pet.say")
-let eventNote = Notification.Name("com.hiver.pet.event")
+let sayNote = Notification.Name("com.hivey.pet.say")
+let eventNote = Notification.Name("com.hivey.pet.event")
 let petEvents = ["agent", "leave", "swarm", "pulse", "done", "chat"]
 
 let cliArgs = CommandLine.arguments
@@ -23,7 +23,7 @@ if cliArgs.count >= 2 && petEvents.contains(cliArgs[1]) {
     exit(0)
 }
 
-// One Hiver per desktop
+// One Hivey per desktop
 if let id = Bundle.main.bundleIdentifier,
    NSRunningApplication.runningApplications(withBundleIdentifier: id).count > 1 {
     exit(0)
@@ -72,7 +72,7 @@ final class PetView: NSView {
 
     var talking = false
     var onPoke: (() -> Void)?
-    /// hiver agents are working: messages flow between the dots more often
+    /// hivey agents are working: messages flow between the dots more often
     var busy = false
 
     private var t = 0.0
@@ -120,7 +120,7 @@ final class PetView: NSView {
         agents[i].leaving = t
     }
 
-    /// Dots on the wave = hiver's agents (max 9); new ones fly out, gone ones fade off
+    /// Dots on the wave = hivey's agents (max 9); new ones fly out, gone ones fade off
     func showAgents(_ count: Int) {
         let goal = min(count, 9)
         var present = agents.filter { $0.leaving < 0 }.count
@@ -230,7 +230,7 @@ final class PetView: NSView {
         let theta = spin + a.phase
         let orbitPoint = signalPoint(theta)
 
-        // Formation: a gentle arc above Hiver, bobbing in sync
+        // Formation: a gentle arc above Hivey, bobbing in sync
         let n = CGFloat(max(agents.count - 1, 1))
         let arc = agents.count == 1 ? CGFloat.pi / 2 : CGFloat.pi * (0.88 - 0.76 * CGFloat(i) / n)
         let formPoint = NSPoint(x: center.x + 66 * cos(arc),
@@ -239,7 +239,7 @@ final class PetView: NSView {
         let f = easeInOut(formation)
         var p = lerp(orbitPoint, formPoint, f)
         let born = CGFloat((t - a.born) / 0.55)
-        if born < 1 { p = lerp(center, p, easeInOut(max(0, born))) }   // newborns fly out of Hiver
+        if born < 1 { p = lerp(center, p, easeInOut(max(0, born))) }   // newborns fly out of Hivey
         return (p, lerp(sin(theta), -0.5, f))
     }
 
@@ -504,21 +504,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hideBubble: DispatchWorkItem?
     private var watchItem: NSMenuItem!
     private var voiceItem: NSMenuItem!
-    private let hiverItem = NSMenuItem(title: "hiver: looking…", action: nil, keyEquivalent: "")
-    private let watcher = HiverWatcher()
-    private let chat = HiverChat()
-    private lazy var switcher = PetSwitcher(current: "hiver-dot", say: { [weak self] in self?.say($0, aloud: false) },
+    private let hiveyItem = NSMenuItem(title: "hivey: looking…", action: nil, keyEquivalent: "")
+    private let watcher = HiveyWatcher()
+    private let chat = HiveyChat()
+    private lazy var switcher = PetSwitcher(current: "hivey-dot", say: { [weak self] in self?.say($0, aloud: false) },
                                             turnOffHere: { [weak self] in self?.turnOff() })
     private var watching: Bool {
-        get { UserDefaults.standard.object(forKey: "watchHiver") as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: "watchHiver") }
+        get { UserDefaults.standard.object(forKey: "watchHivey") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "watchHivey") }
     }
     private var speakAloud: Bool {
         get { UserDefaults.standard.object(forKey: "speakAloud") as? Bool ?? true }
         set { UserDefaults.standard.set(newValue, forKey: "speakAloud") }
     }
 
-    private let launchAgent = URL(fileURLWithPath: NSHomeDirectory() + "/Library/LaunchAgents/com.hiver.pet.plist")
+    private let launchAgent = URL(fileURLWithPath: NSHomeDirectory() + "/Library/LaunchAgents/com.hivey.pet.plist")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let size = NSSize(width: 240, height: 240)
@@ -534,24 +534,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         root.addSubview(bubble)
         window.contentView = root
 
-        if !window.setFrameUsingName("HiverPet"), let screen = NSScreen.main {
+        if !window.setFrameUsingName("HiveyPet"), let screen = NSScreen.main {
             let v = screen.visibleFrame
             window.setFrameOrigin(NSPoint(x: v.maxX - size.width - 260, y: v.minY + 10))
         }
         window.setContentSize(size)
-        window.setFrameAutosaveName("HiverPet")
+        window.setFrameAutosaveName("HiveyPet")
 
         let menu = NSMenu()
-        hiverItem.isEnabled = false
-        menu.addItem(hiverItem)
-        watchItem = menu.addItem(withTitle: "Watch hiver", action: #selector(toggleWatch), keyEquivalent: "")
+        hiveyItem.isEnabled = false
+        menu.addItem(hiveyItem)
+        watchItem = menu.addItem(withTitle: "Watch hivey", action: #selector(toggleWatch), keyEquivalent: "")
         watchItem.target = self
         watchItem.state = watching ? .on : .off
         voiceItem = menu.addItem(withTitle: "Speak aloud", action: #selector(toggleVoice), keyEquivalent: "")
         voiceItem.target = self
         voiceItem.state = speakAloud ? .on : .off
         menu.addItem(.separator())
-        // Preview the pet's moves: they only animate the pet, nothing happens in hiver
+        // Preview the pet's moves: they only animate the pet, nothing happens in hivey
         let effects = NSMenu()
         effects.addItem(withTitle: "New agent", action: #selector(newAgent), keyEquivalent: "").target = self
         effects.addItem(withTitle: "Swarm formation", action: #selector(swarm), keyEquivalent: "").target = self
@@ -561,9 +561,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(effectsItem)
         menu.addItem(.separator())
         switcher.addItems(to: menu)
-        menu.addItem(withTitle: "Quit Hiver", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Quit Hivey", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         pet.menu = menu
-        // Click: talk to the hiver agent (a chat box above the pet); drag still moves it
+        // Click: talk to the hivey agent (a chat box above the pet); drag still moves it
         pet.onPoke = { [weak self] in
             guard let self else { return }
             pet.celebrate()
@@ -572,7 +572,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         chat.say = { [weak self] text, aloud in self?.say(text, aloud: aloud) }
         chat.onSent = { [weak self] in self?.pet.pulse() }
 
-        // `hiver agent|leave|swarm|pulse|done ["text"]`
+        // `hivey agent|leave|swarm|pulse|done ["text"]`
         DistributedNotificationCenter.default().addObserver(forName: eventNote, object: nil, queue: .main) { [weak self] note in
             guard let raw = note.object as? String else { return }
             let parts = raw.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
@@ -583,8 +583,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher.onUpdate = { [weak self] snapshot, events in
             MainActor.assumeIsolated { self?.react(snapshot, events) }
         }
-        watcher.onLastWindowClosed = { NSApp.terminate(nil) }   // back with the next hiver window
-        if watching { watcher.start() } else { hiverItem.title = "hiver: not watching" }
+        watcher.onLastWindowClosed = { NSApp.terminate(nil) }   // back with the next hivey window
+        if watching { watcher.start() } else { hiveyItem.title = "hivey: not watching" }
 
         DistributedNotificationCenter.default().addObserver(forName: sayNote, object: nil, queue: .main) { [weak self] note in
             guard let text = note.object as? String, !text.isEmpty else { return }
@@ -598,7 +598,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSAnimationContext.runAnimationGroup { $0.duration = 0.7; window.animator().alphaValue = 1 }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
             self?.pet.celebrate()
-            self?.say("Welcome! I'm Hiver.")
+            self?.say("Welcome! I'm Hivey.")
         }
     }
 
@@ -651,15 +651,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !text.isEmpty { say(text) }
     }
 
-    /// hiver changed: the dots are its agents; one line per look, most urgent first
-    private func react(_ snapshot: HiverSnapshot, _ events: [HiverEvent]) {
+    /// hivey changed: the dots are its agents; one line per look, most urgent first
+    private func react(_ snapshot: HiveySnapshot, _ events: [HiveyEvent]) {
         guard watching else { return }
-        if watcher.hiverPath == nil {
-            hiverItem.title = "hiver: not installed"
+        if watcher.hiveyPath == nil {
+            hiveyItem.title = "hivey: not installed"
         } else if snapshot.swarms.isEmpty {
-            hiverItem.title = "hiver: nothing running"
+            hiveyItem.title = "hivey: nothing running"
         } else {
-            hiverItem.title = "hiver: \(snapshot.status.count) agents, \(snapshot.working) working"
+            hiveyItem.title = "hivey: \(snapshot.status.count) agents, \(snapshot.working) working"
             pet.showAgents(snapshot.status.count)
         }
         pet.busy = snapshot.working > 0
@@ -710,16 +710,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watching.toggle()
         watchItem.state = watching ? .on : .off
         if watching {
-            hiverItem.title = "hiver: looking…"
+            hiveyItem.title = "hivey: looking…"
             watcher.start()
         } else {
             watcher.stop()
             pet.busy = false
-            hiverItem.title = "hiver: not watching"
+            hiveyItem.title = "hivey: not watching"
         }
     }
 
-    /// Without hiver: remove any old login item and quit
+    /// Without hivey: remove any old login item and quit
     private func turnOff() {
         setLogin(false)
         NSApp.terminate(nil)
@@ -732,7 +732,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func setLogin(_ on: Bool) {
         guard on else { try? FileManager.default.removeItem(at: launchAgent); return }
         let plist: [String: Any] = [
-            "Label": "com.hiver.pet",
+            "Label": "com.hivey.pet",
             "ProgramArguments": ["/usr/bin/open", "-a", Bundle.main.bundlePath],
             "RunAtLoad": true,
         ]

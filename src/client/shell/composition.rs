@@ -63,7 +63,7 @@ impl ClientShellState {
             remote_collapsed_groups: &self.remote_collapsed_groups,
             workspace_scroll: &mut self.workspace_scroll,
             agent_scroll: &mut self.agent_scroll,
-            swarm_tree: &self.swarm_tree, // hiver
+            swarm_tree: &self.swarm_tree, // hivey
             tab_scroll: &mut self.tab_scroll,
             reveal_focused_workspace: &mut self.reveal_focused_workspace,
             reveal_focused_tab: &mut self.reveal_focused_tab,
@@ -220,7 +220,7 @@ impl ClientShellState {
                 remote_collapsed_groups: &self.remote_collapsed_groups,
                 workspace_scroll: &mut self.workspace_scroll,
                 agent_scroll: &mut self.agent_scroll,
-                swarm_tree: &self.swarm_tree, // hiver
+                swarm_tree: &self.swarm_tree, // hivey
                 tab_scroll: &mut self.tab_scroll,
                 reveal_focused_workspace: &mut self.reveal_focused_workspace,
                 reveal_focused_tab: &mut self.reveal_focused_tab,
@@ -560,7 +560,7 @@ impl ClientShellState {
             ));
             frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
         }
-        // hiver: swarm info card while hovering a swarm row, drawn over the panes.
+        // hivey: swarm info card while hovering a swarm row, drawn over the panes.
         if let Some(card) = super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot)
         {
             if let Some(mut composed) = frame.to_ratatui_buffer() {

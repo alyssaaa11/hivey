@@ -58,7 +58,7 @@ pub(super) fn render_agent_panel(
     swarm_tree: &super::swarm_sidebar::SwarmTreeState,
     hits: &mut ShellHitMap,
 ) {
-    // hiver: swarm tree whenever an agent belongs to a swarm.
+    // hivey: swarm tree whenever an agent belongs to a swarm.
     let swarm_rows = super::swarm_sidebar::tree_rows(snapshot, config, swarm_tree);
     let label = snapshot
         .agent_view_label

@@ -1,9 +1,9 @@
-hiver
-Copyright 2026 the hiver authors
+hivey
+Copyright 2026 the hivey authors
 
-hiver is a fork of herdr (https://github.com/herdrdev/herdr),
+hivey is a fork of herdr (https://github.com/herdrdev/herdr),
 Copyright the herdr authors, licensed under the Apache License 2.0.
 
-Files modified from herdr carry "hiver:" comments at each change;
-hiver-only code lives in src/hiver.rs and src/swarm/.
-"herdr" is the name of the upstream project; hiver is not affiliated with or endorsed by it.
+Files modified from herdr carry "hivey:" comments at each change;
+hivey-only code lives in src/hivey.rs and src/swarm/.
+"herdr" is the name of the upstream project; hivey is not affiliated with or endorsed by it.

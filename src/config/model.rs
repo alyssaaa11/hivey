@@ -993,7 +993,7 @@ pub struct UiConfig {
     pub window_title: String,
     /// Agent sidebar ordering. Saved values are "spaces" or "priority". Default: "spaces".
     pub agent_panel_sort: AgentPanelSortConfig,
-    /// hiver: swarm-style sidebar. The space list is titled "swarms" and fills the sidebar;
+    /// hivey: swarm-style sidebar. The space list is titled "swarms" and fills the sidebar;
     /// the agents panel is hidden (agents are the panes). Default: false.
     pub swarm_sidebar: bool,
     /// Retired setting that Herdr wrote before the workspace filter was removed.
@@ -1224,7 +1224,7 @@ impl Default for UiConfig {
             tab_bar_right_separator: " ".into(),
             window_title: super::window_title::default_window_title(),
             agent_panel_sort: AgentPanelSortConfig::Spaces,
-            swarm_sidebar: false, // hiver
+            swarm_sidebar: false, // hivey
             _legacy_agent_panel_scope: None,
             status_indicators: StatusIndicatorStyle::Dots,
             sidebar: SidebarConfig::default(),

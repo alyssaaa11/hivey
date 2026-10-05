@@ -666,7 +666,7 @@ fn render_pane_border_titles(
         if start_x >= end_x {
             continue;
         }
-        // hiver: swarm panes take their role color (master, worker, critic, script).
+        // hivey: swarm panes take their role color (master, worker, critic, script).
         let role_color = ws
             .pane_state(info.id)
             .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))

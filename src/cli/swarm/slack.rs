@@ -1,5 +1,5 @@
-//! `hiver slack`: connect hiver to the user's Slack and give swarms and agents a channel.
-//! The Slack work is done by the `hiver.slack-relay` plugin's scripts (connect.py,
+//! `hivey slack`: connect hivey to the user's Slack and give swarms and agents a channel.
+//! The Slack work is done by the `hivey.slack-relay` plugin's scripts (connect.py,
 //! create_channel.py); this module finds the plugin and wires channels into manifests.
 
 use std::path::{Path, PathBuf};
@@ -9,21 +9,21 @@ use serde_json::{json, Value};
 
 use super::{api, launch, swarms};
 
-pub(super) const RELAY: &str = "hiver.slack-relay";
+pub(super) const RELAY: &str = "hivey.slack-relay";
 
 const HELP: &str = "\
-usage: hiver slack connect [--force]   connect your Slack workspace: create the hiver Slack app,
+usage: hivey slack connect [--force]   connect your Slack workspace: create the hivey Slack app,
                                      paste its bot token (typed hidden, checked, kept private)
-       hiver slack status [--json]     connected? workspace, bot, missing scopes
-       hiver slack add <slug> [--channel ID]
+       hivey slack status [--json]     connected? workspace, bot, missing scopes
+       hivey slack add <slug> [--channel ID]
                                      give a running swarm or agent its own channel (#<slug>,
                                      created or joined) and open the Slack relay in its space
-  New ones: hiver swarm launch … --slack. The hiver agent: hiver home setup --slack (#hiver).";
+  New ones: hivey swarm launch … --slack. The hivey agent: hivey home setup --slack (#hivey).";
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     let rest: Vec<String> = args.iter().skip(1).cloned().collect();
     if let Some(sub) = args.first().filter(|_| super::wants_help(&rest)) {
-        println!("{}", super::sub_help(HELP, "hiver slack", sub));
+        println!("{}", super::sub_help(HELP, "hivey slack", sub));
         return Ok(0);
     }
     let outcome = match args.first().map(String::as_str) {
@@ -46,7 +46,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     match outcome {
         Ok(code) => Ok(code),
         Err(err) => {
-            eprintln!("hiver slack: {err}");
+            eprintln!("hivey slack: {err}");
             Ok(1)
         }
     }
@@ -61,7 +61,7 @@ fn plugin_root() -> Result<PathBuf, String> {
         .find(|plugin| plugin["plugin_id"] == RELAY)
         .and_then(|plugin| plugin["plugin_root"].as_str())
         .map(PathBuf::from)
-        .ok_or_else(|| format!("the {RELAY} plugin is not installed (hiver plugin list)"))
+        .ok_or_else(|| format!("the {RELAY} plugin is not installed (hivey plugin list)"))
 }
 
 fn script(name: &str) -> Result<Command, String> {
@@ -153,21 +153,21 @@ fn add(args: &[String]) -> Result<(), String> {
     let mut rest = args.to_vec();
     let channel = super::take_value(&mut rest, "--channel")?;
     let [slug] = rest.as_slice() else {
-        return Err("usage: hiver slack add <slug> [--channel ID]".into());
+        return Err("usage: hivey slack add <slug> [--channel ID]".into());
     };
     let swarm = swarms()
         .map_err(|err| err.to_string())?
         .into_iter()
         .find(|swarm| swarm["slug"] == slug.as_str())
-        .ok_or_else(|| format!("no swarm or agent {slug:?} (hiver swarm directory)"))?;
+        .ok_or_else(|| format!("no swarm or agent {slug:?} (hivey swarm directory)"))?;
     let root = PathBuf::from(swarm["root"].as_str().unwrap_or_default());
     let channel = match channel {
         Some(channel) => channel,
         None => {
             if !connected() {
-                return Err("Slack is not connected: run hiver slack connect in a terminal".into());
+                return Err("Slack is not connected: run hivey slack connect in a terminal".into());
             }
-            create_channel(slug, &format!("hiver: talk to {slug}"))?
+            create_channel(slug, &format!("hivey: talk to {slug}"))?
         }
     };
     ensure_relay(slug, &root, &channel)?;

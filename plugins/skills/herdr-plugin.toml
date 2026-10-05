@@ -1,4 +1,4 @@
-id = "hiver.skills"
+id = "hivey.skills"
 name = "Skills"
 version = "0.1.0"
 min_herdr_version = "0.9.0"
@@ -7,5 +7,5 @@ platforms = ["linux", "macos"]
 
 # A skills provider is any plugin with a `skills.md` next to its manifest: the instructions swarm
 # and agent creators follow to give every agent the skills its task needs. They read the chosen
-# one with `hiver skills guide` (choose it in settings → plugins or with
-# `hiver skills providers --default ID`). This plugin has no panes.
+# one with `hivey skills guide` (choose it in settings → plugins or with
+# `hivey skills providers --default ID`). This plugin has no panes.

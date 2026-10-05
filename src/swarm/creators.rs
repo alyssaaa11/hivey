@@ -1,17 +1,17 @@
-//! hiver: swarm and agent creators (setup providers: plugins with a `setup` pane).
+//! hivey: swarm and agent creators (setup providers: plugins with a `setup` pane).
 //!
-//! `hiver swarm new` hands a task to a swarm creator, `hiver swarm new --agent` to an agent
-//! creator. The one used for each kind is chosen with `hiver swarm providers --default ID` or
+//! `hivey swarm new` hands a task to a swarm creator, `hivey swarm new --agent` to an agent
+//! creator. The one used for each kind is chosen with `hivey swarm providers --default ID` or
 //! in settings → plugins (saved in `swarm-setup.json`); when none is chosen, or the chosen one
-//! isn't installed, the built-in creator that ships with hiver is used.
+//! isn't installed, the built-in creator that ships with hivey is used.
 
 use serde_json::{json, Value};
 
 /// The pane entrypoint every setup provider has.
 pub(crate) const SETUP_ENTRYPOINT: &str = "setup";
-/// The creators that ship with hiver (the repo's `plugins/`, linked by install.sh).
-pub(crate) const BUILTIN_SWARM_CREATOR: &str = "hiver.swarm-creator";
-pub(crate) const BUILTIN_AGENT_CREATOR: &str = "hiver.agent-creator";
+/// The creators that ship with hivey (the repo's `plugins/`, linked by install.sh).
+pub(crate) const BUILTIN_SWARM_CREATOR: &str = "hivey.swarm-creator";
+pub(crate) const BUILTIN_AGENT_CREATOR: &str = "hivey.agent-creator";
 
 /// An installed setup provider.
 #[derive(Debug, Clone, PartialEq)]
@@ -120,7 +120,7 @@ pub(crate) fn pick(
         _ if ids.contains(&builtin) => Ok(builtin.to_string()),
         [only] => Ok((*only).to_string()),
         [] => Err(format!(
-            "no {kind} creator installed (hiver plugin link <hiver repo>/plugins/{kind}-creator)"
+            "no {kind} creator installed (hivey plugin link <hivey repo>/plugins/{kind}-creator)"
         )),
         _ => Err(format!(
             "several {kind} creators; pick one with --provider ({}) or in settings → plugins",
@@ -142,10 +142,10 @@ mod tests {
     #[test]
     fn creators_are_setup_plugins_split_by_kind() {
         let creators = from_plugins(&[
-            plugin("hiver.swarm-creator", "Swarm setup provider", true),
+            plugin("hivey.swarm-creator", "Swarm setup provider", true),
             plugin("agent.creator", "Solo agent setup provider", true),
             plugin("x.solo", "Solo agent setup provider: one agent", true),
-            plugin("hiver.slack-relay", "Slack", false),
+            plugin("hivey.slack-relay", "Slack", false),
         ]);
         let kinds: Vec<(&str, bool)> = creators
             .iter()
@@ -154,7 +154,7 @@ mod tests {
         assert_eq!(
             kinds,
             [
-                ("hiver.swarm-creator", false),
+                ("hivey.swarm-creator", false),
                 ("agent.creator", true),
                 ("x.solo", true)
             ]
@@ -164,11 +164,11 @@ mod tests {
     #[test]
     fn pick_prefers_the_chosen_then_the_built_in_one() {
         let creators = from_plugins(&[
-            plugin("hiver.swarm-creator", "", true),
+            plugin("hivey.swarm-creator", "", true),
             plugin("swarm.creator", "", true),
-            plugin("hiver.agent-creator", "", true),
+            plugin("hivey.agent-creator", "", true),
         ]);
-        assert_eq!(pick(&creators, false, None).unwrap(), "hiver.swarm-creator");
+        assert_eq!(pick(&creators, false, None).unwrap(), "hivey.swarm-creator");
         assert_eq!(
             pick(&creators, false, Some("swarm.creator")).unwrap(),
             "swarm.creator"
@@ -176,12 +176,12 @@ mod tests {
         // A chosen creator that isn't installed falls back to the built-in one
         assert_eq!(
             pick(&creators, false, Some("gone.creator")).unwrap(),
-            "hiver.swarm-creator"
+            "hivey.swarm-creator"
         );
         // A creator of the other kind is never picked
         assert_eq!(
             pick(&creators, true, Some("swarm.creator")).unwrap(),
-            "hiver.agent-creator"
+            "hivey.agent-creator"
         );
         let only_other = from_plugins(&[plugin("a.swarm", "", true), plugin("b.swarm", "", true)]);
         assert!(pick(&only_other, false, None).is_err());

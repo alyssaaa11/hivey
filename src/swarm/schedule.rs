@@ -1,6 +1,6 @@
 //! Scheduled wake-ups for a swarm's master (or any agent): "every 15m" or "daily at 09:00".
 //!
-//! Stored in `<root>/.swarm/schedules.json` (owned by hiver). When one is due the engine
+//! Stored in `<root>/.swarm/schedules.json` (owned by hivey). When one is due the engine
 //! sends a bus message with the task and a status snapshot; the bus delivers it when the
 //! target is idle, so a check never interrupts work and costs nothing until it is due.
 

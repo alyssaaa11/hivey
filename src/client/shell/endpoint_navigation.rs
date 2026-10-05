@@ -35,7 +35,7 @@ impl ClientShellState {
         press: ClientWorkspacePress,
         outcome: &mut ClientShellInput,
     ) {
-        // hiver: clicking a swarm's space focuses its master, ready to talk to.
+        // hivey: clicking a swarm's space focuses its master, ready to talk to.
         if let Some(pane_id) = self.swarm_master_pane(&press.endpoint_id, &press.workspace_id) {
             self.push_endpoint_method(
                 crate::api::schema::Method::PaneFocus(crate::api::schema::PaneTarget { pane_id }),
@@ -50,7 +50,7 @@ impl ClientShellState {
         );
     }
 
-    /// hiver: the master pane the swarm engine reports on a swarm's space.
+    /// hivey: the master pane the swarm engine reports on a swarm's space.
     fn swarm_master_pane(
         &self,
         endpoint_id: &ClientEndpointId,

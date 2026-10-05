@@ -1,6 +1,6 @@
-//! `hiver home`: the hiver agent, the user's always-on way into hiver (see `crate::swarm::home`).
-//! It lives in `~/.hiver/agent`, runs as the solo agent `hiver` in the first space, and can be
-//! reached from the Slack channel `#hiver` through the `hiver.slack-relay` addon.
+//! `hivey home`: the hivey agent, the user's always-on way into hivey (see `crate::swarm::home`).
+//! It lives in `~/.hivey/agent`, runs as the solo agent `hivey` in the first space, and can be
+//! reached from the Slack channel `#hivey` through the `hivey.slack-relay` addon.
 
 use std::path::{Path, PathBuf};
 
@@ -10,26 +10,26 @@ use super::{launch, slack, sub_help, swarms, take_flag, take_value, wants_help};
 use crate::swarm::home::{self as engine_home, SLUG};
 
 const HELP: &str = "\
-usage: hiver home                     status (same as hiver home status)
-       hiver home setup [--model M] [--slack | --channel C…] [--no-start] [--force]
-                                     create ~/.hiver/agent (the hiver agent) and turn it on in
-                                     this session; --slack creates (or finds) #hiver and relays it
-       hiver home start              start it (or bring it back) in the first space
-       hiver home status             settings, folder, Slack channel, running or not
-       hiver home enable|disable     keep it alive automatically, or not
+usage: hivey home                     status (same as hivey home status)
+       hivey home setup [--model M] [--slack | --channel C…] [--no-start] [--force]
+                                     create ~/.hivey/agent (the hivey agent) and turn it on in
+                                     this session; --slack creates (or finds) #hivey and relays it
+       hivey home start              start it (or bring it back) in the first space
+       hivey home status             settings, folder, Slack channel, running or not
+       hivey home enable|disable     keep it alive automatically, or not
   While enabled, the server of its session (default: \"default\") restarts it when it's gone.";
 
 const BRIEF: &str = include_str!("home_brief.md");
 const KICKOFF: &str = "Read your CLAUDE.md, follow its 'Start of every session' steps, then \
 say hello in one line and wait for the user's requests.";
-const DESCRIPTION: &str = "The hiver agent: launches and checks swarms and agents for the user, \
-reachable in its space and on Slack #hiver";
+const DESCRIPTION: &str = "The hivey agent: launches and checks swarms and agents for the user, \
+reachable in its space and on Slack #hivey";
 const DEFAULT_MODEL: &str = "opus";
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
     if let Some(sub) = args.first().filter(|_| wants_help(&rest)) {
-        println!("{}", sub_help(HELP, "hiver home", sub));
+        println!("{}", sub_help(HELP, "hivey home", sub));
         return Ok(0);
     }
     let outcome = match args.first().map(String::as_str) {
@@ -52,14 +52,14 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     match outcome {
         Ok(()) => Ok(0),
         Err(err) => {
-            eprintln!("hiver home: {err}");
+            eprintln!("hivey home: {err}");
             Ok(1)
         }
     }
 }
 
 fn dirs() -> Result<(PathBuf, PathBuf), String> {
-    let dir = engine_home::hiver_dir().ok_or("HOME is not set")?;
+    let dir = engine_home::hivey_dir().ok_or("HOME is not set")?;
     let agent = dir.join("agent");
     Ok((dir, agent))
 }
@@ -95,7 +95,7 @@ fn setup(rest: &mut Vec<String>) -> Result<(), String> {
     } else {
         println!("kept {} (--force rewrites it)", brief.display());
     }
-    // ~/.hiver/config → hiver's own config folder, so everything is reachable from ~/.hiver.
+    // ~/.hivey/config → hivey's own config folder, so everything is reachable from ~/.hivey.
     let link = dir.join("config");
     if let Some(config_dir) = crate::config::config_path().parent() {
         if std::fs::symlink_metadata(&link).is_err() {
@@ -114,34 +114,34 @@ fn setup(rest: &mut Vec<String>) -> Result<(), String> {
     } else if config["model"].as_str().is_none() {
         config["model"] = json!(DEFAULT_MODEL);
     }
-    // Kept alive by the server of the session this runs in (`hiver --session X home setup`).
+    // Kept alive by the server of the session this runs in (`hivey --session X home setup`).
     config["session"] = json!(crate::session::active_name()
         .unwrap_or_else(|| crate::session::DEFAULT_SESSION_NAME.to_string()));
     if want_slack {
         if !slack::connected() {
             return Err(
-                "Slack is not connected: run hiver slack connect in a terminal, then \
-                        hiver home setup --slack"
+                "Slack is not connected: run hivey slack connect in a terminal, then \
+                        hivey home setup --slack"
                     .into(),
             );
         }
-        let id = slack::create_channel("hiver", "Talk to the hiver agent (hiver home)")?;
+        let id = slack::create_channel("hivey", "Talk to the hivey agent (hivey home)")?;
         config["channel"] = json!(id);
     } else if let Some(channel) = channel {
         config["channel"] = json!(channel);
     }
     save_config(&config)?;
     println!(
-        "hiver agent on: model {}, session {}, Slack {}",
+        "hivey agent on: model {}, session {}, Slack {}",
         config["model"].as_str().unwrap_or(DEFAULT_MODEL),
         engine_home::configured_session(&config),
         config["channel"]
             .as_str()
-            .map_or("none".to_string(), |c| format!("#hiver ({c})"))
+            .map_or("none".to_string(), |c| format!("#hivey ({c})"))
     );
     if no_start {
         println!(
-            "it starts with hiver's {} session",
+            "it starts with hivey's {} session",
             engine_home::configured_session(&config)
         );
         return Ok(());
@@ -167,12 +167,12 @@ fn master_status(swarm: &Value) -> String {
 fn start(quiet: bool) -> Result<(), String> {
     let config = engine_home::load_config();
     if !config.is_object() {
-        return Err("not set up yet: hiver home setup".into());
+        return Err("not set up yet: hivey home setup".into());
     }
     let (_, agent) = dirs()?;
     if !agent.join("CLAUDE.md").is_file() {
         return Err(format!(
-            "{} is missing: hiver home setup",
+            "{} is missing: hivey home setup",
             agent.join("CLAUDE.md").display()
         ));
     }
@@ -186,17 +186,17 @@ fn start(quiet: bool) -> Result<(), String> {
     match swarm {
         Some(swarm) if master_status(&swarm) != "gone" => {
             say(format!(
-                "hiver agent is running ({})",
+                "hivey agent is running ({})",
                 master_status(&swarm)
             ));
         }
         Some(_) => {
             // Registered but gone: relaunch continues its conversation (new space if needed).
-            say("bringing the hiver agent back…".into());
+            say("bringing the hivey agent back…".into());
             launch::relaunch::run(&[SLUG.to_string()]).map_err(|err| err.to_string())?;
         }
         None => {
-            say("starting the hiver agent…".into());
+            say("starting the hivey agent…".into());
             let model = config["model"].as_str().unwrap_or(DEFAULT_MODEL);
             let mut args: Vec<String> = [
                 agent.to_string_lossy().as_ref(),
@@ -213,9 +213,9 @@ fn start(quiet: bool) -> Result<(), String> {
                 "--description",
                 DESCRIPTION,
                 "--skills",
-                "hiver",
+                "hivey",
                 "--tools",
-                "hiver CLI, Slack #hiver",
+                "hivey CLI, Slack #hivey",
             ]
             .iter()
             .map(|s| s.to_string())
@@ -238,16 +238,16 @@ fn start(quiet: bool) -> Result<(), String> {
 fn set_enabled(enabled: bool) -> Result<(), String> {
     let mut config = engine_home::load_config();
     if !config.is_object() {
-        return Err("not set up yet: hiver home setup".into());
+        return Err("not set up yet: hivey home setup".into());
     }
     config["enabled"] = json!(enabled);
     save_config(&config)?;
     println!(
-        "hiver agent {}",
+        "hivey agent {}",
         if enabled {
-            "enabled: hiver keeps it running"
+            "enabled: hivey keeps it running"
         } else {
-            "disabled: hiver won't restart it (hiver home start runs it once)"
+            "disabled: hivey won't restart it (hivey home start runs it once)"
         }
     );
     Ok(())
@@ -256,16 +256,16 @@ fn set_enabled(enabled: bool) -> Result<(), String> {
 fn status() -> Result<(), String> {
     let config = engine_home::load_config();
     if !config.is_object() {
-        println!("hiver agent: not set up (hiver home setup [--slack])");
+        println!("hivey agent: not set up (hivey home setup [--slack])");
         return Ok(());
     }
     let (_, agent) = dirs()?;
     let running = match home_swarm() {
         Ok(Some(swarm)) => master_status(&swarm),
         Ok(None) => "not started".to_string(),
-        Err(_) => "unknown (no hiver server)".to_string(),
+        Err(_) => "unknown (no hivey server)".to_string(),
     };
-    println!("⬢ hiver agent   {running}");
+    println!("⬢ hivey agent   {running}");
     println!(
         "  enabled      {}",
         if config["enabled"] == true {
@@ -287,12 +287,12 @@ fn status() -> Result<(), String> {
         "  slack        {}",
         config["channel"]
             .as_str()
-            .map_or("none (hiver home setup --slack)".to_string(), |c| format!(
-                "#hiver ({c})"
+            .map_or("none (hivey home setup --slack)".to_string(), |c| format!(
+                "#hivey ({c})"
             ))
     );
     println!(
-        "  talk to it   its space (first), Slack #hiver, or hiver msg send hiver/master \"…\""
+        "  talk to it   its space (first), Slack #hivey, or hivey msg send hivey/master \"…\""
     );
     Ok(())
 }

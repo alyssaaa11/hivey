@@ -2,8 +2,8 @@
   "schema_version": 1,
   "diagram_type": "sequence",
   "meta": {
-    "title": "hiver swarm new: from a task to a running swarm",
-    "output": "docs/diagrams/hiver-new-swarm.html",
+    "title": "hivey swarm new: from a task to a running swarm",
+    "output": "docs/diagrams/hivey-new-swarm.html",
     "locale": "en",
     "quality_profile": "showcase",
     "column_fit": "spread",
@@ -27,7 +27,7 @@
     {
       "id": "cli",
       "type": "frontend",
-      "label": "hiver CLI",
+      "label": "hivey CLI",
       "sublabel": "swarm new / launch",
       "sources": [
         {
@@ -40,20 +40,20 @@
           "path": "src/cli/swarm.rs",
           "line": 208,
           "end_line": 317,
-          "label": "hiver swarm new"
+          "label": "hivey swarm new"
         },
         {
           "path": "src/cli/swarm/launch.rs",
           "line": 556,
           "end_line": 620,
-          "label": "hiver swarm launch"
+          "label": "hivey swarm launch"
         }
       ]
     },
     {
       "id": "server",
       "type": "backend",
-      "label": "hiver server",
+      "label": "hivey server",
       "sublabel": "runtime + swarm engine",
       "sources": [
         {
@@ -159,7 +159,7 @@
       "from": "you",
       "to": "cli",
       "y": 168,
-      "label": "hiver swarm new \"task\"",
+      "label": "hivey swarm new \"task\"",
       "variant": "emphasis"
     },
     {
@@ -311,10 +311,10 @@
   "cards": [
     {
       "dot": "cyan",
-      "title": "What hiver does",
+      "title": "What hivey does",
       "items": [
         "Finds providers: any plugin with a pane named setup",
-        "Opens it in your folder with HIVER_SETUP_TASK",
+        "Opens it in your folder with HIVEY_SETUP_TASK",
         "swarm launch: own space, addons, agents, schedules",
         "Then runs the swarm: bus, idle delivery, wake-ups"
       ]
@@ -325,7 +325,7 @@
       "items": [
         "1 Design the team for the task (and confirm)",
         "2 Write each agent's CLAUDE.md (Codex: AGENTS.md)",
-        "3 Run hiver swarm launch with its choices",
+        "3 Run hivey swarm launch with its choices",
         "4 Become the master (e.g. exec claude)"
       ]
     },
@@ -334,7 +334,7 @@
       "title": "Included providers",
       "items": [
         "swarm.creator: a Claude coordinator runs /swarm",
-        "hiver.team-template: builder + critic, copy it",
+        "hivey.team-template: builder + critic, copy it",
         "Write your own: plugins/team-template is 140 lines"
       ]
     }

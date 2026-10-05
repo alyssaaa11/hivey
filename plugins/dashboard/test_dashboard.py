@@ -1,4 +1,4 @@
-"""Tests for the hiver dashboard: python3 -m unittest plugins/dashboard/test_dashboard.py"""
+"""Tests for the hivey dashboard: python3 -m unittest plugins/dashboard/test_dashboard.py"""
 import json
 import sys
 import tempfile

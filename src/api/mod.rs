@@ -88,7 +88,7 @@ pub struct ApiRequestMessage {
 
 pub type ApiRequestSender = mpsc::UnboundedSender<ApiRequestMessage>;
 
-/// hiver: in-process API calls for the swarm engine.
+/// hivey: in-process API calls for the swarm engine.
 pub(crate) fn dispatch_internal(
     request: Request,
     api_tx: &ApiRequestSender,

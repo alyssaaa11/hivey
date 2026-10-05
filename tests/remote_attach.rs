@@ -105,7 +105,7 @@ exit 255
 
     let inherited_path = std::env::var("PATH").unwrap_or_default();
     let path = format!("{}:{inherited_path}", temp_dir.display());
-    let child = Command::new(env!("CARGO_BIN_EXE_hiver"))
+    let child = Command::new(env!("CARGO_BIN_EXE_hivey"))
         .args(["--remote", "check-host"])
         .env("PATH", path)
         .env("FAKE_SSH_FRAMED", if framed_shell { "1" } else { "0" })

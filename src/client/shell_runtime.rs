@@ -47,7 +47,7 @@ pub(super) fn dispatch_client_shell_actions(
                     }
                 }
             }
-            shell::ClientShellAction::RunHiver(args) => match std::env::current_exe() {
+            shell::ClientShellAction::RunHivey(args) => match std::env::current_exe() {
                 Ok(exe) => match std::process::Command::new(&exe)
                     .args(&args)
                     .stdin(std::process::Stdio::null())
@@ -56,9 +56,9 @@ pub(super) fn dispatch_client_shell_actions(
                     .spawn()
                 {
                     Ok(child) => detached_process_children.push(child),
-                    Err(err) => warn!(err = %err, ?args, "failed to run hiver"),
+                    Err(err) => warn!(err = %err, ?args, "failed to run hivey"),
                 },
-                Err(err) => warn!(err = %err, "cannot find the hiver binary"),
+                Err(err) => warn!(err = %err, "cannot find the hivey binary"),
             },
             shell::ClientShellAction::ReplayMouse(events) => replay_mouse.extend(events),
             shell::ClientShellAction::Keybind(action) => {

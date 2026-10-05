@@ -1,16 +1,16 @@
-//! hiver-specific process setup. Everything hiver adds on top of herdr lives in
-//! `src/hiver.rs` and `src/swarm/`; core files only call in through small `// hiver:` hooks.
+//! hivey-specific process setup. Everything hivey adds on top of herdr lives in
+//! `src/hivey.rs` and `src/swarm/`; core files only call in through small `// hivey:` hooks.
 
-/// Set to `1` in every pane hiver starts, next to herdr's `HERDR_ENV=1`.
-pub(crate) const HIVER_ENV_VAR: &str = "HIVER_ENV";
+/// Set to `1` in every pane hivey starts, next to herdr's `HERDR_ENV=1`.
+pub(crate) const HIVEY_ENV_VAR: &str = "HIVEY_ENV";
 
 pub(crate) const SELF_UPDATE_DISABLED: &str =
-    "hiver does not self-update; update from source: git pull && cargo build --release";
+    "hivey does not self-update; update from source: git pull && cargo build --release";
 
-/// A hiver window open on this computer: `~/.hiver/windows/<pid>` exists while it runs. The
+/// A hivey window open on this computer: `~/.hivey/windows/<pid>` exists while it runs. The
 /// desktop pet shows while any window is open (it checks each pid is alive, so a crashed
 /// window doesn't count) and quits itself after the last one closes; opening a window starts
-/// the chosen pet (`hiver pet show`).
+/// the chosen pet (`hivey pet show`).
 pub(crate) struct WindowMarker(Option<std::path::PathBuf>);
 
 /// Pets are macOS desktop apps.
@@ -21,12 +21,12 @@ impl WindowMarker {
         let Some(home) = std::env::var_os("HOME") else {
             return Self(None);
         };
-        let dir = std::path::Path::new(&home).join(".hiver").join("windows");
+        let dir = std::path::Path::new(&home).join(".hivey").join("windows");
         let path = dir.join(std::process::id().to_string());
         let marker = std::fs::create_dir_all(&dir)
             .and_then(|()| std::fs::write(&path, b""))
             .map(|()| path)
-            .map_err(|err| tracing::debug!(%err, "hiver window marker"))
+            .map_err(|err| tracing::debug!(%err, "hivey window marker"))
             .ok();
         if PETS_SUPPORTED {
             show_pet();
@@ -43,7 +43,7 @@ impl Drop for WindowMarker {
     }
 }
 
-/// `hiver pet show` in the background (it does nothing when no pet is chosen or it's running).
+/// `hivey pet show` in the background (it does nothing when no pet is chosen or it's running).
 fn show_pet() {
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -59,26 +59,26 @@ fn show_pet() {
         Ok(mut child) => {
             std::thread::spawn(move || child.wait());
         }
-        Err(err) => tracing::debug!(%err, "hiver pet show"),
+        Err(err) => tracing::debug!(%err, "hivey pet show"),
     }
 }
 
-/// The hiver checkout this binary was built from, or `HIVER_REPO`.
+/// The hivey checkout this binary was built from, or `HIVEY_REPO`.
 pub(crate) fn repo() -> std::path::PathBuf {
-    std::env::var_os("HIVER_REPO")
+    std::env::var_os("HIVEY_REPO")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")))
 }
 
-/// `hiver update [--yes] [--check]`: runs `scripts/sync-herdr.sh` in the hiver repo (pull the
+/// `hivey update [--yes] [--check]`: runs `scripts/sync-herdr.sh` in the hivey repo (pull the
 /// fork, merge herdr, build, test, install, live handoff). The repo is where this binary was
-/// built, or `HIVER_REPO`. Never downloads herdr releases over hiver.
+/// built, or `HIVEY_REPO`. Never downloads herdr releases over hivey.
 pub(crate) fn run_update(args: &[String]) -> i32 {
     let repo = repo();
     let script = repo.join("scripts").join("sync-herdr.sh");
     if !script.is_file() {
         eprintln!(
-            "hiver update: no {} — set HIVER_REPO to your hiver checkout",
+            "hivey update: no {} — set HIVEY_REPO to your hivey checkout",
             script.display()
         );
         return 1;
@@ -91,13 +91,13 @@ pub(crate) fn run_update(args: &[String]) -> i32 {
     {
         Ok(status) => status.code().unwrap_or(1),
         Err(err) => {
-            eprintln!("hiver update: cannot run {}: {err}", script.display());
+            eprintln!("hivey update: cannot run {}: {err}", script.display());
             1
         }
     }
 }
 
-/// Variables a herdr pane exports that would point a hiver process at herdr's server.
+/// Variables a herdr pane exports that would point a hivey process at herdr's server.
 const INHERITED_HERDR_VARS: &[&str] = &[
     "HERDR_ENV",
     "HERDR_SOCKET_PATH",
@@ -112,15 +112,15 @@ const INHERITED_HERDR_VARS: &[&str] = &[
     "HERDR_REATTACH_COMMAND",
 ];
 
-/// hiver panes keep herdr's `HERDR_*` variables so existing tools (`herdr agent prompt`,
-/// Claude hooks reading `HERDR_PANE_ID`) talk to hiver unchanged. But when hiver is
+/// hivey panes keep herdr's `HERDR_*` variables so existing tools (`herdr agent prompt`,
+/// Claude hooks reading `HERDR_PANE_ID`) talk to hivey unchanged. But when hivey is
 /// launched from inside a *herdr* pane, those variables point at herdr's server and
-/// would make hiver attach to it or refuse to start as "nested". Drop them in that case.
+/// would make hivey attach to it or refuse to start as "nested". Drop them in that case.
 /// Must run first in `main`, before any thread is spawned.
 pub(crate) fn isolate_from_parent_herdr() {
     let in_herdr = std::env::var_os(crate::HERDR_ENV_VAR).is_some();
-    let in_hiver = std::env::var_os(HIVER_ENV_VAR).is_some();
-    if in_herdr && !in_hiver {
+    let in_hivey = std::env::var_os(HIVEY_ENV_VAR).is_some();
+    if in_herdr && !in_hivey {
         for var in INHERITED_HERDR_VARS {
             std::env::remove_var(var);
         }

@@ -238,7 +238,7 @@ pub(super) struct ShellRenderState<'a> {
     pub(super) remote_collapsed_groups: &'a HashMap<ClientEndpointId, HashSet<String>>,
     pub(super) workspace_scroll: &'a mut usize,
     pub(super) agent_scroll: &'a mut usize,
-    pub(super) swarm_tree: &'a super::swarm_sidebar::SwarmTreeState, // hiver
+    pub(super) swarm_tree: &'a super::swarm_sidebar::SwarmTreeState, // hivey
     pub(super) tab_scroll: &'a mut usize,
     pub(super) reveal_focused_workspace: &'a mut bool,
     pub(super) reveal_focused_tab: &'a mut bool,

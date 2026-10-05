@@ -1,9 +1,9 @@
-//! `hiver swarm launch`: start a designed swarm in hiver.
+//! `hivey swarm launch`: start a designed swarm in hivey.
 //!
 //! Takes a roster (agents, models, kinds), gives the swarm **its own space** (the calling
 //! pane, the master, moves in as pane 1; workers are tiled beside it), opens addons, starts
 //! the agents and writes `<root>/.swarm/agents.json`. Who designs the team and writes the
-//! briefs is up to a setup provider (e.g. the /swarm skill, see `hiver swarm new`); its
+//! briefs is up to a setup provider (e.g. the /swarm skill, see `hivey swarm new`); its
 //! arguments mirror that skill's launch_swarm.py so providers can hand off directly.
 
 use std::collections::BTreeMap;
@@ -20,13 +20,13 @@ pub(super) mod relaunch;
 const DEFAULT_CLAUDE_ARGS: &str = "--chrome --dangerously-skip-permissions --model opus";
 /// Neutral kickoff; a setup provider passes its own with `--kickoff`.
 const DEFAULT_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in your \
-folder) and start your mission. Talk to teammates with `hiver msg send <agent> \"…\"` (the master \
-is `coordinator`) and read waiting messages with `hiver msg inbox`. Other swarms and agents are \
-listed in `hiver swarm directory`: never send them work without asking the user first.";
+folder) and start your mission. Talk to teammates with `hivey msg send <agent> \"…\"` (the master \
+is `coordinator`) and read waiting messages with `hivey msg inbox`. Other swarms and agents are \
+listed in `hivey swarm directory`: never send them work without asking the user first.";
 /// Kickoff of a solo agent (`--solo`): no teammates to talk to.
 const SOLO_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in this \
 folder) and start your mission. If it has a Status section, resume from it. Read waiting \
-messages with `hiver msg inbox`. Other swarms and agents are listed in `hiver swarm directory`: \
+messages with `hivey msg inbox`. Other swarms and agents are listed in `hivey swarm directory`: \
 never send them work without asking the user first, and don't disturb one that is working.";
 /// Entrypoint used when `--addon` names none and the plugin declares no pane.
 const ADDON_ENTRYPOINT: &str = "relay";
@@ -34,23 +34,23 @@ const ADDON_ENTRYPOINT: &str = "relay";
 const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
 
 pub(super) const HELP: &str = "\
-usage: hiver swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
+usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
          [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack|--no-slack]
-       hiver swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex] [options]
-         [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hiver swarm directory)
+       hivey swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex] [options]
+         [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hivey swarm directory)
   Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
   (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
   --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
-  before the agents start, with HIVER_SWARM_ROOT, HIVER_SWARM_SLUG and HIVER_SWARM_CHANNEL set:
-  e.g. --addon hiver.slack-relay. Any plugin can be a relay; see plugins/README.md.
-  Slack: when Slack is connected (hiver slack connect, once) every launch gets its own channel
+  before the agents start, with HIVEY_SWARM_ROOT, HIVEY_SWARM_SLUG and HIVEY_SWARM_CHANNEL set:
+  e.g. --addon hivey.slack-relay. Any plugin can be a relay; see plugins/README.md.
+  Slack: when Slack is connected (hivey slack connect, once) every launch gets its own channel
   #<slug> (created, or joined if it exists) with the Slack relay, so the user can talk to it
   from Slack. --slack makes that an error when Slack isn't connected; --no-slack skips it.
   --heartbeat 15m wakes the master every 15 min with a monitoring task and a status
-  snapshot (hiver swarm schedule … adds more, e.g. a daily report at 09:00).
+  snapshot (hivey swarm schedule … adds more, e.g. a daily report at 09:00).
   --solo: a single agent, no workers. It runs in <root> itself (CLAUDE.md or AGENTS.md there)
   as agent <slug>, in a new space <slug>, and is its own master (messages, schedules and
   heartbeats go to it). The calling pane stays where it is.";
@@ -80,7 +80,7 @@ struct Options {
     addons: Vec<Addon>,
     /// One agent working in `root` itself, as its own master (`--solo`).
     solo: bool,
-    /// The hiver agent (`--solo --home`, used by `hiver home`): space pinned first, unfocused.
+    /// The hivey agent (`--solo --home`, used by `hivey home`): space pinned first, unfocused.
     home: bool,
     /// `--slack`: its own channel #<slug> (created or joined) and the Slack relay; an error
     /// when Slack isn't connected. Without it the same happens whenever Slack is connected.
@@ -386,7 +386,7 @@ fn check_solo(opts: &Options, root: &Path) -> Result<(), String> {
         .any(|agent| agent["name"].as_str() == Some(opts.slug.as_str()));
     if taken {
         return Err(format!(
-            "agent {:?} is already live — pick another slug, or `hiver swarm relaunch {}`",
+            "agent {:?} is already live — pick another slug, or `hivey swarm relaunch {}`",
             opts.slug, opts.slug
         ));
     }
@@ -401,7 +401,7 @@ fn place_master(opts: &Options, root: &Path) -> Result<String, String> {
         .or_else(|| std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR).ok())
         .map(|pane| canonical_pane_id(&pane))
     else {
-        // Launched from outside hiver: an empty master pane in a new space.
+        // Launched from outside hivey: an empty master pane in a new space.
         let created = api(
             "workspace.create",
             json!({ "cwd": root, "label": opts.slug, "focus": true }),
@@ -422,7 +422,7 @@ fn place_master(opts: &Options, root: &Path) -> Result<String, String> {
         "agent.rename",
         json!({ "target": master, "name": format!("{}-coordinator", opts.slug) }),
     ) {
-        eprintln!("  note: master not renamed ({err}); hiver finds it by pane instead");
+        eprintln!("  note: master not renamed ({err}); hivey finds it by pane instead");
     }
     Ok(master)
 }
@@ -563,14 +563,14 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
     args
 }
 
-/// `hiver agent start …` for one agent; its JSON reply.
+/// `hivey agent start …` for one agent; its JSON reply.
 fn run_agent_start(
     name: &str,
     pane: &str,
     args: &[String],
     kind: AgentKind,
 ) -> std::io::Result<Value> {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hiver"));
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("hivey"));
     let output = std::process::Command::new(exe)
         .args([
             "agent",
@@ -616,7 +616,7 @@ fn retry_while_busy(
 }
 
 /// Starts Claude and accepts its folder-trust dialog (the coordinator created the folder).
-/// Runs hiver's own `agent start`, which waits until the agent can take input, so the kickoff
+/// Runs hivey's own `agent start`, which waits until the agent can take input, so the kickoff
 /// prompt isn't lost; retried while the pane is still busy with its shell's startup.
 fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> String {
     let response = match retry_while_busy(
@@ -675,7 +675,7 @@ fn now_secs() -> f64 {
         .unwrap_or_default()
 }
 
-/// `hiver swarm launch` with these arguments, without printing the manifest (`hiver home`).
+/// `hivey swarm launch` with these arguments, without printing the manifest (`hivey home`).
 pub(super) fn launch_quietly(args: &[String]) -> Result<Value, String> {
     launch(&parse(args)?)
 }
@@ -716,8 +716,8 @@ fn launch(opts: &Options) -> Result<Value, String> {
         // is reported but never stops the launch.
         if !super::slack::connected() {
             eprintln!(
-                "  Slack is not connected: no channel #{0} (hiver slack connect, then \
-                 hiver slack add {0})",
+                "  Slack is not connected: no channel #{0} (hivey slack connect, then \
+                 hivey slack add {0})",
                 opts.slug
             );
             opts
@@ -790,8 +790,8 @@ fn launch(opts: &Options) -> Result<Value, String> {
 }
 
 /// `--solo`: the agent runs in `root` in a new space and is the swarm's only member.
-/// A channel without `--slack`: not for the hiver agent (its channel is #hiver, set up by
-/// `hiver home setup`), not with `--no-slack`, and not when `--channel` already names one.
+/// A channel without `--slack`: not for the hivey agent (its channel is #hivey, set up by
+/// `hivey home setup`), not with `--no-slack`, and not when `--channel` already names one.
 fn wants_auto_slack(opts: &Options) -> bool {
     !opts.no_slack && !opts.home && opts.channel.is_none()
 }
@@ -802,15 +802,15 @@ fn add_slack(opts: &Options) -> Result<Options, String> {
     if opts.channel.is_none() {
         if !super::slack::connected() {
             return Err(
-                "--slack: Slack is not connected; run hiver slack connect in a \
+                "--slack: Slack is not connected; run hivey slack connect in a \
                         terminal (or launch without --slack and add it later with \
-                        hiver slack add <slug>)"
+                        hivey slack add <slug>)"
                     .into(),
             );
         }
         let purpose = match opts.profile.get("description").and_then(Value::as_str) {
-            Some(description) => format!("hiver {}: {description}", opts.slug),
-            None => format!("hiver: talk to {}", opts.slug),
+            Some(description) => format!("hivey {}: {description}", opts.slug),
+            None => format!("hivey: talk to {}", opts.slug),
         };
         opts.channel = Some(super::slack::create_channel(&opts.slug, &purpose)?);
     }
@@ -883,7 +883,7 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     Ok(manifest)
 }
 
-/// Moves the space holding `pane` to the top of the list (the hiver agent's space comes first).
+/// Moves the space holding `pane` to the top of the list (the hivey agent's space comes first).
 pub(super) fn pin_first_pane_space(pane: &str) {
     let workspace = api("pane.get", json!({ "pane_id": pane }))
         .ok()
@@ -1049,9 +1049,9 @@ fn open_addons(
                 "cwd": root,
                 "focus": false,
                 "env": {
-                    "HIVER_SWARM_ROOT": root,
-                    "HIVER_SWARM_SLUG": slug,
-                    "HIVER_SWARM_CHANNEL": channel,
+                    "HIVEY_SWARM_ROOT": root,
+                    "HIVEY_SWARM_SLUG": slug,
+                    "HIVEY_SWARM_CHANNEL": channel,
                 },
             }),
         );
@@ -1065,7 +1065,7 @@ fn open_addons(
                 opened.push(json!({ "plugin": plugin, "entrypoint": entrypoint, "pane_id": pane }));
             }
             Err(err) => eprintln!(
-                "  addon {plugin}:{entrypoint}: not started ({err}); install it with `hiver plugin link <dir>`"
+                "  addon {plugin}:{entrypoint}: not started ({err}); install it with `hivey plugin link <dir>`"
             ),
         }
     }
@@ -1073,11 +1073,11 @@ fn open_addons(
 }
 
 pub(super) const ADDON_HELP: &str = "\
-usage: hiver swarm addon <swarm> <plugin>[:<entrypoint>]...
+usage: hivey swarm addon <swarm> <plugin>[:<entrypoint>]...
   Opens addons (dashboard, relays) in a running swarm's space, e.g.
-  hiver swarm addon app-ideas hiver.dashboard";
+  hivey swarm addon app-ideas hivey.dashboard";
 
-/// `hiver swarm addon <swarm> <plugin>...`: add addons to a swarm that is already running.
+/// `hivey swarm addon <swarm> <plugin>...`: add addons to a swarm that is already running.
 pub(super) fn run_addon(args: &[String]) -> std::io::Result<i32> {
     let parsed = (|| -> Result<(String, Vec<Addon>), String> {
         let (slug, specs) = args.split_first().ok_or("missing <swarm>")?;
@@ -1117,7 +1117,7 @@ fn add_addons(slug: &str, addons: &[Addon]) -> Result<usize, String> {
         .flatten()
         .find(|swarm| swarm["slug"] == slug)
         .cloned()
-        .ok_or_else(|| format!("no swarm {slug:?} (hiver swarm list)"))?;
+        .ok_or_else(|| format!("no swarm {slug:?} (hivey swarm list)"))?;
     let root = PathBuf::from(swarm["root"].as_str().unwrap_or_default());
     // Stack under the last running agent pane of the swarm (its own space).
     let below = swarm["agents"]
@@ -1274,8 +1274,8 @@ mod tests {
     #[test]
     fn addon_specs_name_a_plugin_and_optional_entrypoint() {
         assert_eq!(
-            parse_addon("hiver.slack-relay").unwrap(),
-            ("hiver.slack-relay".into(), None)
+            parse_addon("hivey.slack-relay").unwrap(),
+            ("hivey.slack-relay".into(), None)
         );
         assert_eq!(
             parse_addon("me.discord:bridge").unwrap(),

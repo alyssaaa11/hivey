@@ -306,9 +306,9 @@ fn run_client_with_mode(
         eprintln!("herdr: failed to set up terminal: {err}");
         err
     })?;
-    // hiver: this window counts as open (the desktop pet shows) until the client exits.
+    // hivey: this window counts as open (the desktop pet shows) until the client exits.
     let _window_marker = (!direct_attach && !handshake::is_remote_client_process())
-        .then(crate::hiver::WindowMarker::open);
+        .then(crate::hivey::WindowMarker::open);
     loop_config.host_escape_disambiguation_active =
         terminal_guard.host_escape_disambiguation_active();
     loop_config.initial_host_input = terminal_guard.take_buffered_host_input();

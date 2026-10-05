@@ -23,7 +23,7 @@ pub(crate) const MAX_PROMPT_CHARS: usize = 4000;
 pub(crate) const IDLE_SETTLE_MS: u64 = 3000;
 
 pub(crate) const HUMAN: &str = "human";
-pub(crate) const HIVER: &str = "hiver";
+pub(crate) const HIVEY: &str = "hivey";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -52,7 +52,7 @@ pub(crate) struct Message {
     pub id: String,
     /// Milliseconds since the Unix epoch.
     pub ts: u64,
-    /// `<slug>/<agent>`, `human`, or `hiver`.
+    /// `<slug>/<agent>`, `human`, or `hivey`.
     pub from: String,
     /// Recipient swarm slug (absent for messages to the human).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -158,7 +158,7 @@ pub(crate) fn pending_from_log(records: &[Record]) -> (Vec<Message>, Vec<String>
 // Addressing
 // ---------------------------------------------------------------------------
 
-/// Who is sending: an agent of a swarm, the human, or hiver itself.
+/// Who is sending: an agent of a swarm, the human, or hivey itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Sender {
     pub swarm: Option<String>,
@@ -182,7 +182,7 @@ impl Sender {
         }
     }
 
-    /// Masters, the human and hiver may address other swarms; workers go through their master.
+    /// Masters, the human and hivey may address other swarms; workers go through their master.
     fn may_cross_swarms(&self) -> bool {
         self.swarm.is_none() || self.role == Some(Role::Master)
     }
@@ -214,7 +214,7 @@ pub(crate) fn resolve(
         swarms
             .iter()
             .find(|swarm| swarm.slug == slug)
-            .ok_or_else(|| format!("no swarm named {slug:?} (hiver swarm list)"))
+            .ok_or_else(|| format!("no swarm named {slug:?} (hivey swarm list)"))
     };
     let home = || -> Result<&Swarm, String> {
         match default_swarm {
@@ -283,7 +283,7 @@ fn direct(swarm: &Swarm, name: &str) -> Result<Recipient, String> {
 pub(crate) enum Presence {
     /// Idle or done for `idle_ms`.
     Idle { idle_ms: u64 },
-    /// Working, or a state hiver can't read (treated as busy).
+    /// Working, or a state hivey can't read (treated as busy).
     Busy,
     /// Waiting on a dialog: typing into it could answer the dialog by accident.
     Blocked,
@@ -346,9 +346,9 @@ pub(crate) fn digest(pending: &[&Message]) -> String {
     let fyis: Vec<_> = pending.iter().filter(|msg| msg.kind == Kind::Fyi).collect();
     let mut out = String::new();
     if pending.len() == 1 {
-        out.push_str(&format!("[hiver] {}", line(pending[0])));
+        out.push_str(&format!("[hivey] {}", line(pending[0])));
     } else {
-        out.push_str(&format!("[hiver · {} messages]", pending.len()));
+        out.push_str(&format!("[hivey · {} messages]", pending.len()));
         for (index, msg) in wakes.iter().enumerate() {
             out.push_str(&format!("\n{}. {}", index + 1, line(msg)));
         }
@@ -360,7 +360,7 @@ pub(crate) fn digest(pending: &[&Message]) -> String {
         }
     }
     out.push_str(
-        "\n(Reply only if you must act or were asked a question. Acks and status updates: hiver msg send <agent> --fyi \"…\")",
+        "\n(Reply only if you must act or were asked a question. Acks and status updates: hivey msg send <agent> --fyi \"…\")",
     );
     out
 }
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn log_roundtrip_rebuilds_the_queue_after_restart() {
-        let dir = std::env::temp_dir().join(format!("hiver-bus-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hivey-bus-{}", std::process::id()));
         let path = dir.join("bus.jsonl");
         let _ = std::fs::remove_file(&path);
         let mut copy = msg("m3", Kind::Normal);
@@ -632,7 +632,7 @@ mod tests {
         b.from = "tonight/coordinator".into();
         let c = msg("m3", Kind::Normal);
         let text = digest(&[&a, &b, &c]);
-        assert!(text.starts_with("[hiver · 3 messages]"), "{text}");
+        assert!(text.starts_with("[hivey · 3 messages]"), "{text}");
         let urgent = text.find("from tonight/coordinator (urgent)").unwrap();
         let normal = text.find("2. from scout [m3]").unwrap();
         let fyi = text
@@ -641,7 +641,7 @@ mod tests {
         assert!(urgent < normal && normal < fyi, "{text}");
         let single = digest(&[&c]);
         assert!(
-            single.starts_with("[hiver] from scout [m3]: text m3"),
+            single.starts_with("[hivey] from scout [m3]: text m3"),
             "{single}"
         );
     }

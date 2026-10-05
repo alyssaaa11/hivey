@@ -24,7 +24,7 @@ pub(crate) struct ClientShellConfig {
     pub(super) spaces: SpacesSidebarConfig,
     pub(super) agents: crate::config::AgentsSidebarConfig,
     pub(super) agent_panel_sort: crate::config::AgentPanelSortConfig,
-    pub(super) swarm_sidebar: bool, // hiver
+    pub(super) swarm_sidebar: bool, // hivey
     pub(super) status_indicators: crate::config::StatusIndicatorStyle,
     pub(super) sound_enabled: bool,
     pub(super) toast_delivery: crate::config::ToastDelivery,
@@ -95,7 +95,7 @@ pub(super) struct ShellHitMap {
     pub(super) popup: Option<PaneHit>,
     pub(super) pane_splits: Vec<PaneSplitHit>,
     pub(super) agents: Vec<(Rect, String)>,
-    pub(super) swarm_headers: Vec<super::swarm_sidebar::SwarmHeaderHit>, // hiver
+    pub(super) swarm_headers: Vec<super::swarm_sidebar::SwarmHeaderHit>, // hivey
     pub(super) endpoint_agents: Vec<(Rect, ClientEndpointId, String)>,
     pub(super) agent_body: Rect,
     pub(super) agent_scrollbar: Rect,
@@ -250,9 +250,9 @@ pub(crate) enum ClientShellAction {
     },
     ClipboardWrite(Vec<u8>),
     OpenSafeWebUrl(String),
-    /// hiver: run this hiver binary with these arguments, detached, on the client's computer
+    /// hivey: run this hivey binary with these arguments, detached, on the client's computer
     /// (the desktop pet lives where the user sits, not where the server runs).
-    RunHiver(Vec<String>),
+    RunHivey(Vec<String>),
     ActivateEndpoint {
         endpoint_id: ClientEndpointId,
         target: Option<ClientEndpointFocusTarget>,
@@ -393,11 +393,11 @@ pub(super) enum ClientSettingsSection {
     Sound,
     Toast,
     Integrations,
-    // hiver: the desktop pet
+    // hivey: the desktop pet
     Pets,
-    // hiver: the swarm and agent creators `hiver swarm new` uses, and the skills plugin
+    // hivey: the swarm and agent creators `hivey swarm new` uses, and the skills plugin
     Plugins,
-    // hiver: the skills library folder and online skill search
+    // hivey: the skills library folder and online skill search
     Skills,
 }
 
@@ -437,19 +437,19 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) integration_messages: Vec<String>,
     pub(super) loading_integrations: bool,
     pub(super) installing_integrations: bool,
-    /// hiver: the pet chosen on this computer (`~/.hiver/pet.json`), and what the last
-    /// choice started (the switch itself runs `hiver pet` in the background).
+    /// hivey: the pet chosen on this computer (`~/.hivey/pet.json`), and what the last
+    /// choice started (the switch itself runs `hivey pet` in the background).
     pub(super) pet_current: Option<String>,
     pub(super) pet_message: Option<String>,
-    /// hiver: the installed swarm creators then agent creators, the one `hiver swarm new`
+    /// hivey: the installed swarm creators then agent creators, the one `hivey swarm new`
     /// uses for each kind (swarm, agent), and what the last choice did.
     pub(super) creators: Vec<crate::swarm::creators::Creator>,
     pub(super) creator_current: (Option<String>, Option<String>),
     pub(super) creator_message: Option<String>,
-    /// hiver: the skills plugins (listed after the creators) and the one creators follow.
+    /// hivey: the skills plugins (listed after the creators) and the one creators follow.
     pub(super) skill_providers: Vec<crate::swarm::skills_library::Provider>,
     pub(super) skill_provider_current: Option<String>,
-    /// hiver: settings → skills: library folders to choose from, the current one, whether
+    /// hivey: settings → skills: library folders to choose from, the current one, whether
     /// online search is on, and what the last choice did.
     pub(super) skill_dirs: Vec<std::path::PathBuf>,
     pub(super) skill_dir_current: Option<std::path::PathBuf>,
@@ -918,7 +918,7 @@ pub(crate) struct ClientShellState {
     pub(super) remote_collapsed_groups: HashMap<ClientEndpointId, HashSet<String>>,
     pub(super) workspace_scroll: usize,
     pub(super) agent_scroll: usize,
-    pub(super) swarm_tree: super::swarm_sidebar::SwarmTreeState, // hiver
+    pub(super) swarm_tree: super::swarm_sidebar::SwarmTreeState, // hivey
     pub(super) pending_agent_reveal: Option<(ClientEndpointId, String)>,
     pub(super) tab_scroll: usize,
     pub(super) mobile_switcher_scroll: usize,
@@ -1084,7 +1084,7 @@ impl ClientShellState {
             remote_collapsed_groups,
             workspace_scroll: 0,
             agent_scroll: 0,
-            swarm_tree: Default::default(), // hiver
+            swarm_tree: Default::default(), // hivey
             pending_agent_reveal: None,
             tab_scroll: 0,
             mobile_switcher_scroll: 0,

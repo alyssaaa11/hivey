@@ -1,12 +1,12 @@
 {
   "display_information": {
-    "name": "hiver",
-    "description": "Talk to your hiver agents and swarms from Slack",
+    "name": "hivey",
+    "description": "Talk to your hivey agents and swarms from Slack",
     "background_color": "#2d2a3e"
   },
   "features": {
     "bot_user": {
-      "display_name": "hiver",
+      "display_name": "hivey",
       "always_online": true
     }
   },

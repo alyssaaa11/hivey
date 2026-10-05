@@ -1,4 +1,4 @@
-//! `hiver swarm directory` and `hiver swarm profile`: who else is registered in this hiver,
+//! `hivey swarm directory` and `hivey swarm profile`: who else is registered in this hivey,
 //! what each swarm or solo agent does (manifest `"profile"`), and whether it is busy, so an
 //! agent can judge where to send work — after asking the user.
 
@@ -77,15 +77,15 @@ pub(super) fn directory(json_out: bool) -> std::io::Result<i32> {
         return Ok(0);
     }
     if entries.is_empty() {
-        println!("no swarms or agents registered (hiver swarm register <root>)");
+        println!("no swarms or agents registered (hivey swarm register <root>)");
         return Ok(0);
     }
-    println!("hiver directory · {} registered\n", entries.len());
+    println!("hivey directory · {} registered\n", entries.len());
     for entry in &entries {
         print_entry(entry);
     }
     println!("{DIRECTORY_RULE}");
-    println!("Send with: hiver msg send <address> \"…\"");
+    println!("Send with: hivey msg send <address> \"…\"");
     Ok(0)
 }
 
@@ -117,7 +117,7 @@ fn print_entry(entry: &Value) {
     );
     match entry["description"].as_str().filter(|d| !d.is_empty()) {
         Some(about) => println!("    {about}"),
-        None => println!("    (no description: hiver swarm profile <slug> --description …)"),
+        None => println!("    (no description: hivey swarm profile <slug> --description …)"),
     }
     let join = |field: &str| {
         entry[field]
@@ -141,7 +141,7 @@ fn print_entry(entry: &Value) {
     println!("    address: {}\n", entry["address"].as_str().unwrap_or(""));
 }
 
-/// `hiver swarm profile <slug> [--description T] [--skills a,b] [--tools x,y]`.
+/// `hivey swarm profile <slug> [--description T] [--skills a,b] [--tools x,y]`.
 pub(super) fn profile(args: &[String]) -> std::io::Result<i32> {
     let mut rest = args.to_vec();
     let parsed = (|| {
@@ -160,12 +160,12 @@ pub(super) fn profile(args: &[String]) -> std::io::Result<i32> {
     };
     let [slug] = rest.as_slice() else {
         eprintln!(
-            "usage: hiver swarm profile <slug> [--description TEXT] [--skills a,b] [--tools x,y]"
+            "usage: hivey swarm profile <slug> [--description TEXT] [--skills a,b] [--tools x,y]"
         );
         return Ok(2);
     };
     let Some(swarm) = swarms()?.into_iter().find(|s| s["slug"] == slug.as_str()) else {
-        eprintln!("error: no swarm or agent {slug:?} (hiver swarm directory)");
+        eprintln!("error: no swarm or agent {slug:?} (hivey swarm directory)");
         return Ok(1);
     };
     let root = PathBuf::from(swarm["root"].as_str().unwrap_or_default());
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn update_profile_merges_fields() {
-        let root = std::env::temp_dir().join(format!("hiver-profile-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("hivey-profile-{}", std::process::id()));
         std::fs::create_dir_all(root.join(".swarm")).unwrap();
         std::fs::write(
             crate::swarm::model::manifest_path(&root),

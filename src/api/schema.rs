@@ -127,7 +127,7 @@ pub enum Method {
     AgentSendKeys(AgentSendKeysParams),
     #[serde(rename = "agent.rename")]
     AgentRename(AgentRenameParams),
-    // hiver: swarm engine (src/swarm); one variant keeps upstream rebases small.
+    // hivey: swarm engine (src/swarm); one variant keeps upstream rebases small.
     #[serde(rename = "swarm")]
     Swarm(crate::swarm::SwarmParams),
     #[serde(rename = "agent.view.set")]

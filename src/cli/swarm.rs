@@ -1,4 +1,4 @@
-//! hiver CLI: `hiver swarm …` and `hiver msg …` (socket method `swarm`).
+//! hivey CLI: `hivey swarm …` and `hivey msg …` (socket method `swarm`).
 
 use serde_json::{json, Value};
 
@@ -21,52 +21,52 @@ pub(super) use skills::run as run_skills_command;
 pub(super) use slack::run as run_slack_command;
 
 const SWARM_HELP: &str = "\
-hiver swarm commands:
-  hiver swarm new [--provider ID] [--default] <task…>
+hivey swarm commands:
+  hivey swarm new [--provider ID] [--default] <task…>
                                      design + launch a swarm with the default swarm creator
-                                     (built in: hiver.swarm-creator)
-  hiver swarm new --agent [--provider ID] [--default] <task…>
+                                     (built in: hivey.swarm-creator)
+  hivey swarm new --agent [--provider ID] [--default] <task…>
                                      one solo agent in this folder with the default agent creator
-                                     (built in: hiver.agent-creator)
-  hiver swarm providers [--default ID]
+                                     (built in: hivey.agent-creator)
+  hivey swarm providers [--default ID]
                                      installed swarm and agent creators (* = used by swarm new);
                                      --default ID makes ID the one used for its kind
-  hiver swarm accept-trust [--pane P] [--kind claude|codex] [--timeout 60]
+  hivey swarm accept-trust [--pane P] [--kind claude|codex] [--timeout 60]
                                      answer an agent CLI's folder-trust prompt in a pane (providers)
-  hiver swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
-  hiver swarm launch <root> --slug S --solo [--model M]  start one agent in <root> (its own master)
+  hivey swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
+  hivey swarm launch <root> --slug S --solo [--model M]  start one agent in <root> (its own master)
                                      gets its own Slack channel #<slug> when Slack is connected
-  hiver swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
-  hiver swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
-  hiver swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
+  hivey swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
+  hivey swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
+  hivey swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
                                      alias: import
-  hiver swarm unregister <slug>      remove it from hiver (files are kept); alias: forget
-  hiver swarm directory [--json]     every swarm and solo agent: what it does, skills, tools,
+  hivey swarm unregister <slug>      remove it from hivey (files are kept); alias: forget
+  hivey swarm directory [--json]     every swarm and solo agent: what it does, skills, tools,
                                      busy or idle, address (ask the user before sending work)
-  hiver swarm profile <slug> [--description T] [--skills a,b] [--tools x,y]
+  hivey swarm profile <slug> [--description T] [--skills a,b] [--tools x,y]
                                      set (or show) a directory entry
-  hiver swarm list [--json]          swarms, agents, roles, states and queued messages
-  hiver swarm master [<slug>] [--focus]
+  hivey swarm list [--json]          swarms, agents, roles, states and queued messages
+  hivey swarm master [<slug>] [--focus]
                                      show (or focus) a swarm's master; default: your swarm
-  hiver swarm info [<slug>]          agents, Slack channel, vault, addons, budget, tasks, repos
-  hiver swarm schedule add <swarm> (--every 15m | --at 09:00) [--to AGENT] [--id ID] <task…>
+  hivey swarm info [<slug>]          agents, Slack channel, vault, addons, budget, tasks, repos
+  hivey swarm schedule add <swarm> (--every 15m | --at 09:00) [--to AGENT] [--id ID] <task…>
                                      wake the master (or AGENT) with a task on a schedule
-  hiver swarm schedule list|remove|run [<swarm>] [<id>]
-  hiver swarm pick                   choose a swarm and jump to its master (interactive)
-  hiver swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥P ⌥F ⌥Q)
-  hiver swarm pause|resume <slug>    hold / release message delivery (manifest state)
-  Slack: hiver slack connect (once), hiver slack add <slug> (channel for a running one)";
+  hivey swarm schedule list|remove|run [<swarm>] [<id>]
+  hivey swarm pick                   choose a swarm and jump to its master (interactive)
+  hivey swarm setup                  swarm sidebar + Option keys (⌥S ⌥M ⌥A ⌥I ⌥L ⌥P ⌥F ⌥Q)
+  hivey swarm pause|resume <slug>    hold / release message delivery (manifest state)
+  Slack: hivey slack connect (once), hivey slack add <slug> (channel for a running one)";
 
 const MSG_HELP: &str = "\
-hiver msg commands:
-  hiver msg send <to> <text…> [--fyi|--urgent] [--reply-to ID] [--swarm SLUG] [--from SWARM/AGENT]
+hivey msg commands:
+  hivey msg send <to> <text…> [--fyi|--urgent] [--reply-to ID] [--swarm SLUG] [--from SWARM/AGENT]
       <to>: agent (scout), @all, @role:worker|critic|master, @masters, <swarm>/<agent>, human
       normal: delivered when the agent is idle · --fyi: never wakes it · --urgent: now
-  hiver msg compose                                        write a message interactively (popup)
-  hiver msg inbox [--agent SWARM/AGENT] [--all] [--json]   pull your messages (marks them read)
-  hiver msg log [--swarm SLUG] [--limit N] [--json]        message history";
+  hivey msg compose                                        write a message interactively (popup)
+  hivey msg inbox [--agent SWARM/AGENT] [--all] [--json]   pull your messages (marks them read)
+  hivey msg log [--swarm SLUG] [--limit N] [--json]        message history";
 
-/// Set by hiver for key commands and popups: the focused pane (they have no pane of their own).
+/// Set by hivey for key commands and popups: the focused pane (they have no pane of their own).
 const ACTIVE_PANE_ENV_VAR: &str = "HERDR_ACTIVE_PANE_ID";
 
 fn call(op: &str, mut args: Value) -> std::io::Result<Value> {
@@ -96,7 +96,7 @@ fn call(op: &str, mut args: Value) -> std::io::Result<Value> {
 }
 
 /// A pane keeps the id it was started with in `HERDR_PANE_ID` even after it moves to
-/// another space; hiver resolves such ids, so ask it for the current one.
+/// another space; hivey resolves such ids, so ask it for the current one.
 fn canonical_pane_id(pane: &str) -> String {
     api("pane.get", json!({ "pane_id": pane }))
         .ok()
@@ -119,7 +119,7 @@ fn api(method: &str, params: Value) -> Result<Value, String> {
     Ok(response.get("result").cloned().unwrap_or(Value::Null))
 }
 
-/// `hiver swarm accept-trust`: wait for an agent CLI's "trust this folder" prompt in a pane and
+/// `hivey swarm accept-trust`: wait for an agent CLI's "trust this folder" prompt in a pane and
 /// answer it. For setup providers that start the master themselves in a new folder (launch
 /// already does this for the agents it starts). Run it in the background, then exec the CLI.
 fn accept_trust(args: &[String]) -> std::io::Result<i32> {
@@ -127,7 +127,7 @@ fn accept_trust(args: &[String]) -> std::io::Result<i32> {
     let parsed = (|| -> Result<(String, crate::swarm::adapter::AgentKind, u64), String> {
         let pane = take_value(&mut rest, "--pane")?
             .or_else(|| std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR).ok())
-            .ok_or("no pane: pass --pane or run inside hiver")?;
+            .ok_or("no pane: pass --pane or run inside hivey")?;
         let kind = match take_value(&mut rest, "--kind")? {
             Some(kind) => crate::swarm::adapter::AgentKind::parse(&kind)
                 .ok_or_else(|| format!("--kind must be claude or codex, not {kind:?}"))?,
@@ -174,7 +174,7 @@ fn providers() -> Result<Vec<Creator>, String> {
     Ok(creators::from_plugins(&plugins))
 }
 
-/// The creator `hiver swarm new` uses for a kind (see `creators::pick`).
+/// The creator `hivey swarm new` uses for a kind (see `creators::pick`).
 fn effective_provider(found: &[Creator], agent: bool) -> Result<String, String> {
     let chosen = creators::chosen(agent);
     let picked = creators::pick(found, agent, chosen.as_deref());
@@ -212,7 +212,7 @@ fn list_providers(args: &[String]) -> std::io::Result<i32> {
     };
     if let Some(id) = set_default {
         let Some(creator) = found.iter().find(|creator| creator.id == id) else {
-            eprintln!("error: {id:?} is not installed (hiver swarm providers)");
+            eprintln!("error: {id:?} is not installed (hivey swarm providers)");
             return Ok(1);
         };
         creators::save_chosen(creator.agent, &id)?;
@@ -222,7 +222,7 @@ fn list_providers(args: &[String]) -> std::io::Result<i32> {
     if found.is_empty() {
         println!(
             "no swarm or agent creators installed (plugins with a \"setup\" pane; the built-in\n\
-             ones: hiver plugin link <hiver repo>/plugins/swarm-creator and …/agent-creator)"
+             ones: hivey plugin link <hivey repo>/plugins/swarm-creator and …/agent-creator)"
         );
         return Ok(0);
     }
@@ -241,9 +241,9 @@ fn list_providers(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
-/// `hiver swarm new [--agent]`: hand a task to a swarm (or agent) creator. Its "setup" pane
-/// opens as a new tab in the current folder with HIVER_SETUP_TASK set; it designs the team (or
-/// the agent), writes the briefs and calls `hiver swarm launch`.
+/// `hivey swarm new [--agent]`: hand a task to a swarm (or agent) creator. Its "setup" pane
+/// opens as a new tab in the current folder with HIVEY_SETUP_TASK set; it designs the team (or
+/// the agent), writes the briefs and calls `hivey swarm launch`.
 fn new_swarm(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.to_vec();
     let make_default = take_flag(&mut rest, "--default");
@@ -266,7 +266,7 @@ fn new_swarm(args: &[String]) -> std::io::Result<i32> {
     let provider = match chosen {
         Some(id) if found.iter().any(|creator| creator.id == id) => id,
         Some(id) => {
-            eprintln!("error: setup provider {id:?} is not installed (hiver swarm providers)");
+            eprintln!("error: setup provider {id:?} is not installed (hivey swarm providers)");
             return Ok(1);
         }
         None => match effective_provider(&found, agent) {
@@ -292,7 +292,7 @@ fn new_swarm(args: &[String]) -> std::io::Result<i32> {
         "placement": "tab",
         "cwd": cwd,
         "focus": true,
-        "env": { "HIVER_SETUP_TASK": task, "HIVER_SETUP_CWD": cwd },
+        "env": { "HIVEY_SETUP_TASK": task, "HIVEY_SETUP_CWD": cwd },
     });
     // Open it in the caller's space, else the focused one, else a new space for this folder.
     let caller = std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR)
@@ -352,10 +352,10 @@ fn new_swarm(args: &[String]) -> std::io::Result<i32> {
 }
 
 const SCHEDULE_HELP: &str = "\
-usage: hiver swarm schedule add <swarm> (--every 15m | --at 09:00) [--to AGENT] [--id ID] <task…>
-       hiver swarm schedule list [<swarm>]
-       hiver swarm schedule remove <swarm> <id>
-       hiver swarm schedule run <swarm> <id>      (now; still delivered when the target is idle)
+usage: hivey swarm schedule add <swarm> (--every 15m | --at 09:00) [--to AGENT] [--id ID] <task…>
+       hivey swarm schedule list [<swarm>]
+       hivey swarm schedule remove <swarm> <id>
+       hivey swarm schedule run <swarm> <id>      (now; still delivered when the target is idle)
   When due, the target (default: the master) gets the task plus a status snapshot, delivered
   when it is idle. A wake-up still waiting is never duplicated. Paused swarms are skipped.";
 
@@ -426,7 +426,7 @@ fn schedule_command(args: &[String]) -> std::io::Result<i32> {
         "schedule.list" => {
             let rows = result["schedules"].as_array().cloned().unwrap_or_default();
             if rows.is_empty() {
-                println!("no schedules (hiver swarm schedule add …)");
+                println!("no schedules (hivey swarm schedule add …)");
             }
             for row in rows {
                 println!(
@@ -468,7 +468,7 @@ fn result(response: &Value) -> Option<&Value> {
 }
 
 /// `--help` or `-h` after a subcommand shows its usage instead of running it: otherwise
-/// `hiver swarm new --help` starts a swarm whose task is "--help".
+/// `hivey swarm new --help` starts a swarm whose task is "--help".
 fn wants_help(rest: &[String]) -> bool {
     rest.iter().any(|arg| arg == "--help" || arg == "-h")
 }
@@ -550,7 +550,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
             println!("{}", launch::HELP);
             return Ok(0);
         }
-        println!("{}", sub_help(SWARM_HELP, "hiver swarm", sub));
+        println!("{}", sub_help(SWARM_HELP, "hivey swarm", sub));
         return Ok(0);
     }
     let json_out = take_flag(&mut rest, "--json");
@@ -595,7 +595,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
             if json_out {
                 println!("{result}");
             } else if result["swarms"].as_array().is_none_or(Vec::is_empty) {
-                println!("no swarms registered (hiver swarm import <root>)");
+                println!("no swarms registered (hivey swarm import <root>)");
             } else {
                 for swarm in result["swarms"].as_array().into_iter().flatten() {
                     print_swarm(swarm);
@@ -644,7 +644,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
                 return Ok(1);
             };
             println!(
-                "hiver · swarm {}\n",
+                "hivey · swarm {}\n",
                 result["swarm"].as_str().unwrap_or("?")
             );
             for line in result["lines"].as_array().into_iter().flatten() {
@@ -704,7 +704,7 @@ fn print_swarm(swarm: &Value) {
 pub(super) fn run_msg_command(args: &[String]) -> std::io::Result<i32> {
     let mut rest: Vec<String> = args.iter().skip(1).cloned().collect();
     if let Some(sub) = args.first().filter(|_| wants_help(&rest)) {
-        println!("{}", sub_help(MSG_HELP, "hiver msg", sub));
+        println!("{}", sub_help(MSG_HELP, "hivey msg", sub));
         return Ok(0);
     }
     let json_out = take_flag(&mut rest, "--json");
@@ -754,7 +754,7 @@ pub(super) fn run_msg_command(args: &[String]) -> std::io::Result<i32> {
                 return Ok(1);
             };
             if let Some(notice) = result["notice"].as_str() {
-                eprintln!("hiver: {notice}");
+                eprintln!("hivey: {notice}");
             }
             if json_out {
                 println!("{result}");
@@ -914,10 +914,10 @@ fn master_of(swarm: &Value) -> Option<&Value> {
 fn pick_master() -> std::io::Result<i32> {
     let swarms = swarms()?;
     if swarms.is_empty() {
-        pause("no swarms registered (hiver swarm import <root>)");
+        pause("no swarms registered (hivey swarm import <root>)");
         return Ok(1);
     }
-    println!("hiver · jump to a swarm's master\n");
+    println!("hivey · jump to a swarm's master\n");
     for (index, swarm) in swarms.iter().enumerate() {
         let agents = swarm["agents"].as_array().cloned().unwrap_or_default();
         let count = |status: &str| agents.iter().filter(|a| a["status"] == status).count();
@@ -970,7 +970,7 @@ fn compose() -> std::io::Result<i32> {
             .find(|swarm| swarm["slug"] == slug)
     });
     println!(
-        "hiver · send a message{}\n",
+        "hivey · send a message{}\n",
         home.as_deref()
             .map(|slug| format!("   swarm: {slug}"))
             .unwrap_or_default()
@@ -1047,8 +1047,8 @@ fn compose() -> std::io::Result<i32> {
     Ok(0)
 }
 
-const KEYS_MARKER: &str = "# hiver: swarm keybindings";
-const KEYS_END: &str = "# end hiver swarm keybindings";
+const KEYS_MARKER: &str = "# hivey: swarm keybindings";
+const KEYS_END: &str = "# end hivey swarm keybindings";
 
 /// One-press Option (Alt) keys; the terminal must send Option as Alt (iTerm: "Use Option as
 /// Meta"; Ghostty: macos-option-as-alt = true). Cmd keys never reach terminal programs.
@@ -1066,12 +1066,12 @@ const KEYS: &[(&str, &str)] = &[
 fn keybindings_toml() -> String {
     format!(
         r#"
-{KEYS_MARKER} v3 (hiver swarm setup)
+{KEYS_MARKER} v3 (hivey swarm setup)
 [[keys.command]]
 key = "alt+s"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" swarm pick"
-description = "hiver: pick a swarm and jump to its master"
+description = "hivey: pick a swarm and jump to its master"
 width = "70%"
 height = "50%"
 
@@ -1079,13 +1079,13 @@ height = "50%"
 key = "alt+m"
 type = "shell"
 command = "\"$HERDR_BIN_PATH\" swarm master --focus"
-description = "hiver: jump to this swarm's master"
+description = "hivey: jump to this swarm's master"
 
 [[keys.command]]
 key = "alt+a"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" msg compose"
-description = "hiver: send a message to an agent"
+description = "hivey: send a message to an agent"
 width = "80%"
 height = "50%"
 
@@ -1093,7 +1093,7 @@ height = "50%"
 key = "alt+i"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" swarm info; printf '\\n(enter to close) '; read _"
-description = "hiver: this swarm's agents, Slack, vault, addons"
+description = "hivey: this swarm's agents, Slack, vault, addons"
 width = "80%"
 height = "80%"
 
@@ -1101,7 +1101,7 @@ height = "80%"
 key = "alt+l"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" msg log --limit 60; printf '\\n(enter to close) '; read _"
-description = "hiver: message log of this swarm"
+description = "hivey: message log of this swarm"
 width = "90%"
 height = "80%"
 
@@ -1109,7 +1109,7 @@ height = "80%"
 key = "alt+p"
 type = "popup"
 command = "\"$HERDR_BIN_PATH\" pet choose; printf '\\n(enter to close) '; read _"
-description = "hiver: choose your desktop pet (or none)"
+description = "hivey: choose your desktop pet (or none)"
 width = "80%"
 height = "50%"
 {KEYS_END}
@@ -1117,7 +1117,7 @@ height = "50%"
     )
 }
 
-/// Removes an earlier hiver keybinding block (v1 had no end marker; it ended with the
+/// Removes an earlier hivey keybinding block (v1 had no end marker; it ended with the
 /// message-log command).
 fn strip_keybindings(content: &str) -> String {
     let Some(marker) = content.find(KEYS_MARKER) else {
@@ -1128,7 +1128,7 @@ fn strip_keybindings(content: &str) -> String {
         marker + end + KEYS_END.len()
     } else {
         let log = content[marker..]
-            .find("description = \"hiver: message log of this swarm\"")
+            .find("description = \"hivey: message log of this swarm\"")
             .map(|i| marker + i);
         match log.and_then(|i| content[i..].find("height = \"80%\"").map(|j| i + j)) {
             Some(i) => i + "height = \"80%\"".len(),
@@ -1144,7 +1144,7 @@ fn strip_keybindings(content: &str) -> String {
     out
 }
 
-/// `hiver swarm setup`: swarm sidebar, Option keys, and ⌥Q / ⌥F for quit and zoom (the
+/// `hivey swarm setup`: swarm sidebar, Option keys, and ⌥Q / ⌥F for quit and zoom (the
 /// prefix keys ctrl+b q / ctrl+b z keep working too).
 const DETACH_KEYS: &str = "[\"alt+q\", \"prefix+q\"]";
 const ZOOM_KEYS: &str = "[\"alt+f\", \"prefix+z\"]";
@@ -1161,20 +1161,20 @@ fn install_keys() -> std::io::Result<i32> {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(&path, content)?;
-    println!("hiver swarm setup written to {}", path.display());
+    println!("hivey swarm setup written to {}", path.display());
     println!("  swarm sidebar on (ui.swarm_sidebar = true)");
     for (key, what) in KEYS {
         println!("  {key}  {what}");
     }
     println!("  (Option must act as Alt in your terminal: iTerm \"Use Option as Meta\", Ghostty macos-option-as-alt = true)");
-    // The hiver skill for Claude Code / Codex (`hiver skill install`).
+    // The hivey skill for Claude Code / Codex (`hivey skill install`).
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_default();
     for (label, dir) in skill::default_targets(&home) {
         match skill::install_into(&dir) {
-            Ok(status) => println!("  hiver skill for {label}: {status}"),
-            Err(err) => eprintln!("  hiver skill for {label}: {err}"),
+            Ok(status) => println!("  hivey skill for {label}: {status}"),
+            Err(err) => eprintln!("  hivey skill for {label}: {err}"),
         }
     }
     let response = super::send_request(&Request {
@@ -1193,7 +1193,7 @@ fn install_keys() -> std::io::Result<i32> {
             Some(_) => println!("config reloaded"),
             None => {}
         },
-        Err(_) => println!("start or reload hiver to use them (hiver server reload-config)"),
+        Err(_) => println!("start or reload hivey to use them (hivey server reload-config)"),
     }
     Ok(0)
 }
@@ -1212,24 +1212,24 @@ mod help_tests {
 
     #[test]
     fn sub_help_shows_only_that_subcommand() {
-        let new = sub_help(SWARM_HELP, "hiver swarm", "new");
-        assert!(new.starts_with("usage: hiver swarm new [--provider ID]"));
+        let new = sub_help(SWARM_HELP, "hivey swarm", "new");
+        assert!(new.starts_with("usage: hivey swarm new [--provider ID]"));
         assert!(new.contains("design + launch a swarm"));
         assert!(!new.contains("providers"));
 
-        let launch = sub_help(SWARM_HELP, "hiver swarm", "launch");
-        assert_eq!(launch.matches("hiver swarm launch").count(), 2);
+        let launch = sub_help(SWARM_HELP, "hivey swarm", "launch");
+        assert_eq!(launch.matches("hivey swarm launch").count(), 2);
         // A less indented line after an entry ends it.
         let help = "usage: x a   first\n         more\n       x b   second\n  footer";
         assert_eq!(sub_help(help, "x", "b"), "usage: x b   second");
         let first = sub_help(help, "x", "a");
         assert!(first.contains("more") && !first.contains("second"));
 
-        let resume = sub_help(SWARM_HELP, "hiver swarm", "resume");
+        let resume = sub_help(SWARM_HELP, "hivey swarm", "resume");
         assert!(resume.contains("pause|resume"));
-        assert!(sub_help(SWARM_HELP, "hiver swarm", "import").contains("alias: import"));
-        assert!(sub_help(MSG_HELP, "hiver msg", "send").contains("--urgent"));
-        assert_eq!(sub_help(SWARM_HELP, "hiver swarm", "nope"), SWARM_HELP);
+        assert!(sub_help(SWARM_HELP, "hivey swarm", "import").contains("alias: import"));
+        assert!(sub_help(MSG_HELP, "hivey msg", "send").contains("--urgent"));
+        assert_eq!(sub_help(SWARM_HELP, "hivey swarm", "nope"), SWARM_HELP);
     }
 }
 
@@ -1239,9 +1239,9 @@ mod keys_tests {
 
     #[test]
     fn setup_replaces_the_v1_block_and_keeps_user_config() {
-        let v1 = "[ui]\nsidebar_width = 30\n\n# hiver: swarm keybindings (hiver swarm install-keys)\n\
+        let v1 = "[ui]\nsidebar_width = 30\n\n# hivey: swarm keybindings (hivey swarm install-keys)\n\
                   [[keys.command]]\nkey = \"prefix+m\"\n\n[[keys.command]]\nkey = \"prefix+i\"\n\
-                  description = \"hiver: message log of this swarm\"\nwidth = \"90%\"\nheight = \"80%\"\n\
+                  description = \"hivey: message log of this swarm\"\nwidth = \"90%\"\nheight = \"80%\"\n\
                   \n[[keys.command]]\nkey = \"ctrl+x\"\ndescription = \"mine\"\n";
         let stripped = strip_keybindings(v1);
         assert!(!stripped.contains("prefix+m"), "{stripped}");

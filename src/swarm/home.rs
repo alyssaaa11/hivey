@@ -1,16 +1,16 @@
-//! The hiver agent (`hiver home`): one Claude in `~/.hiver/agent`, registered as the solo
-//! agent `hiver` (manifest `"home": true`), that the user talks to for everything hiver —
-//! from its space or from the Slack channel `#hiver`. While `~/.hiver/config.json` says
+//! The hivey agent (`hivey home`): one Claude in `~/.hivey/agent`, registered as the solo
+//! agent `hivey` (manifest `"home": true`), that the user talks to for everything hivey —
+//! from its space or from the Slack channel `#hivey`. While `~/.hivey/config.json` says
 //! `"enabled": true`, the server of the configured session (default: `default`) keeps it
-//! alive: when it's gone, the engine runs `hiver home start`, which relaunches it.
+//! alive: when it's gone, the engine runs `hivey home start`, which relaunches it.
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-/// Slug (and agent name) of the hiver agent.
-pub(crate) const SLUG: &str = "hiver";
+/// Slug (and agent name) of the hivey agent.
+pub(crate) const SLUG: &str = "hivey";
 /// Wait after the server starts: restored panes and agents come back first.
 const GRACE: Duration = Duration::from_secs(20);
 /// How often the engine looks.
@@ -20,13 +20,13 @@ const START_WAIT: Duration = Duration::from_secs(90);
 /// Longest pause between attempts while starts keep failing.
 const MAX_BACKOFF: Duration = Duration::from_secs(15 * 60);
 
-/// `~/.hiver`: the hiver agent's folder and settings.
-pub(crate) fn hiver_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".hiver"))
+/// `~/.hivey`: the hivey agent's folder and settings.
+pub(crate) fn hivey_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".hivey"))
 }
 
 pub(crate) fn config_path() -> Option<PathBuf> {
-    hiver_dir().map(|dir| dir.join("config.json"))
+    hivey_dir().map(|dir| dir.join("config.json"))
 }
 
 pub(crate) fn load_config() -> Value {
@@ -96,7 +96,7 @@ impl Watch {
     }
 }
 
-/// Called by the engine every tick with whether the hiver agent is running.
+/// Called by the engine every tick with whether the hivey agent is running.
 pub(crate) fn watch(watch: &mut Watch, alive: bool) {
     let mut config = Value::Null;
     let wanted = || {
@@ -108,8 +108,8 @@ pub(crate) fn watch(watch: &mut Watch, alive: bool) {
     }
 }
 
-/// `hiver home start --quiet` against this server, detached; its output goes to
-/// `~/.hiver/agent/.swarm/home-start.log`.
+/// `hivey home start --quiet` against this server, detached; its output goes to
+/// `~/.hivey/agent/.swarm/home-start.log`.
 fn spawn_start(config: &Value) {
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -120,7 +120,7 @@ fn spawn_start(config: &Value) {
     if session != crate::session::DEFAULT_SESSION_NAME {
         command.args(["--session", &session]);
     }
-    let log = hiver_dir().map(|dir| dir.join("agent").join(".swarm").join("home-start.log"));
+    let log = hivey_dir().map(|dir| dir.join("agent").join(".swarm").join("home-start.log"));
     if let Some(file) = log.and_then(|path| {
         std::fs::create_dir_all(path.parent()?).ok()?;
         std::fs::OpenOptions::new()
@@ -136,7 +136,7 @@ fn spawn_start(config: &Value) {
     }
     command.stdin(std::process::Stdio::null());
     if let Err(err) = command.spawn() {
-        tracing::warn!(%err, "hiver home: cannot start the hiver agent");
+        tracing::warn!(%err, "hivey home: cannot start the hivey agent");
     }
 }
 

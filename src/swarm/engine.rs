@@ -1,4 +1,4 @@
-//! The swarm engine: one background thread inside the hiver server.
+//! The swarm engine: one background thread inside the hivey server.
 //!
 //! It talks to the app exactly like an API client (`agent.list`, `agent.prompt`,
 //! `pane.report_metadata` over the internal request channel), so herdr's state machine
@@ -29,16 +29,16 @@ const RATE_LIMIT: usize = 30;
 /// messages are saved as FYI, which breaks agent↔agent ping-pong.
 const PAIR_LIMIT: usize = 6;
 const PAIR_WINDOW: Duration = Duration::from_secs(300);
-const METADATA_SOURCE: &str = "hiver:swarm";
+const METADATA_SOURCE: &str = "hivey:swarm";
 /// Pane glyph of a solo agent (`"solo": true`), which is its own master.
 const SOLO_GLYPH: &str = "★";
-/// Pane glyph of the hiver agent (`"home": true`).
+/// Pane glyph of the hivey agent (`"home": true`).
 const HOME_GLYPH: &str = "⬢";
 /// How often due schedules are looked for.
 const SCHEDULE_CHECK: Duration = Duration::from_secs(30);
 /// Default monitoring task; a setup provider can pass its own (`--heartbeat-task`).
-pub(crate) const HEARTBEAT_TASK: &str = "Monitoring pass. Check `hiver swarm list` (who is idle, \
-blocked or gone) and `hiver msg log --limit 20`. Answer questions, unblock or nudge agents, \
+pub(crate) const HEARTBEAT_TASK: &str = "Monitoring pass. Check `hivey swarm list` (who is idle, \
+blocked or gone) and `hivey msg log --limit 20`. Answer questions, unblock or nudge agents, \
 review finished work and re-plan if needed. Message the user only if something needs them.";
 
 struct Engine {
@@ -78,14 +78,14 @@ struct State {
     /// Last swarm tokens reported per workspace (summary, master pane, info lines).
     workspace_reported: HashMap<String, (String, String, Vec<String>)>,
     last_schedule_check: Option<Instant>,
-    /// Info lines per swarm (hover card / `hiver swarm info`), refreshed every RELOAD_EVERY.
+    /// Info lines per swarm (hover card / `hivey swarm info`), refreshed every RELOAD_EVERY.
     info_cache: HashMap<String, (Instant, Vec<String>)>,
     sent_at: HashMap<String, VecDeque<Instant>>,
     /// Wake-up messages per agent pair (sorted labels), for `PAIR_LIMIT`.
     pair_wakes: HashMap<(String, String), VecDeque<Instant>>,
     seq: u64,
     last_reload: Option<Instant>,
-    /// Keeps the hiver agent (`hiver home`) alive.
+    /// Keeps the hivey agent (`hivey home`) alive.
     home_watch: super::home::Watch,
     /// Reopens addons (Slack relays, dashboards) once after a server restart.
     addons_restore: super::addons::Restore,
@@ -94,7 +94,7 @@ struct State {
 pub(crate) fn start(api_tx: ApiRequestSender) {
     let (wake, wake_rx) = mpsc::channel();
     let mut state = State {
-        // Per session: each `hiver --session <name>` (e.g. one per project) has its own swarms.
+        // Per session: each `hivey --session <name>` (e.g. one per project) has its own swarms.
         registry_path: crate::session::data_dir().join("swarms.json"),
         ..State::default()
     };
@@ -110,13 +110,13 @@ pub(crate) fn start(api_tx: ApiRequestSender) {
         return;
     }
     let spawned = std::thread::Builder::new()
-        .name("hiver-swarm".into())
+        .name("hivey-swarm".into())
         .spawn(move || loop {
             let _ = wake_rx.recv_timeout(TICK);
             tick(&api_tx);
         });
     if let Err(err) = spawned {
-        tracing::warn!(%err, "hiver swarm engine failed to start");
+        tracing::warn!(%err, "hivey swarm engine failed to start");
     }
 }
 
@@ -378,7 +378,7 @@ struct Delivery {
 
 fn dispatch(api_tx: &ApiRequestSender, method: Method) -> Result<Value, String> {
     let request = Request {
-        id: "hiver:swarm".into(),
+        id: "hivey:swarm".into(),
         method,
     };
     let raw = crate::api::dispatch_internal(request, api_tx, Some(Duration::from_secs(10)));
@@ -405,7 +405,7 @@ fn tick(api_tx: &ApiRequestSender) {
         {
             state.reload();
         }
-        // No swarms registered: stay idle (but bring the hiver agent back if it's enabled).
+        // No swarms registered: stay idle (but bring the hivey agent back if it's enabled).
         if state.swarms.is_empty() {
             super::home::watch(&mut state.home_watch, false);
             return;
@@ -461,14 +461,14 @@ fn tick(api_tx: &ApiRequestSender) {
                 confirm_delivery(&mut state, &delivery);
             }
             Err(err) => {
-                tracing::warn!(target = %delivery.target, %err, "hiver delivery failed; will retry")
+                tracing::warn!(target = %delivery.target, %err, "hivey delivery failed; will retry")
             }
         }
     }
     for params in resumes {
         let pane_id = params.pane_id.clone();
         if let Err(err) = dispatch(api_tx, Method::PaneReportAgentSession(params)) {
-            tracing::warn!(%pane_id, %err, "hiver: resume command not recorded; will retry");
+            tracing::warn!(%pane_id, %err, "hivey: resume command not recorded; will retry");
             if let Ok(mut state) = engine.state.lock() {
                 state.resume_reported.remove(&pane_id);
             }
@@ -579,7 +579,7 @@ fn prompt_text(swarm: &Swarm, key: &str, pending: &[&Message]) -> String {
         std::fs::create_dir_all(swarm.overflow_dir()).and_then(|_| std::fs::write(&path, &text));
     match written {
         Ok(()) => format!(
-            "[hiver · {} messages, too long to paste] read them: cat {}",
+            "[hivey · {} messages, too long to paste] read them: cat {}",
             pending.len(),
             path.display()
         ),
@@ -601,7 +601,7 @@ fn confirm_delivery(state: &mut State, delivery: &Delivery) {
         .collect();
     if let Some(swarm) = state.swarm(&delivery.slug) {
         if let Err(err) = bus::append(&swarm.bus_path(), &records) {
-            tracing::warn!(%err, "hiver: cannot record delivery");
+            tracing::warn!(%err, "hivey: cannot record delivery");
         }
     }
     if let Some(queue) = state
@@ -647,7 +647,7 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
     let check = agent
         .herdr_name
         .as_deref()
-        .map(|name| format!(" Check it: hiver agent read {name} --source visible"))
+        .map(|name| format!(" Check it: hivey agent read {name} --source visible"))
         .unwrap_or_default();
     let text = format!(
         "{} is {reason}; {} message(s) from {} are waiting for it.{check}",
@@ -658,7 +658,7 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
     let notice = Message {
         id: state.next_id(),
         ts,
-        from: bus::HIVER.into(),
+        from: bus::HIVEY.into(),
         swarm: Some(swarm.slug.clone()),
         to: master.key.clone(),
         addressed: master.key.clone(),
@@ -668,7 +668,7 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
         copy: false,
     };
     if let Err(err) = state.post(notice) {
-        tracing::warn!(%err, "hiver: cannot notify master");
+        tracing::warn!(%err, "hivey: cannot notify master");
     }
 }
 
@@ -722,9 +722,9 @@ fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
     out
 }
 
-/// Lines that describe a swarm (`hiver swarm info`, the sidebar hover card): master, agents,
+/// Lines that describe a swarm (`hivey swarm info`, the sidebar hover card): master, agents,
 /// the setup provider's own facts (manifest `info`, e.g. Slack channel, memory vault), addons,
-/// budget, tasks, schedules, GitHub, folder. hiver knows no provider's files: a provider shows
+/// budget, tasks, schedules, GitHub, folder. hivey knows no provider's files: a provider shows
 /// anything extra by writing `"info": {"Slack": "#swarm-x (C0…)", "vault": "…"}` (or a list
 /// of `[label, value]` pairs) into `.swarm/agents.json`.
 fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
@@ -774,7 +774,7 @@ fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
         lines.push(format!("agents      {}", agents.join(", ")));
     }
     let extra = provider_info(&manifest);
-    // The relay channel is part of hiver's manifest; show it unless the provider already does.
+    // The relay channel is part of hivey's manifest; show it unless the provider already does.
     if let Some(channel) = manifest["channel_id"].as_str().filter(|c| !c.is_empty()) {
         if !extra.iter().any(|(_, value)| value.contains(channel)) {
             lines.push(format!("channel     {channel}"));
@@ -809,7 +809,7 @@ fn swarm_info(state: &State, swarm: &Swarm) -> Vec<String> {
         _ => {}
     }
     if swarm.paused {
-        lines.push("state       ⏸ paused (hiver swarm resume)".to_string());
+        lines.push("state       ⏸ paused (hivey swarm resume)".to_string());
     }
     let tasks: Vec<Value> = std::fs::read_to_string(swarm.root.join(".swarm").join("tasks.json"))
         .ok()
@@ -910,12 +910,12 @@ fn run_due_schedules(state: &mut State) {
                     changed = true;
                 }
                 Ok(false) => {} // the previous wake-up is still waiting: no pile-up
-                Err(err) => tracing::warn!(%err, swarm = %swarm.slug, "hiver: schedule failed"),
+                Err(err) => tracing::warn!(%err, swarm = %swarm.slug, "hivey: schedule failed"),
             }
         }
         if changed {
             if let Err(err) = super::schedule::save(&swarm.root, &book) {
-                tracing::warn!(%err, "hiver: cannot save schedules");
+                tracing::warn!(%err, "hivey: cannot save schedules");
             }
         }
     }
@@ -951,7 +951,7 @@ fn fire_schedule(
     let msg = Message {
         id: state.next_id(),
         ts: now_ms(),
-        from: bus::HIVER.into(),
+        from: bus::HIVEY.into(),
         swarm: Some(swarm.slug.clone()),
         to: target,
         addressed: tag,
@@ -981,7 +981,7 @@ fn status_snapshot(state: &State, swarm: &Swarm, since: u64) -> String {
     let messages = bus::read_log(&swarm.bus_path())
         .iter()
         .filter(
-            |r| matches!(r, Record::Msg(m) if !m.copy && m.ts > since_ms && m.from != bus::HIVER),
+            |r| matches!(r, Record::Msg(m) if !m.copy && m.ts > since_ms && m.from != bus::HIVEY),
         )
         .count();
     let mut status = format!("Status: {}", swarm_summary(state, swarm));
@@ -989,7 +989,7 @@ fn status_snapshot(state: &State, swarm: &Swarm, since: u64) -> String {
         status.push_str(&format!(" · needs you: {}", attention.join(", ")));
     }
     status.push_str(&format!(
-        " · {messages} message(s) since the last check (hiver msg log --limit 20)."
+        " · {messages} message(s) since the last check (hivey msg log --limit 20)."
     ));
     status
 }
@@ -1124,7 +1124,7 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
             let solo_master = swarm.solo && agent.role == Role::Master;
             let glyph = if swarm.home { HOME_GLYPH } else { SOLO_GLYPH };
             let mut title = if solo_master {
-                let what = if swarm.home { "hiver agent" } else { "agent" };
+                let what = if swarm.home { "hivey agent" } else { "agent" };
                 format!("{glyph} {} · {what}", swarm.slug)
             } else {
                 format!("{} {} · {}", agent.role.glyph(), agent.key, swarm.slug)
@@ -1556,7 +1556,7 @@ fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
     let mut downgraded = Vec::new();
     for (slug, key) in recipients {
         let mut kind = kind;
-        // Agent↔agent only: the human and hiver may always wake an agent.
+        // Agent↔agent only: the human and hivey may always wake an agent.
         if let (Some(_), Some(to_slug), true) = (&sender.swarm, &slug, kind != Kind::Fyi) {
             let to_label = format!("{to_slug}/{key}");
             if !state.pair_allows_wake(&sender.label(), &to_label) {
@@ -1722,7 +1722,7 @@ mod tests {
     use super::*;
 
     fn temp_swarm(slug: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("hiver-engine-{slug}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("hivey-engine-{slug}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".swarm")).unwrap();
         std::fs::write(
@@ -1743,7 +1743,7 @@ mod tests {
 
     fn state_with(roots: &[&Path]) -> State {
         let registry = std::env::temp_dir().join(format!(
-            "hiver-registry-{}-{}.json",
+            "hivey-registry-{}-{}.json",
             std::process::id(),
             roots.len()
         ));

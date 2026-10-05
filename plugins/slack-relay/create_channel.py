@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Create (or find) a public Slack channel for a hiver swarm or agent; prints its id as JSON.
+"""Create (or find) a public Slack channel for a hivey swarm or agent; prints its id as JSON.
 
 usage: create_channel.py <name> [--purpose TEXT]
 
-Uses the relay's token (config.json token_command, or $SLACK_TOKEN; `hiver slack connect` sets
+Uses the relay's token (config.json token_command, or $SLACK_TOKEN; `hivey slack connect` sets
 it); needs channels:manage, plus channels:read and channels:join to find and join an existing
-channel. Run by `hiver slack add`, `hiver swarm launch --slack` and `hiver home setup --slack`.
+channel. Run by `hivey slack add`, `hivey swarm launch --slack` and `hivey home setup --slack`.
 The user is invited, so the channel shows up in their Slack right away: config.json "invite"
-(Slack member ids; `hiver slack connect` sets it, else it's worked out once from the people in
+(Slack member ids; `hivey slack connect` sets it, else it's worked out once from the people in
 the channels the bot already shares with them).
-Output: {"ok": true, "channel_id": "C…", "name": "hiver", "existing": false, "invited": ["U…"]}
+Output: {"ok": true, "channel_id": "C…", "name": "hivey", "existing": false, "invited": ["U…"]}
 """
 import argparse
 import json
@@ -93,11 +93,11 @@ def main():
     if not os.environ.get("HERDR_PLUGIN_CONFIG_DIR"):
         # Run outside a plugin pane: use the installed relay's config.
         os.environ["HERDR_PLUGIN_CONFIG_DIR"] = str(
-            Path.home() / ".config" / "hiver" / "plugins" / "config" / "hiver.slack-relay")
+            Path.home() / ".config" / "hivey" / "plugins" / "config" / "hivey.slack-relay")
     config = relay.load_config()
     token = relay.resolve_token(config)
     if not token:
-        print(json.dumps({"ok": False, "error": "Slack is not connected: run hiver slack connect "
+        print(json.dumps({"ok": False, "error": "Slack is not connected: run hivey slack connect "
                           "in a terminal"}))
         return 1
     slack = relay.Slack(token)

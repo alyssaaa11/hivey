@@ -1,4 +1,4 @@
-//! `hiver skills`: the skills library swarm and agent creators pick each agent's skills from,
+//! `hivey skills`: the skills library swarm and agent creators pick each agent's skills from,
 //! and skills.sh (`npx skills`) for skills the library doesn't have. Skills always go into the
 //! agent's own folder (`<agent>/.claude/skills`), never the global Claude Code skills; only
 //! `find-skills` is global (install.sh adds it).
@@ -7,21 +7,21 @@ use crate::swarm::skills_library as library;
 use std::path::Path;
 
 const HELP: &str = "\
-usage: hiver skills                          the library folder, its skills count, online search
-       hiver skills list [--grep WORD] [--json]
+usage: hivey skills                          the library folder, its skills count, online search
+       hivey skills list [--grep WORD] [--json]
                                              the library's skills (name and description)
-       hiver skills dir <folder>             use another library folder (default ~/SKILLS)
-       hiver skills online on|off            may creators search skills.sh for missing skills
-       hiver skills copy <agent folder> <skill>...
+       hivey skills dir <folder>             use another library folder (default ~/SKILLS)
+       hivey skills online on|off            may creators search skills.sh for missing skills
+       hivey skills copy <agent folder> <skill>...
                                              copy library skills into <agent folder>/.claude/skills
-       hiver skills guide                    the instructions creators follow to pick and install
+       hivey skills guide                    the instructions creators follow to pick and install
                                              each agent's skills (from the chosen skills plugin)
-       hiver skills providers [--default ID] installed skills plugins (* = used)
-       hiver skills find <query>             search skills.sh (npx skills find; how to judge the
+       hivey skills providers [--default ID] installed skills plugins (* = used)
+       hivey skills find <query>             search skills.sh (npx skills find; how to judge the
                                              results: https://www.skills.sh/vercel-labs/skills/find-skills)
-       hiver skills add <agent folder> <package> [--skill NAME]
+       hivey skills add <agent folder> <package> [--skill NAME]
                                              install a skills.sh skill into that agent only
-  Also in hiver settings → skills. Swarm and agent creators use these to give every agent the
+  Also in hivey settings → skills. Swarm and agent creators use these to give every agent the
   skills its task needs; only find-skills is installed globally.";
 
 /// The command line for the skills.sh CLI.
@@ -106,11 +106,11 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             let providers = library::providers();
             if let Some(index) = args.iter().position(|arg| arg == "--default") {
                 let Some(id) = args.get(index + 1) else {
-                    eprintln!("usage: hiver skills providers --default ID");
+                    eprintln!("usage: hivey skills providers --default ID");
                     return Ok(2);
                 };
                 if !providers.iter().any(|provider| &provider.id == id) {
-                    eprintln!("hiver skills: {id:?} is not an installed skills plugin");
+                    eprintln!("hivey skills: {id:?} is not an installed skills plugin");
                     return Ok(1);
                 }
                 library::set_provider(id)?;
@@ -126,7 +126,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             if providers.is_empty() {
                 println!(
                     "no skills plugins installed: the built-in instructions are used \
-                     (hiver plugin link <hiver repo>/plugins/skills)"
+                     (hivey plugin link <hivey repo>/plugins/skills)"
                 );
             }
             0
@@ -135,7 +135,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             Some(folder) => {
                 let path = library::expand(folder);
                 if !path.is_dir() {
-                    eprintln!("hiver skills: {} is not a folder", path.display());
+                    eprintln!("hivey skills: {} is not a folder", path.display());
                     1
                 } else {
                     library::set_dir(&path)?;
@@ -159,7 +159,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
                 0
             }
             _ => {
-                eprintln!("usage: hiver skills online on|off");
+                eprintln!("usage: hivey skills online on|off");
                 2
             }
         },
@@ -174,7 +174,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
                     0
                 }
                 Err(err) => {
-                    eprintln!("hiver skills: {err}");
+                    eprintln!("hivey skills: {err}");
                     1
                 }
             }
@@ -188,7 +188,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             // Project-level install run from the agent's folder: lands in its .claude/skills.
             let agent = library::expand(&args[1]);
             if !agent.is_dir() {
-                eprintln!("hiver skills: {} is not a folder", agent.display());
+                eprintln!("hivey skills: {} is not a folder", agent.display());
                 return Ok(1);
             }
             npx_skills()

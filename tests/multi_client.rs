@@ -76,10 +76,10 @@ fn wait_for_socket(path: &Path, timeout: Duration) {
 }
 
 fn spawn_server(config: &Path, runtime: &Path, api: &Path) -> SpawnedHerdr {
-    fs::create_dir_all(config.join("hiver")).unwrap();
+    fs::create_dir_all(config.join("hivey")).unwrap();
     fs::create_dir_all(runtime).unwrap();
     register_runtime_dir(runtime);
-    fs::write(config.join("hiver/config.toml"), "onboarding = false\n").unwrap();
+    fs::write(config.join("hivey/config.toml"), "onboarding = false\n").unwrap();
     let pair = native_pty_system()
         .openpty(PtySize {
             rows: 24,
@@ -88,7 +88,7 @@ fn spawn_server(config: &Path, runtime: &Path, api: &Path) -> SpawnedHerdr {
             pixel_height: 0,
         })
         .unwrap();
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hiver"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
     cmd.arg("server");
     cmd.env("XDG_CONFIG_HOME", config);
     cmd.env("XDG_RUNTIME_DIR", runtime);
@@ -115,7 +115,7 @@ fn spawn_client(config: &Path, runtime: &Path, api: &Path) -> SpawnedHerdr {
             pixel_height: 0,
         })
         .unwrap();
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hiver"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
     cmd.arg("client");
     cmd.env("HERDR_DISABLE_SOUND", "1");
     cmd.env("XDG_CONFIG_HOME", config);

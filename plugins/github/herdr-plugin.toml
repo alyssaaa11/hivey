@@ -1,11 +1,11 @@
-id = "hiver.github"
+id = "hivey.github"
 name = "Swarm GitHub"
 version = "0.1.0"
 min_herdr_version = "0.9.0"
-description = "hiver swarm addon: publish the product and the swarm workspace as two separate GitHub repos"
+description = "hivey swarm addon: publish the product and the swarm workspace as two separate GitHub repos"
 platforms = ["linux", "macos"]
 
-# `hiver swarm addon <swarm> hiver.github` (or `--addon hiver.github` at launch).
+# `hivey swarm addon <swarm> hivey.github` (or `--addon hivey.github` at launch).
 # Interactive: shows the plan and creates nothing until you confirm in the pane.
 [[panes]]
 id = "github"

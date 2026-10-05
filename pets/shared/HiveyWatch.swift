@@ -1,20 +1,20 @@
-// Shared by every hiver pet (compiled next to its main.swift by build.sh): the hiver watcher,
-// which turns one look at hiver into events each pet acts out with its own moves, and the
+// Shared by every hivey pet (compiled next to its main.swift by build.sh): the hivey watcher,
+// which turns one look at hivey into events each pet acts out with its own moves, and the
 // pet switcher behind the "Switch pet" menu.
 
 import AppKit
 
 
-/// What the pet should act out after one look at hiver
-enum HiverEvent: Equatable {
+/// What the pet should act out after one look at hivey
+enum HiveyEvent: Equatable {
     case launched(String)        // a new swarm or agent → assign
     case needsYou([String])      // agents waiting for the user → listen + say
     case finished(String)        // an agent went from working to idle/done → complete
     case message(fromHuman: Bool, replyFrom: String?, text: String)   // replyFrom: an agent writing to the user
 }
 
-/// One look at hiver: every agent's status ("slug/key" → status) and every swarm
-struct HiverSnapshot {
+/// One look at hivey: every agent's status ("slug/key" → status) and every swarm
+struct HiveySnapshot {
     var swarms: Set<String> = []
     var status: [String: String] = [:]
     var names: [String: String] = [:]   // "slug/key" → how the pet calls it
@@ -37,9 +37,9 @@ struct HiverSnapshot {
     var idle: Int { status.values.filter { ["idle", "done", "blocked"].contains($0) }.count }
 
     /// Changes since `old` worth a reaction; nothing on the first look
-    func events(since old: HiverSnapshot?) -> [HiverEvent] {
+    func events(since old: HiveySnapshot?) -> [HiveyEvent] {
         guard let old else { return [] }
-        var events: [HiverEvent] = swarms.subtracting(old.swarms).sorted().map { .launched($0) }
+        var events: [HiveyEvent] = swarms.subtracting(old.swarms).sorted().map { .launched($0) }
         var waiting: [String] = []
         for (id, now) in status.sorted(by: { $0.key < $1.key }) {
             let before = old.status[id]
@@ -51,27 +51,27 @@ struct HiverSnapshot {
     }
 }
 
-/// Watches the default hiver session by polling its CLI every 2s (off the main thread).
-/// No hiver, or no hiver server running: it waits quietly and never starts one.
-final class HiverWatcher {
-    var onUpdate: ((HiverSnapshot, [HiverEvent]) -> Void)?
-    /// The last hiver window on this computer closed (after one had been open): the pet goes
-    /// too, and comes back when a window opens (`hiver pet show`).
+/// Watches the default hivey session by polling its CLI every 2s (off the main thread).
+/// No hivey, or no hivey server running: it waits quietly and never starts one.
+final class HiveyWatcher {
+    var onUpdate: ((HiveySnapshot, [HiveyEvent]) -> Void)?
+    /// The last hivey window on this computer closed (after one had been open): the pet goes
+    /// too, and comes back when a window opens (`hivey pet show`).
     var onLastWindowClosed: (() -> Void)?
     private var sawWindow = false
     private var emptyLooks = 0
-    private(set) var hiverPath: String?
-    private var last: HiverSnapshot?
+    private(set) var hiveyPath: String?
+    private var last: HiveySnapshot?
     private var lastMessageTs: Double?
-    private let queue = DispatchQueue(label: "com.hiver.h.watch")
+    private let queue = DispatchQueue(label: "com.hivey.h.watch")
     private var timer: DispatchSourceTimer?
     private let vars = ProcessInfo.processInfo.environment
-    private var debug: Bool { vars["HIVER_H_DEBUG"] != nil }
+    private var debug: Bool { vars["HIVEY_H_DEBUG"] != nil }
 
-    func findHiver() -> String? {
-        var candidates = [vars["HIVER_BIN"], NSHomeDirectory() + "/.local/bin/hiver",
-                          "/opt/homebrew/bin/hiver", "/usr/local/bin/hiver"].compactMap { $0 }
-        candidates += (vars["PATH"] ?? "").split(separator: ":").map { "\($0)/hiver" }
+    func findHivey() -> String? {
+        var candidates = [vars["HIVEY_BIN"], NSHomeDirectory() + "/.local/bin/hivey",
+                          "/opt/homebrew/bin/hivey", "/usr/local/bin/hivey"].compactMap { $0 }
+        candidates += (vars["PATH"] ?? "").split(separator: ":").map { "\($0)/hivey" }
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
@@ -94,13 +94,13 @@ final class HiverWatcher {
     }
 
     private func run(_ args: [String]) -> [String: Any]? {
-        guard let hiverPath else { return nil }
+        guard let hiveyPath else { return nil }
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: hiverPath)
+        p.executableURL = URL(fileURLWithPath: hiveyPath)
         p.arguments = args
         p.currentDirectoryURL = URL(fileURLWithPath: "/")
-        // Not a pane of any swarm: hiver answers for all swarms of the default session
-        p.environment = vars.filter { !$0.key.hasPrefix("HERDR_") && !$0.key.hasPrefix("HIVER_") }
+        // Not a pane of any swarm: hivey answers for all swarms of the default session
+        p.environment = vars.filter { !$0.key.hasPrefix("HERDR_") && !$0.key.hasPrefix("HIVEY_") }
         let out = Pipe()
         p.standardOutput = out
         p.standardError = FileHandle.nullDevice
@@ -111,10 +111,10 @@ final class HiverWatcher {
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
-    /// hiver windows open on this computer: `~/.hiver/windows/<pid>` of a live process (a
+    /// hivey windows open on this computer: `~/.hivey/windows/<pid>` of a live process (a
     /// window that crashed leaves its file behind; it's removed here)
     static func openWindows() -> Int {
-        let dir = NSHomeDirectory() + "/.hiver/windows"
+        let dir = NSHomeDirectory() + "/.hivey/windows"
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return 0 }
         var open = 0
         for name in names {
@@ -128,7 +128,7 @@ final class HiverWatcher {
         return open
     }
 
-    /// Three empty looks in a row (~6s) count as closed: a reattach or `hiver update` reopens
+    /// Three empty looks in a row (~6s) count as closed: a reattach or `hivey update` reopens
     /// windows within that time.
     private func checkWindows() {
         if Self.openWindows() > 0 {
@@ -141,22 +141,22 @@ final class HiverWatcher {
         if emptyLooks >= 3 {
             sawWindow = false
             emptyLooks = 0
-            if debug { FileHandle.standardError.write(Data("hiver pet: last hiver window closed\n".utf8)) }
+            if debug { FileHandle.standardError.write(Data("hivey pet: last hivey window closed\n".utf8)) }
             DispatchQueue.main.async { [weak self] in self?.onLastWindowClosed?() }
         }
     }
 
     private func poll() {
         checkWindows()
-        if hiverPath == nil { hiverPath = findHiver() }
+        if hiveyPath == nil { hiveyPath = findHivey() }
         guard let list = run(["swarm", "list", "--json"]) else {
-            // hiver gone or its server stopped: start fresh when it's back (no replay of old events)
-            if last != nil { report(HiverSnapshot(swarmList: [:]), []) }
+            // hivey gone or its server stopped: start fresh when it's back (no replay of old events)
+            if last != nil { report(HiveySnapshot(swarmList: [:]), []) }
             last = nil
             lastMessageTs = nil
             return
         }
-        let snapshot = HiverSnapshot(swarmList: list)
+        let snapshot = HiveySnapshot(swarmList: list)
         var events = snapshot.events(since: last)
         let firstLook = last == nil
         last = snapshot
@@ -186,9 +186,9 @@ final class HiverWatcher {
         return last?.names["\(slug)/\(key)"] ?? "\(slug) \(key)"
     }
 
-    private func report(_ snapshot: HiverSnapshot, _ events: [HiverEvent]) {
+    private func report(_ snapshot: HiveySnapshot, _ events: [HiveyEvent]) {
         if debug && !events.isEmpty {
-            FileHandle.standardError.write(Data("hiver pet: \(snapshot.working) working, \(snapshot.idle) idle: \(events)\n".utf8))
+            FileHandle.standardError.write(Data("hivey pet: \(snapshot.working) working, \(snapshot.idle) idle: \(events)\n".utf8))
         }
         DispatchQueue.main.async { [weak self] in self?.onUpdate?(snapshot, events) }
     }
@@ -197,21 +197,21 @@ final class HiverWatcher {
 
 // MARK: - Switching pets
 
-/// The hiver pets (folders under pets/ in the hiver repo); `hiver pet use <id>` swaps them.
-let hiverPets: [(id: String, name: String)] = [
-    ("hiver-dot", "Hiver"),
-    ("hiver-prompt", "Hiver Prompt"),
-    ("hiver-h", "Hiver H"),
+/// The hivey pets (folders under pets/ in the hivey repo); `hivey pet use <id>` swaps them.
+let hiveyPets: [(id: String, name: String)] = [
+    ("hivey-dot", "Hivey System"),
+    ("hivey-prompt", "Hivey Prompt"),
+    ("hivey-h", "Hivey"),
 ]
 
-/// "Switch pet ▸" and "Turn off pet" for a pet's right-click menu. Both run the hiver CLI
-/// (`hiver pet use <id>` / `hiver pet off`), which builds, swaps and remembers the choice.
+/// "Switch pet ▸" and "Turn off pet" for a pet's right-click menu. Both run the hivey CLI
+/// (`hivey pet use <id>` / `hivey pet off`), which builds, swaps and remembers the choice.
 final class PetSwitcher: NSObject {
     private let current: String
     private let say: (String) -> Void
     private let turnOffHere: () -> Void
 
-    /// `say`: the pet announces the switch; `turnOffHere`: what "Turn off" does without hiver
+    /// `say`: the pet announces the switch; `turnOffHere`: what "Turn off" does without hivey
     init(current: String, say: @escaping (String) -> Void, turnOffHere: @escaping () -> Void) {
         self.current = current
         self.say = say
@@ -221,7 +221,7 @@ final class PetSwitcher: NSObject {
     func addItems(to menu: NSMenu) {
         let switchItem = NSMenuItem(title: "Switch pet", action: nil, keyEquivalent: "")
         let submenu = NSMenu()
-        for pet in hiverPets {
+        for pet in hiveyPets {
             let item = submenu.addItem(withTitle: pet.name, action: #selector(choose(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = pet.id
@@ -234,29 +234,29 @@ final class PetSwitcher: NSObject {
 
     @objc private func choose(_ item: NSMenuItem) {
         guard let id = item.representedObject as? String, id != current else { return }
-        let name = hiverPets.first { $0.id == id }?.name ?? id
-        guard runHiver(["pet", "use", id]) else { say("I need hiver to switch pets."); return }
-        say("Switching to \(name)…")   // hiver quits this pet once the new one is ready
+        let name = hiveyPets.first { $0.id == id }?.name ?? id
+        guard runHivey(["pet", "use", id]) else { say("I need hivey to switch pets."); return }
+        say("Switching to \(name)…")   // hivey quits this pet once the new one is ready
     }
 
     @objc private func turnOff() {
-        if !runHiver(["pet", "off"]) { turnOffHere() }
+        if !runHivey(["pet", "off"]) { turnOffHere() }
     }
 
-    /// Runs `hiver <args>` detached (it may outlive this pet); false when hiver isn't installed.
-    private func runHiver(_ args: [String]) -> Bool {
-        guard let hiver = HiverWatcher().findHiver() else { return false }
+    /// Runs `hivey <args>` detached (it may outlive this pet); false when hivey isn't installed.
+    private func runHivey(_ args: [String]) -> Bool {
+        guard let hivey = HiveyWatcher().findHivey() else { return false }
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: hiver)
+        p.executableURL = URL(fileURLWithPath: hivey)
         p.arguments = args
         p.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-        // What happened lands in ~/.hiver/pet.log (a switch builds for a minute; errors matter)
-        let log = URL(fileURLWithPath: NSHomeDirectory() + "/.hiver/pet.log")
+        // What happened lands in ~/.hivey/pet.log (a switch builds for a minute; errors matter)
+        let log = URL(fileURLWithPath: NSHomeDirectory() + "/.hivey/pet.log")
         try? FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
         if let handle = try? FileHandle(forWritingTo: log) {
             handle.seekToEndOfFile()
-            handle.write(Data("\n\(Date()) hiver \(args.joined(separator: " "))\n".utf8))
+            handle.write(Data("\n\(Date()) hivey \(args.joined(separator: " "))\n".utf8))
             p.standardOutput = handle
             p.standardError = handle
         } else {
@@ -267,21 +267,21 @@ final class PetSwitcher: NSObject {
     }
 }
 
-/// What the pet says when an agent writes to the user: the hiver agent's own words (it's the
+/// What the pet says when an agent writes to the user: the hivey agent's own words (it's the
 /// chat partner of the pet's chat box), "<agent> replied." for everyone else
 func replyLine(from agent: String, text: String) -> String {
-    guard agent == "hiver" else { return "\(agent) replied." }
+    guard agent == "hivey" else { return "\(agent) replied." }
     let flat = text.split(whereSeparator: \.isNewline).joined(separator: " ")
     return flat.count > 180 ? String(flat.prefix(177)) + "…" : flat
 }
 
-// MARK: - Chat with the hiver agent
+// MARK: - Chat with the hivey agent
 
-/// Click the pet: a small chat box above it. Enter sends the text to the hiver agent
-/// (`hiver msg send hiver/master`, from `human`); its answer comes back as a hiver message to
+/// Click the pet: a small chat box above it. Enter sends the text to the hivey agent
+/// (`hivey msg send hivey/master`, from `human`); its answer comes back as a hivey message to
 /// `human`, which the pet shows in its bubble and says aloud. Esc, Enter, clicking the pet again
 /// or clicking in another app closes it.
-final class HiverChat: NSObject, NSTextFieldDelegate {
+final class HiveyChat: NSObject, NSTextFieldDelegate {
     /// Feedback through the pet's bubble: (text, aloud)
     var say: ((String, Bool) -> Void)?
     /// The message went out: the pet leans in to listen
@@ -357,7 +357,7 @@ final class HiverChat: NSObject, NSTextFieldDelegate {
         field.drawsBackground = false
         field.focusRingType = .none
         field.placeholderAttributedString = NSAttributedString(
-            string: "message hiver…  ↵ send · esc close",
+            string: "message hivey…  ↵ send · esc close",
             attributes: [.foregroundColor: NSColor(white: 1, alpha: 0.35),
                          .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)])
         field.delegate = self
@@ -382,18 +382,18 @@ final class HiverChat: NSObject, NSTextFieldDelegate {
     }
 
     private func send(_ text: String) {
-        guard let hiver = HiverWatcher().findHiver() else {
-            say?("I need hiver to talk to the hiver agent.", false)
+        guard let hivey = HiveyWatcher().findHivey() else {
+            say?("I need hivey to talk to the hivey agent.", false)
             return
         }
         onSent?()
-        say?("Sent to hiver.", false)
+        say?("Sent to hivey.", false)
         // From the user, not from whichever pane started this pet
-        let vars = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("HERDR_") && !$0.key.hasPrefix("HIVER_") }
+        let vars = ProcessInfo.processInfo.environment.filter { !$0.key.hasPrefix("HERDR_") && !$0.key.hasPrefix("HIVEY_") }
         DispatchQueue.global().async { [weak self] in
             let p = Process()
-            p.executableURL = URL(fileURLWithPath: hiver)
-            p.arguments = ["msg", "send", "hiver/master", text]
+            p.executableURL = URL(fileURLWithPath: hivey)
+            p.arguments = ["msg", "send", "hivey/master", text]
             p.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
             p.environment = vars
             let err = Pipe()
@@ -408,7 +408,7 @@ final class HiverChat: NSObject, NSTextFieldDelegate {
             DispatchQueue.main.async {
                 guard !ok else { return }
                 let reason = detail.contains("server_not_running") || detail.contains("no herdr server")
-                    ? "hiver isn't running." : "the hiver agent isn't set up (hiver home setup)."
+                    ? "hivey isn't running." : "the hivey agent isn't set up (hivey home setup)."
                 self?.say?("Couldn't send: \(reason)", false)
             }
         }

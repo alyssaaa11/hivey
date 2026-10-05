@@ -87,11 +87,11 @@ fn spawn_server(
     api_socket_path: &Path,
     _client_socket_path: &Path,
 ) -> SpawnedHerdr {
-    fs::create_dir_all(config_home.join("hiver")).unwrap();
+    fs::create_dir_all(config_home.join("hivey")).unwrap();
     fs::create_dir_all(runtime_dir).unwrap();
     register_runtime_dir(runtime_dir);
     fs::write(
-        config_home.join("hiver/config.toml"),
+        config_home.join("hivey/config.toml"),
         "onboarding = false\n",
     )
     .unwrap();
@@ -105,7 +105,7 @@ fn spawn_server(
         })
         .unwrap();
 
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hiver"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
     cmd.arg("server");
     cmd.env("XDG_CONFIG_HOME", config_home);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
@@ -131,11 +131,11 @@ fn spawn_herdr_auto(
     api_socket_path: &Path,
     _client_socket_path: &Path,
 ) -> SpawnedHerdr {
-    fs::create_dir_all(config_home.join("hiver")).unwrap();
+    fs::create_dir_all(config_home.join("hivey")).unwrap();
     fs::create_dir_all(runtime_dir).unwrap();
     register_runtime_dir(runtime_dir);
     fs::write(
-        config_home.join("hiver/config.toml"),
+        config_home.join("hivey/config.toml"),
         "onboarding = false\n",
     )
     .unwrap();
@@ -149,7 +149,7 @@ fn spawn_herdr_auto(
         })
         .unwrap();
 
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hiver"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
     // No subcommand → auto-detect launch.
     cmd.env("XDG_CONFIG_HOME", config_home);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
@@ -200,7 +200,7 @@ fn wait_for_log_contains(path: &Path, needle: &str, timeout: Duration) {
 }
 
 fn run_cli(socket_path: &Path, args: &[&str]) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hiver"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_hivey"));
     command.args(args);
     command.env("HERDR_SOCKET_PATH", socket_path);
     command.output().unwrap()
@@ -249,13 +249,13 @@ fn session_attach_without_terminal_leaves_no_session() {
     register_runtime_dir(&runtime_dir);
     let name = "no-tty";
     let app_dir = if cfg!(debug_assertions) {
-        "hiver-dev"
+        "hivey-dev"
     } else {
-        "hiver"
+        "hivey"
     };
     let session_dir = config_home.join(app_dir).join("sessions").join(name);
     let run = |args: &[&str]| {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_hiver"));
+        let mut command = Command::new(env!("CARGO_BIN_EXE_hivey"));
         command
             .args(args)
             .env("XDG_CONFIG_HOME", &config_home)
@@ -573,9 +573,9 @@ fn auto_detect_default_socket_path_from_config_dir() {
     // Don't set HERDR_SOCKET_PATH or HERDR_CLIENT_SOCKET_PATH.
     // The default paths should come from the app config directory, not XDG_RUNTIME_DIR.
     let app_dir_name = if cfg!(debug_assertions) {
-        "hiver-dev"
+        "hivey-dev"
     } else {
-        "hiver"
+        "hivey"
     };
     let api_socket = config_home.join(app_dir_name).join("herdr.sock");
     let client_socket = config_home.join(app_dir_name).join("herdr-client.sock");
@@ -599,7 +599,7 @@ fn auto_detect_default_socket_path_from_config_dir() {
         })
         .unwrap();
 
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hiver"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
     cmd.arg("server");
     cmd.env("XDG_CONFIG_HOME", &config_home);
     cmd.env("XDG_RUNTIME_DIR", &runtime_dir);
@@ -652,9 +652,9 @@ fn auto_detect_writes_client_and_server_logs_to_separate_files() {
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
     let app_dir_name = if cfg!(debug_assertions) {
-        "hiver-dev"
+        "hivey-dev"
     } else {
-        "hiver"
+        "hivey"
     };
     let log_dir = config_home.join(app_dir_name);
     let client_log = log_dir.join("herdr-client.log");
@@ -708,7 +708,7 @@ fn auto_detect_respects_nested_guard_before_auto_attach() {
         .map(|workspaces| workspaces.len())
         .unwrap_or(0);
 
-    let output = Command::new(env!("CARGO_BIN_EXE_hiver"))
+    let output = Command::new(env!("CARGO_BIN_EXE_hivey"))
         .env("XDG_CONFIG_HOME", &config_home)
         .env("XDG_RUNTIME_DIR", &runtime_dir)
         .env("HERDR_SOCKET_PATH", &api_socket)

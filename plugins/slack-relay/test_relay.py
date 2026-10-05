@@ -1,4 +1,4 @@
-"""Tests for the hiver Slack relay: python3 -m unittest plugins/slack-relay/test_relay.py"""
+"""Tests for the hivey Slack relay: python3 -m unittest plugins/slack-relay/test_relay.py"""
 import json
 import sys
 import tempfile
@@ -76,7 +76,7 @@ class FakeSlack:
         return ts
 
 
-class FakeHiver:
+class FakeHivey:
     def __init__(self, bus):
         self.bus, self.sent, self.n = bus, [], 0
 
@@ -99,12 +99,12 @@ class RoundTrip(unittest.TestCase):
             (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
             bus = root / ".swarm" / "bus.jsonl"
             bus.write_text("")
-            slack, hiver = FakeSlack(), FakeHiver(bus)
-            r = relay.Relay(root, slack, hiver, "C1", "masters")
+            slack, hivey = FakeSlack(), FakeHivey(bus)
+            r = relay.Relay(root, slack, hivey, "C1", "masters")
             r.state["last_ts"] = "0"
             slack.inbox.append({"ts": "1.000000", "text": "@scout find 3 competitors"})
             r.step()
-            self.assertEqual(hiver.sent, [("scout", "@scout find 3 competitors", "human")])
+            self.assertEqual(hivey.sent, [("scout", "@scout find 3 competitors", "human")])
             self.assertEqual(slack.posted, [], "a message from Slack is not echoed back")
             # An agent answers the master on the bus: mirrored once, and the mirror post
             # coming back through history is not re-injected.
@@ -116,12 +116,12 @@ class RoundTrip(unittest.TestCase):
             r.step()
             self.assertEqual(len(slack.posted), 1)
             self.assertIn("scout → coordinator", slack.posted[0])
-            self.assertEqual(len(hiver.sent), 1)
+            self.assertEqual(len(hivey.sent), 1)
             # State survives a restart of the relay.
-            again = relay.Relay(root, slack, hiver, "C1", "masters")
+            again = relay.Relay(root, slack, hivey, "C1", "masters")
             again.step()
             self.assertEqual(len(slack.posted), 1)
-            self.assertEqual(len(hiver.sent), 1)
+            self.assertEqual(len(hivey.sent), 1)
 
 
 if __name__ == "__main__":

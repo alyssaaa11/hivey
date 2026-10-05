@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create an Obsidian wiki vault as the memory of a hiver agent or swarm (LLM-wiki pattern).
+"""Create an Obsidian wiki vault as the memory of a hivey agent or swarm (LLM-wiki pattern).
 
 usage: new_wiki.py <name> [--dir PARENT] [--look-from VAULT] [--agent FOLDER]... [--about TEXT]
 
@@ -7,9 +7,9 @@ Creates <PARENT>/<name>-wiki/ (raw/ for sources, wiki/ for maintained pages, ind
 log.md, CLAUDE.md with the rules, .obsidian/ so Obsidian opens it as a vault) and adds a
 "Memory" section to each --agent FOLDER's CLAUDE.md pointing at it. An existing vault is
 reused, never overwritten. PARENT defaults to the user's Obsidian folder remembered in
-~/.hiver/wiki.json (written the first time --dir is given), else ~/Obsidian.
+~/.hivey/wiki.json (written the first time --dir is given), else ~/Obsidian.
 Obsidian keeps the look per vault, so a new vault copies the theme, CSS snippets and Style
-Settings of the vault remembered as --look-from (also kept in ~/.hiver/wiki.json); without
+Settings of the vault remembered as --look-from (also kept in ~/.hivey/wiki.json); without
 one it opens in stock Obsidian.
 Prints JSON: {"ok": true, "path": "...", "existing": false, "look": true, "agents": [...]}.
 
@@ -23,8 +23,8 @@ import sys
 import time
 from pathlib import Path
 
-SETTINGS = Path.home() / ".hiver" / "wiki.json"
-MARKER = "<!-- hiver: wiki memory -->"
+SETTINGS = Path.home() / ".hivey" / "wiki.json"
+MARKER = "<!-- hivey: wiki memory -->"
 
 RULES = """# {name} wiki: rules for the agents that keep it
 
@@ -60,7 +60,7 @@ def slug(text):
 
 
 def setting(key, given):
-    """The given path (then remembered in ~/.hiver/wiki.json), else the remembered one."""
+    """The given path (then remembered in ~/.hivey/wiki.json), else the remembered one."""
     try:
         saved = json.loads(SETTINGS.read_text())
     except (OSError, ValueError):
@@ -110,7 +110,7 @@ def link(agent_dir, path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Obsidian wiki memory for a hiver agent or swarm")
+    parser = argparse.ArgumentParser(description="Obsidian wiki memory for a hivey agent or swarm")
     parser.add_argument("name")
     parser.add_argument("--dir", help="parent folder (the user's Obsidian); remembered")
     parser.add_argument("--look-from", help="vault whose theme new vaults copy; remembered")

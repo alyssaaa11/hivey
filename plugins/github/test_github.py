@@ -1,4 +1,4 @@
-"""Tests for the hiver GitHub addon: python3 -m unittest plugins/github/test_github.py"""
+"""Tests for the hivey GitHub addon: python3 -m unittest plugins/github/test_github.py"""
 import subprocess
 import sys
 import tempfile

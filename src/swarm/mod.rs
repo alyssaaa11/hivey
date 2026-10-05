@@ -1,4 +1,4 @@
-//! hiver swarms: roster (`model`), message bus (`bus`) and the server-side engine.
+//! hivey swarms: roster (`model`), message bus (`bus`) and the server-side engine.
 //!
 //! Reached through one socket method, `swarm`, whose `op` selects the operation
 //! (`import`, `forget`, `list`, `master`, `msg.send`, `msg.inbox`, `msg.log`).

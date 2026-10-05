@@ -1,4 +1,4 @@
-//! hiver: swarm tree for the Agents panel.
+//! hivey: swarm tree for the Agents panel.
 //!
 //! Built only from the pane tokens the swarm engine reports (`swarm`, `role`, `queued`),
 //! so it needs no protocol changes. Active whenever at least one agent carries a `swarm`
@@ -125,7 +125,7 @@ pub(super) enum TreeRow {
         name: String,
         queued: usize,
     },
-    /// A solo agent (`hiver swarm launch --solo`): one row, no tree.
+    /// A solo agent (`hivey swarm launch --solo`): one row, no tree.
     Agent {
         slug: String,
         pane_id: String,
@@ -133,7 +133,7 @@ pub(super) enum TreeRow {
         focused: bool,
         queued: usize,
         paused: bool,
-        /// The hiver agent (`hiver home`): pinned first, its own color.
+        /// The hivey agent (`hivey home`): pinned first, its own color.
         home: bool,
     },
     SoloHeader,
@@ -507,8 +507,8 @@ fn render_member(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &Client
     }
 }
 
-/// `   ● ★ slug` in teal, so solo agents stand apart from swarms (yellow masters); the hiver
-/// agent is `   ● ⬢ hiver` in mauve.
+/// `   ● ★ slug` in teal, so solo agents stand apart from swarms (yellow masters); the hivey
+/// agent is `   ● ⬢ hivey` in mauve.
 fn render_solo_agent(buffer: &mut Buffer, rect: Rect, row: &TreeRow, config: &ClientShellConfig) {
     let TreeRow::Agent {
         slug,
@@ -823,8 +823,8 @@ mod tests {
     }
 
     #[test]
-    fn the_hiver_agent_is_pinned_first() {
-        let mut home = agent("hiver", Some("hiver"), "master", AgentStatus::Idle, false);
+    fn the_hivey_agent_is_pinned_first() {
+        let mut home = agent("hivey", Some("hivey"), "master", AgentStatus::Idle, false);
         home.tokens.push(("solo".into(), "1".into()));
         home.tokens.push(("home".into(), "1".into()));
         let rows = rows_for(
@@ -841,7 +841,7 @@ mod tests {
             &SwarmTreeState::default(),
         )
         .unwrap();
-        assert_eq!(names(&rows), ["⬢hiver", "▸app", "  coordinator"]);
+        assert_eq!(names(&rows), ["⬢hivey", "▸app", "  coordinator"]);
     }
 
     #[test]

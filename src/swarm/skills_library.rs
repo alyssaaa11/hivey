@@ -1,15 +1,15 @@
-//! hiver: the user's skills library, where swarm and agent creators pick each agent's skills.
+//! hivey: the user's skills library, where swarm and agent creators pick each agent's skills.
 //!
-//! Settings live in `~/.hiver/skills.json`: `dir` (default `~/SKILLS`, or `~/skills`) and
+//! Settings live in `~/.hivey/skills.json`: `dir` (default `~/SKILLS`, or `~/skills`) and
 //! `online` (whether creators may also search skills.sh with `npx skills find`, always asking
-//! the user before installing one). Changed with `hiver skills dir|online`, settings → skills,
+//! the user before installing one). Changed with `hivey skills dir|online`, settings → skills,
 //! or install.sh.
 
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// The skills provider that ships with hiver (the repo's `plugins/skills`).
-pub(crate) const BUILTIN_PROVIDER: &str = "hiver.skills";
+/// The skills provider that ships with hivey (the repo's `plugins/skills`).
+pub(crate) const BUILTIN_PROVIDER: &str = "hivey.skills";
 /// Its instructions, built in so creators always have some even when no provider is linked.
 const BUILTIN_GUIDE: &str = include_str!("../../plugins/skills/skills.md");
 
@@ -47,7 +47,7 @@ pub(crate) fn providers() -> Vec<Provider> {
         .unwrap_or_default()
 }
 
-/// The provider chosen in settings → plugins (`hiver skills providers --default`), if any.
+/// The provider chosen in settings → plugins (`hivey skills providers --default`), if any.
 pub(crate) fn chosen_provider() -> Option<String> {
     settings()["provider"].as_str().map(str::to_string)
 }
@@ -65,8 +65,8 @@ pub(crate) fn pick_provider<'a>(providers: &'a [Provider], chosen: Option<&str>)
         .or_else(|| providers.first())
 }
 
-/// The instructions creators follow (`hiver skills guide`): the picked provider's skills.md,
-/// else hiver's built-in one. Also which provider they come from.
+/// The instructions creators follow (`hivey skills guide`): the picked provider's skills.md,
+/// else hivey's built-in one. Also which provider they come from.
 pub(crate) fn guide() -> (String, String) {
     let providers = providers();
     pick_provider(&providers, chosen_provider().as_deref())
@@ -89,7 +89,7 @@ fn home() -> PathBuf {
 }
 
 fn settings_path() -> PathBuf {
-    home().join(".hiver").join("skills.json")
+    home().join(".hivey").join("skills.json")
 }
 
 fn settings() -> Value {
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn skills_providers_are_plugins_with_a_skills_md() {
-        let root = std::env::temp_dir().join(format!("hiver-skills-prov-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("hivey-skills-prov-{}", std::process::id()));
         let with = root.join("with");
         std::fs::create_dir_all(&with).unwrap();
         std::fs::write(with.join("skills.md"), "guide").unwrap();
@@ -272,7 +272,7 @@ mod tests {
         std::fs::create_dir_all(&without).unwrap();
         let plugins = [
             json!({ "plugin_id": "x.skills", "name": "X", "plugin_root": with }),
-            json!({ "plugin_id": "hiver.dashboard", "plugin_root": without }),
+            json!({ "plugin_id": "hivey.dashboard", "plugin_root": without }),
             json!({ "plugin_id": "off.skills", "enabled": false, "plugin_root": with }),
         ];
         let found = providers_from(&plugins);
@@ -304,7 +304,7 @@ mod tests {
 
     #[test]
     fn list_and_copy_skills_from_a_library() {
-        let root = std::env::temp_dir().join(format!("hiver-skills-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("hivey-skills-test-{}", std::process::id()));
         let library = root.join("lib");
         for (name, text) in [("alpha", "---\ndescription: First\n---\n"), ("beta", "---\ndescription: Second\n---\n")] {
             std::fs::create_dir_all(library.join(name).join("scripts")).unwrap();

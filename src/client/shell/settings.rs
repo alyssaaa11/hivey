@@ -31,22 +31,22 @@ pub(super) fn integration_needs_install(info: &crate::api::schema::IntegrationIn
         || info.available && info.state == crate::api::schema::IntegrationState::NotInstalled
 }
 
-/// hiver pets (macOS apps built from the hiver repo's `pets/`): label, id (`None`: no pet),
+/// hivey pets (macOS apps built from the hivey repo's `pets/`): label, id (`None`: no pet),
 /// and a short description.
 pub(super) const PET_CHOICES: &[(&str, Option<&str>, &str)] = &[
     (
-        "Hiver H",
-        Some("hiver-h"),
+        "Hivey",
+        Some("hivey-h"),
         "a 3D H; its sections slide apart to hand out work",
     ),
     (
-        "Hiver",
-        Some("hiver-dot"),
+        "Hivey System",
+        Some("hivey-dot"),
         "a dot; its agents ride a signal wave around it",
     ),
     (
-        "Hiver Prompt",
-        Some("hiver-prompt"),
+        "Hivey Prompt",
+        Some("hivey-prompt"),
         "a >_ sphere leading three agent spheres",
     ),
     ("no pet", None, "nothing on the desktop"),
@@ -55,10 +55,10 @@ pub(super) const PET_CHOICES: &[(&str, Option<&str>, &str)] = &[
 /// Pets are macOS desktop apps.
 pub(super) const PETS_SUPPORTED: bool = cfg!(target_os = "macos");
 
-/// The pet chosen on this computer (`~/.hiver/pet.json`, written by `hiver pet`).
+/// The pet chosen on this computer (`~/.hivey/pet.json`, written by `hivey pet`).
 pub(super) fn chosen_pet() -> Option<String> {
     let home = std::env::var_os("HOME")?;
-    let text = std::fs::read_to_string(std::path::Path::new(&home).join(".hiver/pet.json")).ok()?;
+    let text = std::fs::read_to_string(std::path::Path::new(&home).join(".hivey/pet.json")).ok()?;
     serde_json::from_str::<serde_json::Value>(&text).ok()?["pet"]
         .as_str()
         .map(str::to_string)
@@ -88,7 +88,7 @@ pub(super) fn load_skill_providers() -> (Vec<crate::swarm::skills_library::Provi
 
 impl ClientShellState {
     /// Settings → skills: a library folder (rows before the last) or online search (the last
-    /// row, toggled), saved with `hiver skills` in the background.
+    /// row, toggled), saved with `hivey skills` in the background.
     fn choose_skills_setting(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
             return;
@@ -108,12 +108,12 @@ impl ClientShellState {
         } else {
             return;
         };
-        outcome.actions.push(ClientShellAction::RunHiver(args));
+        outcome.actions.push(ClientShellAction::RunHivey(args));
         outcome.repaint = true;
     }
 
-    /// Makes the selected creator the one `hiver swarm new` uses for its kind, with
-    /// `hiver swarm providers --default` in the background.
+    /// Makes the selected creator the one `hivey swarm new` uses for its kind, with
+    /// `hivey swarm providers --default` in the background.
     fn choose_creator(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
             return;
@@ -134,7 +134,7 @@ impl ClientShellState {
             }
             settings.skill_provider_current = Some(provider.id.clone());
             settings.creator_message = Some(format!("new agents get their skills with {}", provider.name));
-            outcome.actions.push(ClientShellAction::RunHiver(vec![
+            outcome.actions.push(ClientShellAction::RunHivey(vec![
                 "skills".into(),
                 "providers".into(),
                 "--default".into(),
@@ -157,7 +157,7 @@ impl ClientShellState {
             if creator.agent { "agent" } else { "swarm" },
             creator.name
         ));
-        outcome.actions.push(ClientShellAction::RunHiver(vec![
+        outcome.actions.push(ClientShellAction::RunHivey(vec![
             "swarm".into(),
             "providers".into(),
             "--default".into(),
@@ -166,7 +166,7 @@ impl ClientShellState {
         outcome.repaint = true;
     }
 
-    /// Switches the pet (or turns it off) with `hiver pet` in the background.
+    /// Switches the pet (or turns it off) with `hivey pet` in the background.
     fn choose_pet(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         let Some(&(label, id, _)) = PET_CHOICES.get(selected) else {
             return;
@@ -186,7 +186,7 @@ impl ClientShellState {
             Some(_) => format!("switching to {label}… (the first time it builds, about a minute)"),
             None => "pet turned off".to_string(),
         });
-        outcome.actions.push(ClientShellAction::RunHiver(args));
+        outcome.actions.push(ClientShellAction::RunHivey(args));
         outcome.repaint = true;
     }
 

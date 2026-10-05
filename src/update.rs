@@ -2107,10 +2107,10 @@ fn homebrew_cellar_keg_root(path: &Path) -> Option<PathBuf> {
 
 /// Manual self-update command (`herdr update`).
 pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
-    // hiver: never download herdr releases over the hiver binary.
+    // hivey: never download herdr releases over the hivey binary.
     if !cfg!(test) {
         let _ = options;
-        return Err(crate::hiver::SELF_UPDATE_DISABLED.into());
+        return Err(crate::hivey::SELF_UPDATE_DISABLED.into());
     }
     let channel = UpdateChannel::configured();
 
@@ -2351,7 +2351,7 @@ fn print_outdated_integration_notice_with_updated_binary(updated_exe: &Path) {
 /// Background update check: only surface availability and release notes.
 /// Runs in a background thread at startup.
 pub fn auto_update(events: tokio::sync::mpsc::Sender<crate::events::AppEvent>) {
-    // hiver: no background checks against herdr.dev release manifests.
+    // hivey: no background checks against herdr.dev release manifests.
     if !cfg!(test) {
         drop(events);
         return;

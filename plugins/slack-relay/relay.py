@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hiver.slack-relay: bridge a hiver swarm's message bus and its Slack channel.
+"""hivey.slack-relay: bridge a hivey swarm's message bus and its Slack channel.
 
 Slack → bus   Human messages in the channel become bus messages from `human`:
               `@scout` → scout, `@all`/`@here`/`@channel`/`@everyone` → @all,
@@ -10,10 +10,10 @@ bus → Slack   Bus messages are mirrored into the channel. Scope (config "mirro
               "masters" (default: only messages to/from a master or the human),
               "all", or "off". Messages that came from Slack are never echoed.
 
-Environment (set by `hiver swarm launch --addon hiver.slack-relay`):
-  HIVER_SWARM_ROOT     swarm folder (required)   HIVER_SWARM_SLUG   swarm slug
-  HIVER_SWARM_CHANNEL  Slack channel id (else the manifest's channel_id)
-  HERDR_BIN_PATH       hiver binary (set by hiver for plugin panes)
+Environment (set by `hivey swarm launch --addon hivey.slack-relay`):
+  HIVEY_SWARM_ROOT     swarm folder (required)   HIVEY_SWARM_SLUG   swarm slug
+  HIVEY_SWARM_CHANNEL  Slack channel id (else the manifest's channel_id)
+  HERDR_BIN_PATH       hivey binary (set by hivey for plugin panes)
 Config: $HERDR_PLUGIN_CONFIG_DIR/config.json
   {"token_command": "envsave get <id>", "mirror": "masters", "interval": 10}
   The token comes from $SLACK_TOKEN if set, else from token_command's output.
@@ -35,7 +35,7 @@ MENTION_RE = re.compile(r"@([a-z][a-z0-9_-]*)")
 BROADCAST = {"all", "everyone", "here", "channel"}
 MASTER_ALIASES = {"coordinator", "master"}
 ROLE_EMOJI = {"master": "🧭", "critic": "🧐", "script": "⚙️"}
-FIXED_EMOJI = {"human": "👤", "hiver": "⚙️"}
+FIXED_EMOJI = {"human": "👤", "hivey": "⚙️"}
 PALETTE = ["🦊", "🐙", "🦉", "🐝", "🦄", "🐬", "🦖", "🐢", "🦜", "🐳", "🦋", "🐧"]
 KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
 
@@ -45,7 +45,7 @@ KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
 # ---------------------------------------------------------------------------
 
 def roster(manifest):
-    """{agent key: role} from a /swarm or hiver manifest (master included)."""
+    """{agent key: role} from a /swarm or hivey manifest (master included)."""
     roles = {}
     for key, entry in (manifest.get("agents") or {}).items():
         role = entry.get("role") or ("critic" if key == "critic" else "worker")
@@ -180,7 +180,7 @@ class Slack:
         return self.call("chat.postMessage", channel=channel, text=text)["ts"]
 
 
-class Hiver:
+class Hivey:
     def __init__(self, binary, slug):
         self.binary, self.slug = binary, slug
 
@@ -216,8 +216,8 @@ def log(line):
 
 
 class Relay:
-    def __init__(self, root, slack, hiver, channel, scope):
-        self.root, self.slack, self.hiver = Path(root), slack, hiver
+    def __init__(self, root, slack, hivey, channel, scope):
+        self.root, self.slack, self.hivey = Path(root), slack, hivey
         self.channel, self.scope = channel, scope
         self.state_path = self.root / ".swarm" / "slack_relay_state.json"
         self.bus_path = self.root / ".swarm" / "bus.jsonl"
@@ -247,7 +247,7 @@ class Relay:
             sender, body, targets = parse_slack(msg.get("text", ""), manifest)
             for target in targets:
                 try:
-                    ids = self.hiver.send(target, body, sender)
+                    ids = self.hivey.send(target, body, sender)
                     self.state["injected"] += ids
                     log(f"slack → bus  {sender} → {target}: {body[:70]!r}")
                 except RuntimeError as err:
@@ -271,19 +271,19 @@ class Relay:
 
 
 def main():
-    root = os.environ.get("HIVER_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else "")
+    root = os.environ.get("HIVEY_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else "")
     if not root:
-        sys.exit("HIVER_SWARM_ROOT is not set (open this through `hiver swarm launch --addon`)")
+        sys.exit("HIVEY_SWARM_ROOT is not set (open this through `hivey swarm launch --addon`)")
     config = load_config()
     manifest = json.loads((Path(root) / ".swarm" / "agents.json").read_text())
-    slug = os.environ.get("HIVER_SWARM_SLUG") or manifest["slug"]
-    channel = os.environ.get("HIVER_SWARM_CHANNEL") or manifest.get("channel_id")
+    slug = os.environ.get("HIVEY_SWARM_SLUG") or manifest["slug"]
+    channel = os.environ.get("HIVEY_SWARM_CHANNEL") or manifest.get("channel_id")
     scope = config.get("mirror", "masters")
     interval = float(config.get("interval", 10))
-    binary = os.environ.get("HERDR_BIN_PATH", "hiver")
-    log(f"hiver slack relay for swarm {slug!r}, channel {channel}, mirror={scope}")
+    binary = os.environ.get("HERDR_BIN_PATH", "hivey")
+    log(f"hivey slack relay for swarm {slug!r}, channel {channel}, mirror={scope}")
     if not channel:
-        log("no Slack channel (manifest channel_id / HIVER_SWARM_CHANNEL); idle")
+        log("no Slack channel (manifest channel_id / HIVEY_SWARM_CHANNEL); idle")
     token = None
     while not (channel and token):
         token = token or resolve_token(config)
@@ -291,7 +291,7 @@ def main():
             log(f"no Slack token: set SLACK_TOKEN or token_command in "
                 f"{os.environ.get('HERDR_PLUGIN_CONFIG_DIR', '?')}/config.json; retrying in 60s")
         time.sleep(60 if not (channel and token) else 0)
-    relay = Relay(root, Slack(token), Hiver(binary, slug), channel, scope)
+    relay = Relay(root, Slack(token), Hivey(binary, slug), channel, scope)
     while True:
         try:
             relay.step()

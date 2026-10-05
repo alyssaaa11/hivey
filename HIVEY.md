@@ -1,36 +1,36 @@
-# hiver
+# hivey
 
 Terminal workspace for swarms of AI coding agents. A private fork of
 [herdr](https://github.com/herdrdev/herdr) (Apache-2.0).
 
-- Design: `docs/hiver-design.md` · Status and next steps: `docs/hiver-status.md`
+- Design: `docs/hivey-design.md` · Status and next steps: `docs/hivey-status.md`
 - Remotes: `origin` = `jcsancho/hiver` (private), `upstream` = `herdrdev/herdr` (fetch only, push disabled)
-- `AGENTS.md` is herdr's upstream guide. Leave it unmodified so rebases stay clean; this file replaces it for hiver.
+- `AGENTS.md` is herdr's upstream guide. Leave it unmodified so rebases stay clean; this file replaces it for hivey.
 
-## hiver fork rules
+## hivey fork rules
 
 ### Where code goes
 - All swarm code lives in `src/swarm/` (engine, bus, roster) and `src/cli/swarm.rs` (CLI).
-  Process setup lives in `src/hiver.rs`.
+  Process setup lives in `src/hivey.rs`.
 - Changes to herdr's own files are **hooks**: as small as possible, delegating to `src/swarm/`,
-  and marked with a `// hiver:` comment so they're easy to find and re-port.
-- Every hook must also exist in `scripts/hiver_hooks.py` (idempotent). A core-file edit that
+  and marked with a `// hivey:` comment so they're easy to find and re-port.
+- Every hook must also exist in `scripts/hivey_hooks.py` (idempotent). A core-file edit that
   isn't in the script will be lost on the next rebase.
 - Prefer one new API method with an `op` field (`Method::Swarm`) over many new variants.
   Reach app state through the internal API (`crate::api::dispatch_internal`), not by
   editing `AppState`.
 
 ### Identity and coexistence
-- Binary `hiver`; config, sockets and sessions in `~/.config/hiver` (`hiver-dev` for debug builds).
-- Panes keep herdr's `HERDR_*` env names (so existing tools keep working) and add `HIVER_ENV=1`.
+- Binary `hivey`; config, sockets and sessions in `~/.config/hivey` (`hivey-dev` for debug builds).
+- Panes keep herdr's `HERDR_*` env names (so existing tools keep working) and add `HIVEY_ENV=1`.
   Never rename the `HERDR_*` variables.
-- hiver never self-updates or checks herdr.dev for releases. Update from source only.
+- hivey never self-updates or checks herdr.dev for releases. Update from source only.
 
 ### Upstream sync
 1. `git fetch upstream && git rebase upstream/master`
-2. On conflicts in core files, prefer upstream's version, then **rerun `python3 scripts/hiver_hooks.py`**
+2. On conflicts in core files, prefer upstream's version, then **rerun `python3 scripts/hivey_hooks.py`**
    to reapply the hooks. If an anchor no longer matches, update the script, not just the file.
-3. Regenerate the API schema (it includes hiver's `swarm` method):
+3. Regenerate the API schema (it includes hivey's `swarm` method):
    `HERDR_UPDATE_API_SCHEMA=1 cargo nextest run generated_protocol_schema_artifact_is_current`
 4. `cargo build --release` and `just test` (nextest) must be green before pushing to `origin`.
 
@@ -43,7 +43,7 @@ Terminal workspace for swarms of AI coding agents. A private fork of
 - Lowercase conventional commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`), no emojis.
   Descriptive subject; a body when the why isn't obvious.
 - **No AI co-author lines** (no `Co-Authored-By: Claude …`).
-- Commit hiver work on `main` in `jcsancho/hiver`. Never push, open issues, or open PRs
+- Commit hivey work on `main` in `jcsancho/hiver`. Never push, open issues, or open PRs
   against `herdrdev/herdr`.
 
 ## Engineering rules (from herdr)
@@ -54,7 +54,7 @@ Terminal workspace for swarms of AI coding agents. A private fork of
 - **No god objects.** If a module is doing too many things, split it.
 - **Platform code is isolated.** OS-specific behavior lives in `src/platform/<os>.rs`; only shared traits, types, wrappers and testable contracts go in `src/platform/mod.rs`. Core modules don't have `#[cfg(target_os)]`.
 - **Detection is decoupled.** The detector reads a screen snapshot, never touches the parser or viewport state.
-- **Screen detection is evidence-based.** When changing `src/detect/manifests/`, capture the bottom-buffer state with `hiver agent read <pane> --source detection --format text` (and `--format ansi` when styling matters). Encode invariant controls as explicit AND/OR gates. Don't match whole-pane incidental text or the user-visible viewport.
+- **Screen detection is evidence-based.** When changing `src/detect/manifests/`, capture the bottom-buffer state with `hivey agent read <pane> --source detection --format text` (and `--format ansi` when styling matters). Encode invariant controls as explicit AND/OR gates. Don't match whole-pane incidental text or the user-visible viewport.
 - **UI patterns should be reused.** Mouse-first TUI: new dialogs, popups and panels (swarm tree, send-message popup, whiteboard) follow the existing modal/screen structure and affordances.
 
 ### Multiplicative performance paths
@@ -96,13 +96,13 @@ just check    # formatting + tests + windows lint (the windows stage needs `just
 - Unit tests live next to the code (`#[cfg(test)] mod tests`). New `AppState`/`Workspace` behavior should be testable with `AppState::test_new()` / `Workspace::test_new()`.
 - Swarm logic stays testable without a server: pure functions in `bus.rs`/`model.rs`, and engine state tests in `engine.rs` using temp swarm folders.
 - Risky refactors (identity, persisted state, protocol/API IDs, restore/handoff, detection authority): name or add characterization tests first; use `AppState::assert_invariants_for_test()` / `Workspace::assert_invariants_for_test()` with the adversarial test states.
-- Testing a dev build from inside a hiver or herdr session: debug builds use `~/.config/hiver-dev`. Clear inherited socket overrides so the debug binary talks to the debug server:
+- Testing a dev build from inside a hivey or herdr session: debug builds use `~/.config/hivey-dev`. Clear inherited socket overrides so the debug binary talks to the debug server:
   ```bash
   env -u HERDR_SOCKET_PATH -u HERDR_CLIENT_SOCKET_PATH cargo run -- <command>
   ```
 
 ## Agent detection
-Use the manifest hot-reload loop: bundled manifest in `src/detect/manifests/<agent>.toml`, a temporary override in `~/.config/hiver/agent-detection/<agent>.toml`, then `hiver server reload-agent-manifests`. Check for an existing override first; never overwrite or remove one without asking, and restore it when done. Unit-test the detection engine with synthetic manifests, not captured CLI screens. Validate agent behavior with live smoke tests.
+Use the manifest hot-reload loop: bundled manifest in `src/detect/manifests/<agent>.toml`, a temporary override in `~/.config/hivey/agent-detection/<agent>.toml`, then `hivey server reload-agent-manifests`. Check for an existing override first; never overwrite or remove one without asking, and restore it when done. Unit-test the detection engine with synthetic manifests, not captured CLI screens. Validate agent behavior with live smoke tests.
 
 ## Vendored libghostty-vt
 `vendor/libghostty-vt.vendor.json` records the vendored upstream commit. Local patches are listed in `vendor/libghostty-vt.patches.md` with patch files under `vendor/patches/libghostty-vt/` (why, base commit, touched files, verification, removal condition). `just check` verifies they're indexed and apply cleanly.
@@ -111,5 +111,5 @@ Use the manifest hot-reload loop: bundled manifest in `src/detect/manifests/<age
 - Rust: no `unwrap()` in production code. Use `tracing` for logging. `#[allow]` only with a comment explaining why.
 - Platform-specific code is compile-gated (`#[cfg(windows)]`, `#[cfg(unix)]` on imports, fields, fns, impls, match arms). `cfg!(...)` only for pure policy constants that compile on every target.
 - Don't add dependencies without a reason; check existing ones first.
-- When changing the server/client wire protocol, bump `src/protocol/wire.rs::PROTOCOL_VERSION` if the current protocol has already shipped in a hiver build you use, and update the protocol fixtures in tests.
+- When changing the server/client wire protocol, bump `src/protocol/wire.rs::PROTOCOL_VERSION` if the current protocol has already shipped in a hivey build you use, and update the protocol fixtures in tests.
 - Local planning notes go in `.local/prd/` (ignored).

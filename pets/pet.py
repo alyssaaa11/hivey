@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""hiver pets: choose, build, start, switch and turn off the desktop pet (macOS).
+"""hivey pets: choose, build, start, switch and turn off the desktop pet (macOS).
 
 usage: pet.py [status]            the chosen pet, running or not, and the pets to choose from
        pet.py list [--json]       the pets
        pet.py use <id>            build (when needed), install and start it; the other pets
                                   are quit
-       pet.py show                start the chosen pet if it isn't running (hiver runs it when
-                                  a hiver window opens; the pet quits itself when the last
-                                  hiver window closes)
+       pet.py show                start the chosen pet if it isn't running (hivey runs it when
+                                  a hivey window opens; the pet quits itself when the last
+                                  hivey window closes)
        pet.py off                 quit the pet and stop opening it at login
        pet.py choose              pick one interactively (install.sh, the ⌥P popup)
        pet.py refresh             rebuild and restart the chosen pet if its source changed
-                                  (hiver update runs it)
+                                  (hivey update runs it)
 
-Run through `hiver pet …` (which sets HIVER_BIN). Each pet lives in pets/<id>/ (main.swift,
-build.sh) and shares pets/shared/HiverWatch.swift; it is built into its folder and installed
-to ~/Applications. The choice is kept in ~/.hiver/pet.json ({"pet": "<id>"} or {"pet": null}).
+Run through `hivey pet …` (which sets HIVEY_BIN). Each pet lives in pets/<id>/ (main.swift,
+build.sh) and shares pets/shared/HiveyWatch.swift; it is built into its folder and installed
+to ~/Applications. The choice is kept in ~/.hivey/pet.json ({"pet": "<id>"} or {"pet": null}).
 """
 import json
 import os
@@ -29,14 +29,14 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 PETS = {
-    "hiver-h": {"name": "Hiver H", "app": "Hiver H.app", "bundle": "com.hiver.h",
+    "hivey-h": {"name": "Hivey", "app": "Hivey.app", "bundle": "com.hivey.h",
                 "about": "a living 3D H: its sections slide apart to hand out work"},
-    "hiver-dot": {"name": "Hiver", "app": "Hiver.app", "bundle": "com.hiver.pet",
+    "hivey-dot": {"name": "Hivey System", "app": "Hivey System.app", "bundle": "com.hivey.pet",
                   "about": "a graphite dot; its mint agents ride a signal wave around it"},
-    "hiver-prompt": {"name": "Hiver Prompt", "app": "Hiver Prompt.app", "bundle": "com.hiver.prompt",
+    "hivey-prompt": {"name": "Hivey Prompt", "app": "Hivey Prompt.app", "bundle": "com.hivey.prompt",
                      "about": "a >_ terminal sphere leading three agent spheres"},
 }
-ORDER = ["hiver-h", "hiver-dot", "hiver-prompt"]
+ORDER = ["hivey-h", "hivey-dot", "hivey-prompt"]
 
 
 def home():
@@ -44,11 +44,11 @@ def home():
 
 
 def choice_path():
-    return home() / ".hiver" / "pet.json"
+    return home() / ".hivey" / "pet.json"
 
 
 def apps_dir():
-    return Path(os.environ.get("HIVER_PETS_APPS", str(home() / "Applications")))
+    return Path(os.environ.get("HIVEY_PETS_APPS", str(home() / "Applications")))
 
 
 def launch_agent(pet):
@@ -91,7 +91,7 @@ def running(pet):
 
 
 def sources(pet):
-    return [HERE / pet / "main.swift", HERE / pet / "build.sh", HERE / "shared" / "HiverWatch.swift"]
+    return [HERE / pet / "main.swift", HERE / pet / "build.sh", HERE / "shared" / "HiveyWatch.swift"]
 
 
 def outdated(pet):
@@ -105,7 +105,7 @@ def outdated(pet):
 
 def check_mac():
     if platform.system() != "Darwin":
-        raise SystemExit("hiver pets are macOS apps; this is " + platform.system())
+        raise SystemExit("hivey pets are macOS apps; this is " + platform.system())
     if not shutil.which("swiftc"):
         raise SystemExit("building a pet needs Swift: install Apple's command line tools "
                          "(xcode-select --install), then try again")
@@ -113,7 +113,7 @@ def check_mac():
 
 def build(pet):
     print(f"building {PETS[pet]['name']} (about a minute)…", flush=True)
-    log = Path(os.environ.get("TMPDIR", "/tmp").rstrip("/")) / f"hiver-pet-{pet}.log"
+    log = Path(os.environ.get("TMPDIR", "/tmp").rstrip("/")) / f"hivey-pet-{pet}.log"
     with open(log, "w") as out:
         done = subprocess.run(["bash", str(HERE / pet / "build.sh")], stdout=out, stderr=out)
     if done.returncode != 0:
@@ -167,19 +167,19 @@ def set_login(pet, on):
 
 def use(pet):
     if pet not in PETS:
-        raise SystemExit(f"no pet {pet!r}: choose one of {', '.join(ORDER)} (or: hiver pet off)")
+        raise SystemExit(f"no pet {pet!r}: choose one of {', '.join(ORDER)} (or: hivey pet off)")
     check_mac()
     if outdated(pet):
         build(pet)
     for other in ORDER:
-        # Pets come and go with hiver now: no login items (older versions added them)
+        # Pets come and go with hivey now: no login items (older versions added them)
         set_login(other, False)
         if other != pet:
             quit_pet(other)
     quit_pet(pet)   # a rebuilt pet restarts with the new code
     subprocess.run(["open", "-a", str(installed_app(pet))], check=True)
     save_choice(pet)
-    print(f"{PETS[pet]['name']} is your pet: it shows while hiver is open (change it: hiver pet)")
+    print(f"{PETS[pet]['name']} is your pet: it shows while hivey is open (change it: hivey pet)")
 
 
 def show():
@@ -199,18 +199,18 @@ def off():
         quit_pet(pet)
         set_login(pet, False)
     save_choice(None)
-    print("pet turned off (back any time: hiver pet use <id>, or hiver pet choose)")
+    print("pet turned off (back any time: hivey pet use <id>, or hivey pet choose)")
 
 
 def status():
     current = chosen()
     if current in PETS:
-        state = "running" if running(current) else "shows when a hiver window is open"
+        state = "running" if running(current) else "shows when a hivey window is open"
         print(f"pet: {PETS[current]['name']} ({current}), {state}")
     else:
         print("pet: none")
     print_list(current)
-    print("\nhiver pet use <id> · hiver pet off · hiver pet choose")
+    print("\nhivey pet use <id> · hivey pet off · hivey pet choose")
 
 
 def print_list(current):
@@ -221,7 +221,7 @@ def print_list(current):
 
 def choose():
     current = chosen()
-    print("Choose your hiver pet (it lives on your desktop and acts out what your agents do):\n")
+    print("Choose your hivey pet (it lives on your desktop and acts out what your agents do):\n")
     for n, pet in enumerate(ORDER, 1):
         mark = " (current)" if pet == current else ""
         print(f"  {n}. {PETS[pet]['name']:<13} {PETS[pet]['about']}{mark}")

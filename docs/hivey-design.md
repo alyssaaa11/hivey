@@ -1,4 +1,4 @@
-# hiver — design doc
+# hivey — design doc
 
 > A fork of [herdr](https://github.com/herdrdev/herdr) (Apache-2.0) built for **swarms of agents**:
 > one swarm per space, a master you can always find, a built-in message bus, and a shared whiteboard.
@@ -41,7 +41,7 @@ Running several `/swarm` teams in herdr today (see screenshot in the conversatio
 
 ## 3. Concepts
 
-| hiver concept | Backed by | Notes |
+| hivey concept | Backed by | Notes |
 |---|---|---|
 | **Swarm** | a herdr `Workspace` + `<root>/.swarm/` | `Workspace.swarm: Option<SwarmMembership { root, slug }>` |
 | **Agent** | a pane in the swarm's workspace + `<root>/<agent>/` | name `<slug>-<agent>` (unchanged, herdr names are server-global) |
@@ -65,10 +65,10 @@ src/swarm/board.rs    NEW  tasks + notes, single-writer
 src/api/schema/swarm.rs NEW  swarm.* / msg.* / board.* / task.* methods + events
 src/client/shell/swarm_sidebar.rs NEW  tree renderer
 src/client/shell/board_view.rs    NEW  whiteboard panel
-src/cli/swarm.rs      NEW  `hiver swarm|msg|board|task …`
+src/cli/swarm.rs      NEW  `hivey swarm|msg|board|task …`
 ```
 
-Core files we expect to touch (the "hook budget" — keep each diff small and commented `// hiver:`):
+Core files we expect to touch (the "hook budget" — keep each diff small and commented `// hivey:`):
 
 | File | Change |
 |---|---|
@@ -83,9 +83,9 @@ Core files we expect to touch (the "hook budget" — keep each diff small and co
 **Upstream sync**: `upstream` remote = herdrdev/herdr; rebase `main` weekly (CI job opens a PR with the rebase; `just test` must pass). Anything generally useful (per-pane border color from a token, grouping the agent panel by token) is offered upstream as a PR so the hook budget shrinks over time.
 
 **Naming & coexistence**
-- Repo `hiver` (private), binary `hiver`, config `~/.config/hiver/`, socket/session dir separate from herdr → both run side by side during migration.
-- Set `HIVER_ENV=1` **and** `HERDR_ENV=1` in panes; accept `herdr`-style CLI so existing skill scripts work if `herdr` is symlinked to `hiver`.
-- Apache-2.0: keep `LICENSE`, add `NOTICE` ("hiver is derived from herdr, © herdr authors"), mark modified files, don't use herdr's name/logo for the product.
+- Repo `hivey` (private), binary `hivey`, config `~/.config/hivey/`, socket/session dir separate from herdr → both run side by side during migration.
+- Set `HIVEY_ENV=1` **and** `HERDR_ENV=1` in panes; accept `herdr`-style CLI so existing skill scripts work if `herdr` is symlinked to `hivey`.
+- Apache-2.0: keep `LICENSE`, add `NOTICE` ("hivey is derived from herdr, © herdr authors"), mark modified files, don't use herdr's name/logo for the product.
 
 ## 5. Data model (on disk)
 
@@ -114,7 +114,7 @@ Missing `role` → inferred: `coordinator` → master, `critic` → critic, entr
 New files:
 - `.swarm/bus.jsonl` — every message + delivery receipts (append-only).
 - `.swarm/board/NOTES.md`, `DECISIONS.md`, `<topic>.md` — whiteboard sections.
-- `tasks.json`, `TASKS.md`, `events.jsonl`, `usage.json` — **unchanged format**; hiver becomes their writer.
+- `tasks.json`, `TASKS.md`, `events.jsonl`, `usage.json` — **unchanged format**; hivey becomes their writer.
 
 ## 6. UI
 
@@ -201,15 +201,15 @@ Terminal port of the Gantt in `swarm_dashboard.py` (per-agent state bars from `e
 ### CLI
 
 ```bash
-hiver msg send scout "rerun T9 with EU data"            # direct
-hiver msg send @all --fyi "Slack posts now carry emoji"  # broadcast, non-waking
-hiver msg send @role:worker "freeze scope at 10 ideas"   # role-addressed
-hiver msg send critic --urgent "stop: wrong rubric file" # interrupt now
-hiver msg send coordinator --reply-to m_0142 "done, see shared/T9.md"
-hiver msg send tonight-up/coordinator "need your backend API contract"   # master → master
-hiver msg send @masters --fyi "laptop restarts at 18:00"                # all masters
-hiver msg inbox [--agent scout] [--unread]               # pull
-hiver msg log [--swarm app-ideas] [--follow]
+hivey msg send scout "rerun T9 with EU data"            # direct
+hivey msg send @all --fyi "Slack posts now carry emoji"  # broadcast, non-waking
+hivey msg send @role:worker "freeze scope at 10 ideas"   # role-addressed
+hivey msg send critic --urgent "stop: wrong rubric file" # interrupt now
+hivey msg send coordinator --reply-to m_0142 "done, see shared/T9.md"
+hivey msg send tonight-up/coordinator "need your backend API contract"   # master → master
+hivey msg send @masters --fyi "laptop restarts at 18:00"                # all masters
+hivey msg inbox [--agent scout] [--unread]               # pull
+hivey msg log [--swarm app-ideas] [--follow]
 ```
 
 Sender defaults to the calling pane's agent (from `HERDR_PANE_ID`); the user sending from the popup is `human`.
@@ -223,7 +223,7 @@ Sender defaults to the calling pane's agent (from `HERDR_PANE_ID`); the user sen
 | blocked | queue + tell master | inbox | queue + tell master |
 | gone | queue + tell master | inbox | queue + tell master |
 
-- **Batching**: queued messages are delivered as one digest prompt on idle (`[hiver · 3 messages] …`) → one turn, not three.
+- **Batching**: queued messages are delivered as one digest prompt on idle (`[hivey · 3 messages] …`) → one turn, not three.
 - FYIs pending in an inbox are prepended to that agent's next delivered prompt.
 - Injection reuses herdr's existing `agent prompt` path (send text + submit).
 - Every send/deliver/read is written to `bus.jsonl` and `events.jsonl`; pending deliveries survive a server restart.
@@ -232,12 +232,12 @@ Sender defaults to the calling pane's agent (from `HERDR_PANE_ID`); the user sen
 
 ### Slack bridge (optional)
 
-Decided: **the bus is the only transport; Slack is a mirror.** A hiver plugin (herdr's plugin system is kept) copies bus traffic → `#swarm-<slug>` (agent emoji per sender) and Slack `@agent` / `@all` / unaddressed messages → bus sends from `human` (unaddressed → master). Mirror scope per swarm: `all` | `masters` (only messages to/from masters and human, default) | `off`. If Slack is down the swarm is unaffected. Replaces `swarm_relay.py`'s polling.
+Decided: **the bus is the only transport; Slack is a mirror.** A hivey plugin (herdr's plugin system is kept) copies bus traffic → `#swarm-<slug>` (agent emoji per sender) and Slack `@agent` / `@all` / unaddressed messages → bus sends from `human` (unaddressed → master). Mirror scope per swarm: `all` | `masters` (only messages to/from masters and human, default) | `off`. If Slack is down the swarm is unaffected. Replaces `swarm_relay.py`'s polling.
 
 ## 8. Board (tasks + notes)
 
-- `hiver task add|claim|set|list|check` — same rules as `swarm_tasks.py` (claim only own/unowned with deps approved; `approved` only by critic/master and only if the check passes; checks run outside the lock, now in a server worker thread with a timeout).
-- `hiver board read [section]`, `hiver board write <section> --append|--replace` — notes.
+- `hivey task add|claim|set|list|check` — same rules as `swarm_tasks.py` (claim only own/unowned with deps approved; `approved` only by critic/master and only if the check passes; checks run outside the lock, now in a server worker thread with a timeout).
+- `hivey board read [section]`, `hivey board write <section> --append|--replace` — notes.
 - Server is the single writer → no `tasks.lock` races. Still renders `TASKS.md` for agents that `cat` it.
 - Events: `task.updated`, `board.updated` → UI refresh + available to subscribers/plugins.
 
@@ -250,7 +250,7 @@ Runs inside the server, driven by herdr's existing agent state transitions (no p
 | worker `blocked` | immediately, once per episode | bus → master (`--urgent`) with screen tail |
 | worker idle/done | ≥ 60 s | bus → master (normal) with output tail |
 | working, no activity (no bus msg, no task change) | ≥ 45 min | bus → master |
-| pane gone | immediately | bus → master; offer relaunch (`hiver swarm relaunch <agent>`) |
+| pane gone | immediately | bus → master; offer relaunch (`hivey swarm relaunch <agent>`) |
 | budget | 80 % / 100 % | bus → master + swarm row turns yellow / red |
 
 Token usage per agent (port of `swarm_usage.py`) feeds a `$tokens` token on agent rows.
@@ -261,37 +261,37 @@ Methods: `swarm.create`, `swarm.import` (adopt an existing `.swarm/`), `swarm.li
 
 Events: `swarm.created|updated|closed`, `swarm.alert`, `msg.sent|delivered`, `task.updated`, `board.updated`.
 
-`hiver swarm launch <root>`: reads `agents.json`, creates the workspace, **creates `<root>/<agent>/` for any missing agent** (errors if its `CLAUDE.md` is missing — the skill writes those), starts each agent with its model/args/env (`AGENTS_TTS=0` for workers), accepts the folder-trust prompt, sends kickoff, sets roles/titles, starts script entries. Replaces `launch_swarm.py`.
+`hivey swarm launch <root>`: reads `agents.json`, creates the workspace, **creates `<root>/<agent>/` for any missing agent** (errors if its `CLAUDE.md` is missing — the skill writes those), starts each agent with its model/args/env (`AGENTS_TTS=0` for workers), accepts the folder-trust prompt, sends kickoff, sets roles/titles, starts script entries. Replaces `launch_swarm.py`.
 
 ## 11. What the `/swarm` skill becomes
 
 Keeps: team design, plan confirmation, model choice, CLAUDE.md writing, skills copy (`setup_agent.py`), shared rules, Obsidian vault, Slack channel creation.
 
-delegates to hiver when `HIVER_ENV=1`: launch (`hiver swarm launch`), messaging (`hiver msg`), tasks (`hiver task`), watcher (built in), dashboard (built in). Falls back to the current scripts under plain herdr.
+delegates to hivey when `HIVEY_ENV=1`: launch (`hivey swarm launch`), messaging (`hivey msg`), tasks (`hivey task`), watcher (built in), dashboard (built in). Falls back to the current scripts under plain herdr.
 
 ## 12. Phases & acceptance checks
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **P0** Fork | private fork, rename binary/config/socket, NOTICE, CI with upstream-rebase job | `cargo build --release` ok; `just test` green; `hiver` and `herdr` run side by side |
-| **P1** Swarm model + UI | `SwarmMembership`, `swarm.import/list/get`, tree sidebar, role colors on rows + borders, `prefix m` | `hiver swarm import ~/swarms/apps_ideas` shows the tree; master reachable in ≤ 2 keys from anywhere; borders show names |
-| **P2** Launch | `hiver swarm launch`, layouts, script entries | a swarm launched by the skill via hiver gets its own space, master in pane 1 |
+| **P0** Fork | private fork, rename binary/config/socket, NOTICE, CI with upstream-rebase job | `cargo build --release` ok; `just test` green; `hivey` and `herdr` run side by side |
+| **P1** Swarm model + UI | `SwarmMembership`, `swarm.import/list/get`, tree sidebar, role colors on rows + borders, `prefix m` | `hivey swarm import ~/swarms/apps_ideas` shows the tree; master reachable in ≤ 2 keys from anywhere; borders show names |
+| **P2** Launch | `hivey swarm launch`, layouts, script entries | a swarm launched by the skill via hivey gets its own space, master in pane 1 |
 | **P3** Bus | `msg.*`, delivery policy, digest, persistence, Slack bridge plugin | tests: working agent → queued then delivered on idle; `--fyi` never wakes; `@all` + `@role:`; queue survives restart |
-| **P4** Board | `task.*`, `board.*`, whiteboard panel | `swarm_tasks.py` test cases pass against `hiver task`; kanban updates live |
+| **P4** Board | `task.*`, `board.*`, whiteboard panel | `swarm_tasks.py` test cases pass against `hivey task`; kanban updates live |
 | **P5** Supervisor | alerts, budget, tokens, timeline | `swarm_relay.py` no longer needed; alerts land on the master |
-| **P6** Skill | `/swarm` uses hiver when `HIVER_ENV=1` | a new swarm runs end-to-end with no relay pane |
+| **P6** Skill | `/swarm` uses hivey when `HIVEY_ENV=1` | a new swarm runs end-to-end with no relay pane |
 
 ## 13. Risks
 
 - **Upstream drift** — mitigated by the hook budget + weekly rebase CI; the riskiest hook is the client/server sidebar protocol (`endpoint_sidebar.rs`), which changed in 0.9.0.
 - **Prompt injection timing** — injecting into a Claude pane mid-dialog can answer a dialog by accident. Only inject when state is `idle`/`done`; never when `blocked`.
 - **Message storms** — agents replying to replies. Cap per-agent sends/min, and the digest keeps turns bounded.
-- **Name**: "Hiver" is also a SaaS company (hiverhq.com, shared inbox); fine private, check before any public/Homebrew release.
+- **Name**: "Hivey" is also a SaaS company (hiveyhq.com, shared inbox); fine private, check before any public/Homebrew release.
 - **Scope creep** — the swarm skill's LLM parts must not move into Rust.
 
 ## 14. Open questions
 
 1. ~~Slack~~ — decided: bridge/mirror only.
-2. ~~Binary name~~ — decided: `hiver` (no brew formula, crate name free).
+2. ~~Binary name~~ — decided: `hivey` (no brew formula, crate name free).
 3. ~~Master-to-master~~ — decided: yes, `<slug>/<agent>` + `@masters`, masters/human only.
-4. Retire `.swarm/tasks.lock` compatibility once all swarms run under hiverr?
+4. Retire `.swarm/tasks.lock` compatibility once all swarms run under hiveyr?

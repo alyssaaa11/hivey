@@ -1,25 +1,25 @@
-//! `hiver skill …`: the hiver skill for AI coding agents (Claude Code, Codex), embedded in the
-//! binary so every machine with hiver can install it (`skills/hiver/` in the repo).
+//! `hivey skill …`: the hivey skill for AI coding agents (Claude Code, Codex), embedded in the
+//! binary so every machine with hivey can install it (`skills/hivey/` in the repo).
 
 use std::path::{Path, PathBuf};
 
 const FILES: &[(&str, &str)] = &[
-    ("SKILL.md", include_str!("../../../skills/hiver/SKILL.md")),
+    ("SKILL.md", include_str!("../../../skills/hivey/SKILL.md")),
     (
         "scripts/handoff.py",
-        include_str!("../../../skills/hiver/scripts/handoff.py"),
+        include_str!("../../../skills/hivey/scripts/handoff.py"),
     ),
     (
         "scripts/new_wiki.py",
-        include_str!("../../../skills/hiver/scripts/new_wiki.py"),
+        include_str!("../../../skills/hivey/scripts/new_wiki.py"),
     ),
 ];
 
-const USAGE: &str = "hiver skill commands:
-  hiver skill install [--claude] [--codex] [--dir DIR]
-                       install the hiver skill for Claude Code (~/.claude/skills/hiver) and
-                       Codex (~/.codex/skills/hiver); default: each one that is set up
-  hiver skill print    print SKILL.md";
+const USAGE: &str = "hivey skill commands:
+  hivey skill install [--claude] [--codex] [--dir DIR]
+                       install the hivey skill for Claude Code (~/.claude/skills/hivey) and
+                       Codex (~/.codex/skills/hivey); default: each one that is set up
+  hivey skill print    print SKILL.md";
 
 pub(crate) fn run_skill_command(args: &[String]) -> std::io::Result<i32> {
     match args.first().map(String::as_str) {
@@ -50,11 +50,11 @@ fn install(args: &[String]) -> std::io::Result<i32> {
         match arg.as_str() {
             "--claude" => {
                 explicit = true;
-                targets.push(("Claude Code".into(), home.join(".claude/skills/hiver")));
+                targets.push(("Claude Code".into(), home.join(".claude/skills/hivey")));
             }
             "--codex" => {
                 explicit = true;
-                targets.push(("Codex".into(), home.join(".codex/skills/hiver")));
+                targets.push(("Codex".into(), home.join(".codex/skills/hivey")));
             }
             "--dir" => {
                 explicit = true;
@@ -88,7 +88,7 @@ pub(super) fn default_targets(home: &Path) -> Vec<(String, PathBuf)> {
     [("Claude Code", ".claude"), ("Codex", ".codex")]
         .into_iter()
         .filter(|(_, app)| home.join(app).is_dir())
-        .map(|(label, app)| (label.to_string(), home.join(app).join("skills/hiver")))
+        .map(|(label, app)| (label.to_string(), home.join(app).join("skills/hivey")))
         .collect()
 }
 
@@ -125,7 +125,7 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("hiver-skill-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hivey-skill-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("scratch dir");
         dir
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn installs_then_is_up_to_date() {
         let tmp = scratch("install");
-        let dir = tmp.join("skills/hiver");
+        let dir = tmp.join("skills/hivey");
         assert!(install_into(&dir)
             .expect("install")
             .starts_with("installed"));
@@ -151,11 +151,11 @@ mod tests {
         std::fs::create_dir(tmp.join(".codex")).expect("mkdir");
         let targets = default_targets(&tmp);
         assert_eq!(targets.len(), 1);
-        assert!(targets[0].1.ends_with(".codex/skills/hiver"));
+        assert!(targets[0].1.ends_with(".codex/skills/hivey"));
     }
 
     #[test]
     fn skill_has_frontmatter() {
-        assert!(FILES[0].1.starts_with("---\nname: hiver\n"));
+        assert!(FILES[0].1.starts_with("---\nname: hivey\n"));
     }
 }

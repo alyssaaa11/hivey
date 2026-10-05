@@ -20,11 +20,11 @@ const KNOWN_TOP_LEVEL_CONFIG_KEYS: &[&str] = &[
 ];
 
 pub fn app_dir_name() -> &'static str {
-    // hiver: own config/socket/session dirs so hiver and herdr run side by side.
+    // hivey: own config/socket/session dirs so hivey and herdr run side by side.
     if cfg!(debug_assertions) {
-        "hiver-dev"
+        "hivey-dev"
     } else {
-        "hiver"
+        "hivey"
     }
 }
 

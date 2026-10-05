@@ -61,20 +61,20 @@ class TemplateTests(unittest.TestCase):
             for agent in agents:
                 agent.mkdir()
                 (agent / "CLAUDE.md").write_text(f"# {agent.name}\n")
-            # new_wiki.py remembers the folder in $HOME/.hiver: keep that in the scratch dir
+            # new_wiki.py remembers the folder in $HOME/.hivey: keep that in the scratch dir
             from unittest import mock
             with mock.patch.dict(os.environ, {"HOME": tmp}):
                 path = setup.make_wiki("demo", "a task", str(Path(tmp, "Obsidian")), agents)
-            self.assertTrue(Path(tmp, ".hiver", "wiki.json").is_file())
+            self.assertTrue(Path(tmp, ".hivey", "wiki.json").is_file())
             self.assertEqual(path, str(Path(tmp, "Obsidian", "demo-wiki")))
             self.assertTrue(Path(path, "index.md").is_file())
             for agent in agents:
                 self.assertIn(path, (agent / "CLAUDE.md").read_text())
 
-    def test_briefs_name_the_team_and_hiver_messaging(self):
+    def test_briefs_name_the_team_and_hivey_messaging(self):
         brief = setup.BRIEF.format(agent="critic", slug="s", task="t", root="/r",
                                    job=setup.TEAM["critic"].format(root="/r"))
-        self.assertIn("hiver msg send", brief)
+        self.assertIn("hivey msg send", brief)
         self.assertIn("`builder`", brief)
 
 

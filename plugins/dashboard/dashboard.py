@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hiver.dashboard: a live terminal dashboard for one hiver swarm.
+"""hivey.dashboard: a live terminal dashboard for one hivey swarm.
 
 Shows, refreshed every few seconds:
   - budget: elapsed vs. budget_minutes, as a bar
@@ -12,7 +12,7 @@ Tokens are summed from each agent's Claude Code transcripts
 (~/.claude/projects/*/<session>.jsonl and its subagents), deduplicated by message id,
 read incrementally and cached in <root>/.swarm/dashboard_usage.json. Tokens only, no $.
 
-Keys: q quit · r refresh now. Environment: HIVER_SWARM_ROOT (required), HERDR_BIN_PATH.
+Keys: q quit · r refresh now. Environment: HIVEY_SWARM_ROOT (required), HERDR_BIN_PATH.
 """
 import curses
 import glob
@@ -169,7 +169,7 @@ class Collector:
         self.last_tokens_at = 0
         self.tokens = {}
 
-    def hiver(self, *args):
+    def hivey(self, *args):
         out = subprocess.run([self.binary, *args], capture_output=True, text=True)
         try:
             return json.loads(out.stdout)
@@ -177,12 +177,12 @@ class Collector:
             return {}
 
     def swarm(self, slug):
-        listing = self.hiver("swarm", "list", "--json")
+        listing = self.hivey("swarm", "list", "--json")
         return next((s for s in listing.get("swarms", []) if s.get("slug") == slug), None)
 
     def refresh_tokens(self, swarm):
         """Map agents to their Claude Code / Codex sessions (by pane), then sum usage."""
-        agents = self.hiver("agent", "list").get("result", {}).get("agents", [])
+        agents = self.hivey("agent", "list").get("result", {}).get("agents", [])
         session_by_pane = {}
         for a in agents:
             session = a.get("agent_session") or {}
@@ -309,7 +309,7 @@ def draw(win, snap, slug):
     win.erase()
     height, width = win.getmaxyx()
     if snap is None:
-        put(win, 0, 1, f"swarm {slug!r} not found (hiver swarm list)", color(1))
+        put(win, 0, 1, f"swarm {slug!r} not found (hivey swarm list)", color(1))
         win.refresh()
         return
     swarm, manifest, tokens = snap["swarm"], snap["manifest"], snap["tokens"]
@@ -475,12 +475,12 @@ def run(stdscr, collector, slug):
 
 
 def main():
-    root = os.environ.get("HIVER_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else "")
+    root = os.environ.get("HIVEY_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else "")
     if not root:
-        sys.exit("HIVER_SWARM_ROOT is not set (open this through `hiver swarm addon <swarm> hiver.dashboard`)")
+        sys.exit("HIVEY_SWARM_ROOT is not set (open this through `hivey swarm addon <swarm> hivey.dashboard`)")
     manifest = json.loads((Path(root) / ".swarm" / "agents.json").read_text())
-    slug = os.environ.get("HIVER_SWARM_SLUG") or manifest["slug"]
-    collector = Collector(root, os.environ.get("HERDR_BIN_PATH", "hiver"))
+    slug = os.environ.get("HIVEY_SWARM_SLUG") or manifest["slug"]
+    collector = Collector(root, os.environ.get("HERDR_BIN_PATH", "hivey"))
     curses.wrapper(run, collector, slug)
 
 

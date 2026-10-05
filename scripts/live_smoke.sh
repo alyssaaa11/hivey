@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Live smoke test for the hiver message bus with real Claude agents (Haiku, cheap).
+# Live smoke test for the hivey message bus with real Claude agents (Haiku, cheap).
 # Sets up a throwaway 2-agent swarm $SLUG (coordinator + scout) in $ROOT on the
-# running hiver server. Usage: scripts/live_smoke.sh [setup|teardown]
+# running hivey server. Usage: scripts/live_smoke.sh [setup|teardown]
 set -euo pipefail
-H=${HIVER:-hiver}
-ROOT=${ROOT:-/tmp/hiver-live}
+H=${HIVEY:-hivey}
+ROOT=${ROOT:-/tmp/hivey-live}
 MODEL=${MODEL:-haiku}
 SLUG=${SLUG:-live}
 
@@ -27,12 +27,12 @@ start_agent() { # name pane
 
 brief() { # key role
   cat > "$ROOT/$1/CLAUDE.md" <<EOF
-# $1 — hiver smoke-test swarm "$SLUG"
+# $1 — hivey smoke-test swarm "$SLUG"
 
 You are the **$1** ($2) of a tiny test swarm. Teammates: coordinator (master), scout (worker).
-Messages from teammates arrive in your prompt starting with "[hiver". To answer, run:
+Messages from teammates arrive in your prompt starting with "[hivey". To answer, run:
 
-    hiver msg send <agent> "<text>"        # e.g. hiver msg send coordinator "done"
+    hivey msg send <agent> "<text>"        # e.g. hivey msg send coordinator "done"
 
 Keep every reply to one short sentence. Never do other work. End each turn with DONE.
 EOF

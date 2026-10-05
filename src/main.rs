@@ -2,7 +2,7 @@ use std::io;
 
 pub(crate) const HERDR_ENV_VAR: &str = "HERDR_ENV";
 pub(crate) const HERDR_ENV_VALUE: &str = "1";
-mod hiver;
+mod hivey;
 mod swarm;
 const NESTED_HERDR_MESSAGES: [&str; 6] = [
     "inception detected. we need to go deeper... said no one ever.",
@@ -506,7 +506,7 @@ fn finish_cli(outcome: io::Result<cli::CommandOutcome>) -> io::Result<()> {
 }
 
 fn main() -> io::Result<()> {
-    hiver::isolate_from_parent_herdr();
+    hivey::isolate_from_parent_herdr();
     let raw_args: Vec<String> = match args_as_utf8(std::env::args_os()) {
         Ok(args) => args,
         Err(err) => {
@@ -576,9 +576,9 @@ fn main() -> io::Result<()> {
     }
 
     if args.get(1).map(|s| s.as_str()) == Some("update") {
-        // hiver: update from source (sync-herdr.sh), not herdr's release download.
-        std::process::exit(hiver::run_update(&args[2..]));
-        #[allow(unreachable_code)] // hiver: herdr's updater below stays for easy upstream merges
+        // hivey: update from source (sync-herdr.sh), not herdr's release download.
+        std::process::exit(hivey::run_update(&args[2..]));
+        #[allow(unreachable_code)] // hivey: herdr's updater below stays for easy upstream merges
         let options = match update::parse_self_update_args(&args[2..]) {
             Ok(options) => options,
             Err(err) if err.starts_with("usage:") => {
@@ -606,7 +606,7 @@ fn main() -> io::Result<()> {
 
     if args.iter().any(|a| a == "--help" || a == "-h") {
         platform::begin_cli_output();
-        println!("hiver — terminal workspace for swarms of AI coding agents (fork of herdr)");
+        println!("hivey — terminal workspace for swarms of AI coding agents (fork of herdr)");
         println!();
         println!("Usage: herdr [options]");
         println!("       herdr --session <name> [options]");
@@ -725,7 +725,7 @@ fn main() -> io::Result<()> {
 
     if args.iter().any(|a| a == "--version" || a == "-V") {
         platform::begin_cli_output();
-        println!("hiver {}", crate::build_info::version());
+        println!("hivey {}", crate::build_info::version());
         return Ok(());
     }
 

@@ -1,12 +1,12 @@
-id = "hiver.dashboard"
+id = "hivey.dashboard"
 name = "Swarm dashboard"
 version = "0.1.0"
 min_herdr_version = "0.9.0"
-description = "hiver swarm addon: live pane with agent states, token usage charts, tasks, budget and messages"
+description = "hivey swarm addon: live pane with agent states, token usage charts, tasks, budget and messages"
 platforms = ["linux", "macos"]
 
-# Opened by `hiver swarm launch --addon hiver.dashboard` (or `hiver swarm addon <swarm>
-# hiver.dashboard`) in the swarm's space with HIVER_SWARM_ROOT / HIVER_SWARM_SLUG set.
+# Opened by `hivey swarm launch --addon hivey.dashboard` (or `hivey swarm addon <swarm>
+# hivey.dashboard`) in the swarm's space with HIVEY_SWARM_ROOT / HIVEY_SWARM_SLUG set.
 [[panes]]
 id = "dashboard"
 title = "swarm dashboard"

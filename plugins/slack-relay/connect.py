@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Connect hiver to the user's Slack workspace: ask for a bot token, check it, store it.
+"""Connect hivey to the user's Slack workspace: ask for a bot token, check it, store it.
 
 usage: connect.py [--force]     interactive: create the Slack app, paste its token
        connect.py --status      is Slack connected? (exit 0 yes, 1 no) [--json]
 
-Run by `hiver slack connect` / `hiver slack status` and by install.sh. The token is typed
+Run by `hivey slack connect` / `hivey slack status` and by install.sh. The token is typed
 hidden, checked with Slack (auth.test), saved to <config dir>/slack-token (mode 600) and
 read through config.json's token_command, so the relay and create_channel.py use it. An
 existing working token_command (e.g. a secrets manager) is kept unless --force.
@@ -31,7 +31,7 @@ NEEDED_SCOPES = {"channels:history", "channels:join", "channels:manage", "channe
 
 def config_dir():
     path = os.environ.get("HERDR_PLUGIN_CONFIG_DIR") or str(
-        Path.home() / ".config" / "hiver" / "plugins" / "config" / "hiver.slack-relay")
+        Path.home() / ".config" / "hivey" / "plugins" / "config" / "hivey.slack-relay")
     return Path(path)
 
 
@@ -68,7 +68,7 @@ def describe(state):
     if state["missing_scopes"]:
         line += ("\n  missing scopes: " + ", ".join(state["missing_scopes"]) +
                  " (add them under OAuth & Permissions, reinstall the app, then "
-                 "hiver slack connect --force)")
+                 "hivey slack connect --force)")
     return line
 
 
@@ -90,7 +90,7 @@ def save_token(token):
 
 
 def remember_you(token):
-    """Who hiver invites to the channels it creates (config "invite"), so they show up in your
+    """Who hivey invites to the channels it creates (config "invite"), so they show up in your
     Slack: the person the bot already shares channels with, else your member id, asked once."""
     import create_channel  # same folder
     config = relay.load_config()
@@ -101,7 +101,7 @@ def remember_you(token):
     except (RuntimeError, OSError):
         found = []
     if not found:
-        print("\nhiver invites you to the channels it creates, so they appear in your Slack.")
+        print("\nhivey invites you to the channels it creates, so they appear in your Slack.")
         try:
             answer = input("Your Slack member ID (your profile → ⋯ → Copy member ID; "
                            "Enter to skip): ").strip()
@@ -119,7 +119,7 @@ def remember_you(token):
 
 def walk_through():
     print(f"""
-Connect hiver to Slack (about 2 minutes):
+Connect hivey to Slack (about 2 minutes):
   1. Open {NEW_APP_URL}
      → "From a manifest" → pick your workspace → paste the manifest below → Create.
   2. Click "Install to Workspace" → Allow.
@@ -141,10 +141,10 @@ def connect(force):
     state = current()
     if state["connected"] and not force:
         print(describe(state))
-        print("(hiver slack connect --force to use another token)")
+        print("(hivey slack connect --force to use another token)")
         return 0
     if not sys.stdin.isatty():
-        print("hiver slack connect needs a terminal to type the token in "
+        print("hivey slack connect needs a terminal to type the token in "
               "(never paste it into a chat)", file=sys.stderr)
         return 1
     walk_through()
@@ -156,7 +156,7 @@ def connect(force):
             return 1
         token = token.strip()
         if not token:
-            print("cancelled: Slack not connected (later: hiver slack connect)")
+            print("cancelled: Slack not connected (later: hivey slack connect)")
             return 1
         if not token.startswith(("xoxb-", "xoxp-")):
             print("that is not a Slack token (it starts with xoxb-); try again")
@@ -173,12 +173,12 @@ def connect(force):
                         "missing_scopes": missing}))
         remember_you(token)
         return 0
-    print("Slack not connected (later: hiver slack connect)")
+    print("Slack not connected (later: hivey slack connect)")
     return 1
 
 
 def main():
-    parser = argparse.ArgumentParser(description="connect hiver to Slack")
+    parser = argparse.ArgumentParser(description="connect hivey to Slack")
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--force", action="store_true")

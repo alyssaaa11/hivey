@@ -4,7 +4,7 @@ mod actions;
 mod agent_sidebar;
 mod aggregate_navigation;
 mod machine_diagnostics;
-mod swarm_sidebar; // hiver
+mod swarm_sidebar; // hivey
 mod workspace_navigation;
 use workspace_navigation::{PendingWorkspaceHighlight, WorkspaceNavigationTarget};
 mod composition;

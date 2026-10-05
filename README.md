@@ -1,9 +1,9 @@
-# hiver
+# hivey
 
-**hiver** is a fork of [herdr](https://github.com/herdrdev/herdr) built for swarms of agents:
+**hivey** is a fork of [herdr](https://github.com/herdrdev/herdr) built for swarms of agents:
 one swarm per space, a master you can always find, and a built-in message bus
 (delivery when the agent is idle, a queue and inbox, `@all` / `@role:` / `@masters` addressing, a full log).
-**Start here:** [`docs/hiver-guide.md`](docs/hiver-guide.md) · Architecture: [`docs/diagrams/hiver-architecture.html`](docs/diagrams/hiver-architecture.html) · New swarm flow: [`docs/diagrams/hiver-new-swarm.html`](docs/diagrams/hiver-new-swarm.html) · Write a provider: [`docs/hiver-providers.md`](docs/hiver-providers.md) · Agent skill: [`skills/hiver/`](skills/hiver/SKILL.md) (`hiver skill install`) · Design: [`docs/hiver-design.md`](docs/hiver-design.md). Everything below is herdr's original README.
+**Start here:** [`docs/hivey-guide.md`](docs/hivey-guide.md) · Architecture: [`docs/diagrams/hivey-architecture.html`](docs/diagrams/hivey-architecture.html) · New swarm flow: [`docs/diagrams/hivey-new-swarm.html`](docs/diagrams/hivey-new-swarm.html) · Write a provider: [`docs/hivey-providers.md`](docs/hivey-providers.md) · Agent skill: [`skills/hivey/`](skills/hivey/SKILL.md) (`hivey skill install`) · Design: [`docs/hivey-design.md`](docs/hivey-design.md). Everything below is herdr's original README.
 
 ---
 

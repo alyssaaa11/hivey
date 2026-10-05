@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""hiver.github: publish a swarm as two GitHub repos, the product and the workspace.
+"""hivey.github: publish a swarm as two GitHub repos, the product and the workspace.
 
   <owner>/<slug>          the product the swarm builds (e.g. <root>/app), its own git repo
   <owner>/<slug>-swarm    the swarm workspace: agent folders and briefs, .swarm/ logs, shared/,
@@ -15,7 +15,7 @@ Config ($HERDR_PLUGIN_CONFIG_DIR/config.json, all optional):
   {"owner": "<user or org>", "visibility": "private", "product_dirs": ["app"],
    "product_repo": "{slug}", "swarm_repo": "{slug}-swarm"}
 The manifest's "product_dir" (relative to the root) wins over product_dirs.
-HIVER_GITHUB_DRY_RUN=1 prints the commands instead of running them.
+HIVEY_GITHUB_DRY_RUN=1 prints the commands instead of running them.
 """
 import json
 import os
@@ -34,7 +34,7 @@ DEFAULT_CONFIG = {
 }
 # The workspace repo never carries these (the product has its own repo).
 WORKSPACE_IGNORE = [
-    "# hiver.github: the product is published as its own repo",
+    "# hivey.github: the product is published as its own repo",
     "/{product}/",
     "# builders' git worktrees of the product",
     "/*/repo/",
@@ -77,7 +77,7 @@ def find_product(root, manifest, config):
 
 
 def workspace_gitignore(existing, product):
-    """`existing` .gitignore text with hiver's block appended once."""
+    """`existing` .gitignore text with hivey's block appended once."""
     if MARKER in existing:
         return existing
     lines = [line.replace("{product}", product) for line in WORKSPACE_IGNORE
@@ -96,7 +96,7 @@ def repo_names(slug, config):
 # Git / GitHub
 # ---------------------------------------------------------------------------
 
-DRY_RUN = os.environ.get("HIVER_GITHUB_DRY_RUN") == "1"
+DRY_RUN = os.environ.get("HIVEY_GITHUB_DRY_RUN") == "1"
 
 
 def run(cmd, cwd, check=True):
@@ -185,12 +185,12 @@ def ask(prompt):
 
 
 def main():
-    root = Path(os.environ.get("HIVER_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else ""))
+    root = Path(os.environ.get("HIVEY_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else ""))
     if not str(root):
-        sys.exit("HIVER_SWARM_ROOT is not set (open with `hiver swarm addon <swarm> hiver.github`)")
+        sys.exit("HIVEY_SWARM_ROOT is not set (open with `hivey swarm addon <swarm> hivey.github`)")
     manifest_path = root / ".swarm" / "agents.json"
     manifest = json.loads(manifest_path.read_text())
-    slug = os.environ.get("HIVER_SWARM_SLUG") or manifest["slug"]
+    slug = os.environ.get("HIVEY_SWARM_SLUG") or manifest["slug"]
     config = dict(DEFAULT_CONFIG)
     try:
         config.update(json.loads((Path(os.environ.get("HERDR_PLUGIN_CONFIG_DIR", ".")) / "config.json").read_text()))
@@ -203,7 +203,7 @@ def main():
     product_repo, swarm_repo = repo_names(slug, config)
     published = manifest.get("github") or {}
 
-    print(f"hiver · GitHub for swarm {slug}{'   (dry run)' if DRY_RUN else ''}\n")
+    print(f"hivey · GitHub for swarm {slug}{'   (dry run)' if DRY_RUN else ''}\n")
     if product:
         print(f"  product    {root / product}\n             → {published.get('product') or f'{owner}/{product_repo}'}")
     else:
