@@ -7,7 +7,7 @@
     "locale": "en",
     "quality_profile": "showcase",
     "repository": {
-      "url": "git@github.com:jcsancho/hiver.git",
+      "url": "git@github.com:jcsancho/hivey.git",
       "link_mode": "local-only",
       "revision": "cdbed38e432345cf361b39ca9e37125967d613c1"
     }

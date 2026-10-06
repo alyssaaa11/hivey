@@ -33,7 +33,7 @@ def sub(rel, pattern, repl, count=0):
 # Package / binary name
 sub("Cargo.toml", r'^name = "herdr"$', 'name = "hivey"', 1)
 sub("Cargo.toml", r'^description = .*$', 'description = "terminal workspace for swarms of AI coding agents (fork of herdr)"', 1)
-sub("Cargo.toml", r'^repository = .*$', 'repository = "https://github.com/jcsancho/hiver"', 1)
+sub("Cargo.toml", r'^repository = .*$', 'repository = "https://github.com/jcsancho/hivey"', 1)
 sub("Cargo.toml", r'^homepage = .*\n', '', 1)
 for t in ROOT.joinpath("tests").rglob("*.rs"):
     s = t.read_text()

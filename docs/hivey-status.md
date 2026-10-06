@@ -1,7 +1,7 @@
 # hivey — status (2026-09-30)
 
 Design: [`hivey-design.md`](hivey-design.md) · Fork rules: [`../HIVEY.md`](../HIVEY.md)
-Repo: `github.com/jcsancho/hiver` (private) · Local: `~/projects/swarmAgents/hivey` · Binary: `~/.local/bin/hivey`
+Repo: `github.com/jcsancho/hivey` (private) · Local: `~/projects/hivey` · Binary: `~/.local/bin/hivey`
 
 ## Done (all on `main`, 3,734 Rust tests + addon tests passing)
 
@@ -48,7 +48,7 @@ hivey                                   # start (separate from herdr)
 hivey swarm install-keys                # prefix+m / prefix+shift+m / prefix+a / prefix+i
 hivey swarm import ~/swarms/<name>      # adopt an existing /swarm folder
 hivey msg send <swarm>/coordinator "…"  # talk to a master
-hivey plugin link ~/projects/swarmAgents/hivey/plugins/{slack-relay,dashboard,github}
+hivey plugin link ~/projects/hivey/plugins/{slack-relay,dashboard,github}
 hivey swarm addon <swarm> hivey.dashboard   # live dashboard for a running swarm
 ```
 In a hivey pane, `/swarm` launches straight into its own space with the relay, dashboard and watcher.

@@ -23,7 +23,7 @@ Needs git, Rust ([rustup.rs](https://rustup.rs)), Zig **0.16.0**
 on macOS or Linux.
 
 ```bash
-git clone git@github.com:jcsancho/hiver.git ~/hivey
+git clone git@github.com:jcsancho/hivey.git ~/hivey
 cd ~/hivey && ./install.sh
 ```
 
@@ -267,7 +267,7 @@ Try it safely first with `HIVEY_GITHUB_DRY_RUN=1`.
   because hivey is built from a newer herdr; they're shared with your herdr and work for both.
 - **Back up the skill:** `/save-skill swarm` syncs `~/.claude/skills/swarm` to `~/SKILLS`
   (a pre-hivey copy is in `~/.claude/skill-backups/`).
-- **Repo rules for future sessions:** in `~/projects/swarmAgents/hivey`, run
+- **Repo rules for future sessions:** in `~/projects/hivey`, run
   `ln -sfh HIVEY.md CLAUDE.md`.
 
 ## Troubleshooting

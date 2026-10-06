@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install hivey from this checkout.
 #
-#   git clone git@github.com:jcsancho/hiver.git ~/hivey
+#   git clone git@github.com:jcsancho/hivey.git ~/hivey
 #   cd ~/hivey && ./install.sh
 #
 # Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), installs the hivey
