@@ -32,7 +32,7 @@ struct SpawnedHerdr {
 impl Drop for SpawnedHerdr {
     fn drop(&mut self) {
         let pid = self.child.process_id();
-        let _ = self.child.kill();
+        support::stop_spawned_herdr(&mut *self.child);
 
         if let Some(pid) = pid {
             let deadline = Instant::now() + Duration::from_secs(2);
@@ -122,11 +122,11 @@ fn spawn_herdr_with_options(
     path_override: Option<&Path>,
     shell: &str,
 ) -> SpawnedHerdr {
-    fs::create_dir_all(config_home.join("hivey")).unwrap();
+    fs::create_dir_all(config_home.join("herdr")).unwrap();
     fs::create_dir_all(runtime_dir).unwrap();
     register_runtime_dir(runtime_dir);
     fs::write(
-        config_home.join("hivey/config.toml"),
+        config_home.join("herdr/config.toml"),
         "onboarding = false\n",
     )
     .unwrap();
@@ -140,7 +140,8 @@ fn spawn_herdr_with_options(
         })
         .unwrap();
 
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_herdr"));
+    support::isolate_herdr_test_process(&mut cmd);
     cmd.arg("server");
     cmd.env("XDG_CONFIG_HOME", config_home);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
@@ -312,6 +313,47 @@ fn ping_over_socket_returns_version() {
 }
 
 #[test]
+fn spawned_server_ignores_inherited_pane_env() {
+    let _lock = test_lock();
+    let base = unique_test_dir();
+    let config_home = base.join("config");
+    let runtime_dir = base.join("runtime");
+    let socket_path = runtime_dir.join("herdr.sock");
+    let startup_cwd = base.join("startup");
+    fs::create_dir_all(&startup_cwd).unwrap();
+
+    // A shell inside a herdr pane passes these to every process it starts.
+    let saved: Vec<_> = ["HERDR_STARTUP_CWD", "HERDR_SESSION"]
+        .into_iter()
+        .map(|name| (name, std::env::var_os(name)))
+        .collect();
+    std::env::set_var("HERDR_STARTUP_CWD", &startup_cwd);
+    std::env::set_var("HERDR_SESSION", "inherited");
+    let child = spawn_herdr(&config_home, &runtime_dir, &socket_path);
+    for (name, value) in saved {
+        match value {
+            Some(value) => std::env::set_var(name, value),
+            None => std::env::remove_var(name),
+        }
+    }
+    wait_for_socket(&socket_path, Duration::from_secs(5));
+
+    let value = send_request(
+        &socket_path,
+        r#"{"id":"req_1","method":"workspace.list","params":{}}"#,
+    );
+    assert_eq!(value["result"]["workspaces"], serde_json::json!([]));
+    let app_dir = if cfg!(debug_assertions) {
+        "herdr-dev"
+    } else {
+        "herdr"
+    };
+    assert!(!config_home.join(app_dir).join("sessions").exists());
+
+    cleanup_spawned_herdr(child, base);
+}
+
+#[test]
 fn server_reload_agent_manifests_reports_runtime_override() {
     let _lock = test_lock();
     let base = unique_test_dir();
@@ -322,7 +364,7 @@ fn server_reload_agent_manifests_reports_runtime_override() {
     let child = spawn_herdr(&config_home, &runtime_dir, &socket_path);
     wait_for_socket(&socket_path, Duration::from_secs(5));
 
-    let override_dir = config_home.join("hivey-dev").join("agent-detection");
+    let override_dir = config_home.join("herdr-dev").join("agent-detection");
     fs::create_dir_all(&override_dir).unwrap();
     let override_path = override_dir.join("codex.toml");
     fs::write(
@@ -414,7 +456,7 @@ fn shutdown_preserves_session_after_shell_is_signaled() {
     child.child.wait().expect("server should stop cleanly");
 
     let session: serde_json::Value = serde_json::from_slice(
-        &fs::read(config_home.join("hivey-dev/session.json")).expect("saved session"),
+        &fs::read(config_home.join("herdr-dev/session.json")).expect("saved session"),
     )
     .expect("valid session json");
     assert_eq!(session["workspaces"].as_array().map(Vec::len), Some(1));

@@ -90,9 +90,11 @@ fn test_headless_server_with_event_hub(event_hub: api::EventHub) -> HeadlessServ
         .set_nonblocking(ListenerNonblockingMode::Accept)
         .expect("set listener nonblocking");
     let (server_event_tx, server_event_rx) = mpsc::channel(64);
-    let should_quit = Arc::new(AtomicBool::new(false));
+    let server_stop = ServerStop::default();
+    let should_quit = server_stop.flag().clone();
     #[cfg(windows)]
-    spawn_windows_client_accept_thread(listener, should_quit.clone(), server_event_tx.clone());
+    spawn_windows_client_accept_thread(listener, should_quit.clone(), server_event_tx.clone())
+        .expect("spawn client accept thread");
     let server_keybindings = app_keybindings(&app);
     let headless_size = app.state.headless_size;
 
@@ -130,6 +132,7 @@ fn test_headless_server_with_event_hub(event_hub: api::EventHub) -> HeadlessServ
         #[cfg(unix)]
         pending_handoff_repaint_nudge: false,
         should_quit,
+        server_stop,
         server_event_rx,
         server_event_tx,
     }
@@ -4655,6 +4658,38 @@ fn unchanged_git_refresh_does_not_request_headless_render() {
     });
 
     assert!(!changed);
+    assert!(!server.app.git_refresh_in_flight);
+}
+
+#[test]
+fn failed_startup_git_refresh_retries_without_clients() {
+    let mut server = test_headless_server();
+    server
+        .app
+        .state
+        .workspaces
+        .push(crate::workspace::Workspace::test_new("restored"));
+    assert_eq!(server.app_client_count(), 0);
+
+    crate::thread_spawn::test_hook::fail_next_spawns(1);
+    server.app.refresh_restored_workspace_git_metadata();
+    assert!(!server.app.git_refresh_in_flight);
+
+    let now = Instant::now();
+    let retry_at = server
+        .app
+        .next_headless_loop_deadline_with_git_refresh(now, false, server.git_refresh_scheduled())
+        .expect("failed startup refresh schedules a retry");
+    assert_eq!(Some(retry_at), server.app.git_refresh_deadline());
+
+    server.handle_scheduled_tasks_headless(retry_at, false);
+    assert!(server.app.git_refresh_in_flight);
+    assert!(!server.app.git_identity_refresh_requested);
+
+    // Once the retry starts, clientless servers stop polling again.
+    server.app.git_refresh_in_flight = false;
+    server.app.request_git_identity_refresh(retry_at);
+    server.handle_scheduled_tasks_headless(retry_at, false);
     assert!(!server.app.git_refresh_in_flight);
 }
 

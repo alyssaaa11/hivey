@@ -7,13 +7,10 @@ pub(super) use std::thread;
 pub(super) use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub(super) use crate::support::{
-    cleanup_test_base, register_runtime_dir, register_spawned_herdr_pid,
-    unregister_spawned_herdr_pid, CURRENT_PROTOCOL,
+    cleanup_test_base, isolate_herdr_test_process, register_runtime_dir,
+    register_spawned_herdr_pid, unregister_spawned_herdr_pid, CURRENT_PROTOCOL,
 };
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
-
-pub(super) const WORKTREE_BOOTSTRAP_MANAGED_COMPONENT: &str =
-    "example.worktree-bootstrap-ef876653ffc3";
 
 pub(super) fn unique_test_dir() -> PathBuf {
     let nanos = SystemTime::now()
@@ -24,7 +21,10 @@ pub(super) fn unique_test_dir() -> PathBuf {
 }
 
 pub(super) fn managed_github_plugin_dir(config_home: &Path) -> PathBuf {
-    config_home.join("hivey-dev").join("plugins").join("github")
+    config_home
+        .join("herdr-dev")
+        .join("plugins")
+        .join("github-installations")
 }
 
 pub(super) fn path_missing_or_empty(path: &Path) -> bool {
@@ -81,7 +81,7 @@ impl Drop for SpawnedServerProcess {
 impl Drop for SpawnedHerdr {
     fn drop(&mut self) {
         let pid = self.child.process_id();
-        let _ = self.child.kill();
+        crate::support::stop_spawned_herdr(&mut *self.child);
 
         if let Some(pid) = pid {
             let deadline = Instant::now() + Duration::from_secs(2);
@@ -146,9 +146,9 @@ pub(super) fn spawn_herdr_with_pane_history(
 
 pub(super) fn app_dir_name() -> &'static str {
     if cfg!(debug_assertions) {
-        "hivey-dev"
+        "herdr-dev"
     } else {
-        "hivey"
+        "herdr"
     }
 }
 
@@ -174,7 +174,7 @@ pub(super) fn spawn_named_server(
     )
     .unwrap();
 
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hivey"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_herdr"));
     command
         .args(["--session", session, "server"])
         .env("XDG_CONFIG_HOME", config_home)
@@ -182,6 +182,8 @@ pub(super) fn spawn_named_server(
         .env_remove("HERDR_SOCKET_PATH")
         .env_remove("HERDR_CLIENT_SOCKET_PATH")
         .env_remove("HERDR_ENV")
+        .env_remove("HERDR_STARTUP_CWD")
+        .env_remove("HERDR_SESSION")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
@@ -224,7 +226,7 @@ pub(super) fn run_named_cli_with_env_and_socket_override(
     envs: &[(&str, &Path)],
     socket_override: Option<&Path>,
 ) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hivey"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_herdr"));
     command
         .args(args)
         .env("XDG_CONFIG_HOME", config_home)
@@ -299,7 +301,8 @@ pub(super) fn spawn_herdr_with_config(
         })
         .unwrap();
 
-    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_hivey"));
+    let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_herdr"));
+    isolate_herdr_test_process(&mut cmd);
     cmd.arg("server");
     cmd.env("XDG_CONFIG_HOME", config_home);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
@@ -320,7 +323,7 @@ pub(super) fn spawn_herdr_with_config(
 }
 
 pub(super) fn run_cli(socket_path: &Path, args: &[&str]) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hivey"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_herdr"));
     command.args(args);
     command.env("HERDR_SOCKET_PATH", socket_path);
     command.output().unwrap()
@@ -331,7 +334,7 @@ pub(super) fn run_cli_in_dir(
     args: &[&str],
     current_dir: &Path,
 ) -> std::process::Output {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hivey"));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_herdr"));
     command.args(args);
     command.current_dir(current_dir);
     command.env("HERDR_SOCKET_PATH", socket_path);
