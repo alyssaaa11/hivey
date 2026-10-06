@@ -471,7 +471,7 @@ const PANE_RUNTIME_MARKER_ENV_VAR: &str = "HERDR_PANE_RUNTIME_ID";
 
 /// Native processor architecture of the Windows host as an
 /// `IMAGE_FILE_MACHINE_*` value. `IsWow64Process2` reports the native machine
-/// even when an x64 Herdr runs under emulation on Windows ARM64, which the
+/// even when an x64 hivey runs under emulation on Windows ARM64, which the
 /// build target alone cannot reveal.
 pub(crate) fn native_machine_type() -> u16 {
     let mut process_machine = 0u16;
@@ -2779,7 +2779,7 @@ fn read_unicode_string(process: HANDLE, unicode: UNICODE_STRING) -> Option<Strin
 
 // Prefix-mode ASCII input source support (see `switch_ascii_input_source_in_prefix`).
 //
-// Windows IMEs live in the terminal-emulator process, not in herdr. Empirically:
+// Windows IMEs live in the terminal-emulator process, not in hivey. Empirically:
 //   - `WM_IME_CONTROL` / `IMC_GETOPENSTATUS` reads whether the IME is open
 //     (composing native characters) reliably across the process boundary (this
 //     is what kren-select uses), so we detect state with it. The read goes
@@ -4675,7 +4675,7 @@ mod tests {
 
     #[test]
     fn scrollback_editor_argv_uses_editor_env_and_appends_path() {
-        let path = std::path::Path::new(r"C:\Users\User\AppData\Local\Temp\herdr scrollback.txt");
+        let path = std::path::Path::new(r"C:\Users\User\AppData\Local\Temp\hivey scrollback.txt");
         let argv = super::scrollback_editor_argv_with_env(
             path,
             Some(r#""C:\Program Files\Microsoft VS Code\Code.exe" --wait"#),

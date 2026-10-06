@@ -1,7 +1,7 @@
 //! Self-update mechanism.
 //!
 //! Checks the hosted herdr.dev update manifest for newer versions.
-//! Manual `herdr update` downloads and installs the binary.
+//! Manual `hivey update` downloads and installs the binary.
 //! Background checks only surface availability and release notes.
 //! Uses `curl` as a subprocess for HTTP — no additional Rust HTTP dependencies.
 //! JSON parsing uses serde_json (already in deps for persistence).
@@ -25,7 +25,7 @@ use serde::{Deserialize, Deserializer};
 const STABLE_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/latest.json";
 const PREVIEW_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/preview.json";
 const HOMEBREW_FORMULA_API_URL: &str = "https://formulae.brew.sh/api/formula/herdr.json";
-const HERDR_UPDATE_COMMAND: &str = "herdr update";
+const HERDR_UPDATE_COMMAND: &str = "hivey update";
 const HOMEBREW_UPDATE_COMMAND: &str = "brew update && brew upgrade herdr";
 const MISE_UPDATE_COMMAND: &str = "mise upgrade herdr";
 const NIX_UPDATE_COMMAND: &str = "update through Nix";
@@ -791,7 +791,7 @@ fn windows_installed_herdr_exe_path() -> Result<PathBuf, String> {
     }
 
     let local_app_data = env::var_os("LOCALAPPDATA")
-        .ok_or("LOCALAPPDATA is not set; cannot locate Herdr install")?;
+        .ok_or("LOCALAPPDATA is not set; cannot locate hivey install")?;
     Ok(PathBuf::from(local_app_data)
         .join("Programs")
         .join("Herdr")
@@ -961,7 +961,7 @@ fn plan_running_server_updates(
         )
         .map_err(|err| {
             format!(
-                "failed to read status for herdr target {} at {}: {err}. stop it with `{}` and run `herdr update` again",
+                "failed to read status for hivey target {} at {}: {err}. stop it with `{}` and run `hivey update` again",
                 target.label,
                 target.socket_path.display(),
                 target.stop_command
@@ -970,7 +970,7 @@ fn plan_running_server_updates(
             Some(server) => server,
             None if target.must_be_running => {
                 return Err(format!(
-                        "herdr target {} looked running, but its status API did not respond at {}. stop it with `{}` and run `herdr update` again",
+                        "herdr target {} looked running, but its status API did not respond at {}. stop it with `{}` and run `hivey update` again",
                     target.label,
                     target.socket_path.display(),
                     target.stop_command
@@ -978,7 +978,7 @@ fn plan_running_server_updates(
             }
             None if client_protocol_server_is_running_at(&target.client_socket_path) => {
                 return Err(format!(
-                    "herdr target {} has a client socket, but its status API did not respond at {}. stop it with `{}` and run `herdr update` again",
+                    "herdr target {} has a client socket, but its status API did not respond at {}. stop it with `{}` and run `hivey update` again",
                     target.label,
                     target.socket_path.display(),
                     target.stop_command
@@ -996,7 +996,7 @@ fn plan_running_server_updates(
 
     if plans.is_empty() && target_client_protocol_server_is_running()? {
         return Err(format!(
-            "a herdr server is listening, but its status API is unavailable; try `{}`, or stop the old server process manually, then run `herdr update` again",
+            "a hivey server is listening, but its status API is unavailable; try `{}`, or stop the old server process manually, then run `hivey update` again",
             crate::session::local_stop_command()
         ));
     }
@@ -1037,7 +1037,7 @@ fn running_update_targets() -> Result<Vec<RunningUpdateTarget>, String> {
             name: None,
             label: socket_path.display().to_string(),
             stop_command: format!(
-                "{}={} herdr server stop",
+                "{}={} hivey server stop",
                 crate::api::SOCKET_PATH_ENV_VAR,
                 socket_path.display()
             ),
@@ -1052,7 +1052,7 @@ fn running_update_targets() -> Result<Vec<RunningUpdateTarget>, String> {
     }
 
     let sessions = crate::session::list_sessions()
-        .map_err(|err| format!("failed to list herdr sessions: {err}"))?;
+        .map_err(|err| format!("failed to list hivey sessions: {err}"))?;
     Ok(sessions
         .into_iter()
         .map(|session| RunningUpdateTarget {
@@ -1069,7 +1069,7 @@ fn running_update_targets() -> Result<Vec<RunningUpdateTarget>, String> {
             attach_command: Some(if session.default {
                 "herdr".to_string()
             } else {
-                format!("herdr session attach {}", session.name)
+                format!("hivey session attach {}", session.name)
             }),
             label: session.name.clone(),
             client_socket_path: crate::session::client_socket_path_for(if session.default {
@@ -1092,7 +1092,7 @@ fn target_client_protocol_server_is_running() -> Result<bool, String> {
     }
 
     let sessions = crate::session::list_sessions()
-        .map_err(|err| format!("failed to list herdr sessions: {err}"))?;
+        .map_err(|err| format!("failed to list hivey sessions: {err}"))?;
     Ok(sessions.into_iter().any(|session| {
         let client_socket = crate::session::client_socket_path_for(if session.default {
             None
@@ -1114,7 +1114,7 @@ pub(crate) fn parse_self_update_args(args: &[String]) -> Result<SelfUpdateOption
         match arg.as_str() {
             "--handoff" => options.live_handoff = true,
             "--help" | "-h" => {
-                return Err("usage: herdr update [--handoff]".to_string());
+                return Err("usage: hivey update [--handoff]".to_string());
             }
             _ => return Err(format!("unknown update option: {arg}")),
         }
@@ -1129,7 +1129,7 @@ fn prompt_to_stop_old_servers_before_update(
 ) -> Result<bool, String> {
     if !io::stdin().is_terminal() {
         return Err(
-            "one or more Herdr sessions must stop for this update. Stop running Herdr sessions when ready, then run `herdr update` again from an interactive terminal."
+            "one or more hivey sessions must stop for this update. Stop running hivey sessions when ready, then run `hivey update` again from an interactive terminal."
                 .to_string(),
         );
     }
@@ -1260,7 +1260,7 @@ fn prompt_to_complete_plain_update(
     let (singular, plural) = target_group_nouns(&plans);
     let noun = if plans.len() == 1 { singular } else { plural };
     eprintln!(
-        "To complete the update, Herdr must stop {} running {}.",
+        "To complete the update, hivey must stop {} running {}.",
         plans.len(),
         noun
     );
@@ -1320,7 +1320,7 @@ fn print_running_session_update_summary(
     release: &ReleaseInfo,
     options: SelfUpdateOptions,
 ) {
-    eprintln!("running herdr targets:");
+    eprintln!("running hivey targets:");
     for plan in plans {
         if options.live_handoff {
             let capability = if server_supports_live_handoff(&plan.server) {
@@ -1405,7 +1405,7 @@ fn prompt_to_stop_old_server_after_failed_handoff(
     eprintln!("  server: v{}", version_label(status.version.as_deref()));
     eprintln!("  installed: {}", release.label());
     eprintln!(
-        "you can keep using the old server, or stop it now so the next `herdr` start uses {}.",
+        "you can keep using the old server, or stop it now so the next `hivey` start uses {}.",
         release.label()
     );
     eprintln!("stopping the old server will exit its pane processes.");
@@ -1472,13 +1472,13 @@ fn recover_failed_live_handoff_for_update(
         FailedHandoffServerState::NoServerResponding => {
             if let Some(command) = plan.attach_command() {
                 eprintln!(
-                    "no herdr server is responding for session {}. the binary was updated; run `{command}` to start {}.",
+                    "no hivey server is responding for session {}. the binary was updated; run `{command}` to start {}.",
                     plan.label(),
                     release.label()
                 );
             } else {
                 eprintln!(
-                    "no herdr server is responding at {}. the binary was updated; restart with the same socket override to use {}.",
+                    "no hivey server is responding at {}. the binary was updated; restart with the same socket override to use {}.",
                     plan.socket_path().display(),
                     release.label()
                 );
@@ -1677,7 +1677,7 @@ fn wait_for_server_shutdown_at(socket_path: &Path, timeout: Duration) -> Result<
 
 #[cfg(not(windows))]
 fn stop_running_server_for_update(plan: &RunningServerUpdatePlan) -> Result<(), String> {
-    eprintln!("stopping herdr {} {}...", plan.target_noun(), plan.label());
+    eprintln!("stopping hivey {} {}...", plan.target_noun(), plan.label());
     stop_server_via_api_at(plan.socket_path(), SERVER_STOP_RESPONSE_TIMEOUT)?;
     wait_for_server_shutdown_at(plan.socket_path(), SERVER_HANDOFF_CONFIRM_TIMEOUT)?;
     Ok(())
@@ -1777,7 +1777,7 @@ fn print_running_session_update_outcomes(
     release: &ReleaseInfo,
 ) {
     if outcomes.is_empty() {
-        eprintln!("run herdr again.");
+        eprintln!("run hivey again.");
         return;
     }
 
@@ -1824,7 +1824,7 @@ fn print_running_session_update_outcomes(
                         release.label()
                     ),
                     None => eprintln!(
-                        "Run `{}`, then restart Herdr with the same socket override when ready to use {}.",
+                        "Run `{}`, then restart hivey with the same socket override when ready to use {}.",
                         outcome.stop_command,
                         release.label()
                     ),
@@ -1896,19 +1896,19 @@ pub(crate) fn update_install_command() -> &'static str {
 pub(crate) fn update_install_instruction(install_command: &str) -> String {
     match install_command {
         HERDR_UPDATE_COMMAND => {
-            "detach, run `herdr update`, then run Herdr again to reconnect".to_string()
+            "detach, run `hivey update`, then run hivey again to reconnect".to_string()
         }
         HOMEBREW_UPDATE_COMMAND => {
-            "detach, run `brew update && brew upgrade herdr`, then run Herdr again to reconnect"
+            "detach, run `brew update && brew upgrade herdr`, then run hivey again to reconnect"
                 .to_string()
         }
         MISE_UPDATE_COMMAND => {
-            "detach, run `mise upgrade herdr`, then run Herdr again to reconnect".to_string()
+            "detach, run `mise upgrade herdr`, then run hivey again to reconnect".to_string()
         }
         NIX_UPDATE_COMMAND => {
-            "detach, update through Nix, then run Herdr again to reconnect".to_string()
+            "detach, update through Nix, then run hivey again to reconnect".to_string()
         }
-        command => format!("detach, run `{command}`, then run Herdr again to reconnect"),
+        command => format!("detach, run `{command}`, then run hivey again to reconnect"),
     }
 }
 
@@ -1951,7 +1951,7 @@ pub(crate) fn package_manager_channel_update_guidance_for_current_install() -> O
     } else if is_mise_managed_install() {
         Some("Use `mise upgrade herdr` to update mise installs.")
     } else if is_nix_managed_install() {
-        Some("Update through Nix to update Nix-managed Herdr installs.")
+        Some("Update through Nix to update Nix-managed hivey installs.")
     } else {
         None
     }
@@ -1960,14 +1960,14 @@ pub(crate) fn package_manager_channel_update_guidance_for_current_install() -> O
 fn preview_channel_rejection_for_exe_path(path: &Path) -> Option<&'static str> {
     if is_homebrew_managed_exe_path_following_links(path) {
         Some(
-            "preview channel is only available for direct Herdr installs; Homebrew installs update through `brew update && brew upgrade herdr`",
+            "preview channel is only available for direct hivey installs; Homebrew installs update through `brew update && brew upgrade herdr`",
         )
     } else if is_mise_managed_exe_path_following_links(path) {
         Some(
-            "preview channel is only available for direct Herdr installs; mise installs update through `mise upgrade herdr`",
+            "preview channel is only available for direct hivey installs; mise installs update through `mise upgrade herdr`",
         )
     } else if is_nix_store_exe_path_following_links(path) {
-        Some("preview channel is only available for direct Herdr installs; Nix installs update through Nix")
+        Some("preview channel is only available for direct hivey installs; Nix installs update through Nix")
     } else {
         None
     }
@@ -2105,7 +2105,7 @@ fn homebrew_cellar_keg_root(path: &Path) -> Option<PathBuf> {
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Manual self-update command (`herdr update`).
+/// Manual self-update command (`hivey update`).
 pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     // hivey: never download herdr releases over the hivey binary.
     if !cfg!(test) {
@@ -2117,7 +2117,7 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     if is_homebrew_managed_install() {
         if channel == UpdateChannel::Preview {
             return Err(
-                "self-update is disabled for Homebrew installs; preview is only available for direct Herdr installs".into(),
+                "self-update is disabled for Homebrew installs; preview is only available for direct hivey installs".into(),
             );
         }
         return Err(format!(
@@ -2128,7 +2128,7 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     if is_mise_managed_install() {
         if channel == UpdateChannel::Preview {
             return Err(
-                "self-update is disabled for mise installs; preview is only available for direct Herdr installs".into(),
+                "self-update is disabled for mise installs; preview is only available for direct hivey installs".into(),
             );
         }
         return Err(format!(
@@ -2139,7 +2139,7 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     if is_nix_managed_install() {
         if channel == UpdateChannel::Preview {
             return Err(
-                "self-update is disabled for Nix installs; preview is only available for direct Herdr installs".into(),
+                "self-update is disabled for Nix installs; preview is only available for direct hivey installs".into(),
             );
         }
         return Err(
@@ -2148,7 +2148,7 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
     }
 
     if running_inside_herdr() {
-        return Err("run `herdr update` outside herdr after detaching from the session".into());
+        return Err("run `hivey update` outside hivey after detaching from the session".into());
     }
 
     eprintln!("checking {} channel for updates...", channel.as_str());
@@ -2189,7 +2189,7 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
         eprintln!("installed {}", release.label());
         print_outdated_integration_notice_with_updated_binary(&updated_exe);
         eprintln!(
-            "Open a new terminal, or reconnect SSH, then start Herdr again to use the updated client. Running servers remain active; restart them later only if you need server-side changes from {}.",
+            "Open a new terminal, or reconnect SSH, then start hivey again to use the updated client. Running servers remain active; restart them later only if you need server-side changes from {}.",
             release.label()
         );
         print_saved_machine_update_notice();
@@ -2208,8 +2208,8 @@ pub fn self_update(options: SelfUpdateOptions) -> Result<Version, String> {
         if !options.live_handoff
             && !prompt_to_complete_plain_update(&server_update_decisions, &release)?
         {
-            eprintln!("Herdr was not updated.");
-            eprintln!("Stop running Herdr sessions when ready, then run `herdr update` again.");
+            eprintln!("hivey was not updated.");
+            eprintln!("Stop running hivey sessions when ready, then run `hivey update` again.");
             return Ok(current);
         }
         install_downloaded_update(downloaded_update)?;
@@ -2266,7 +2266,7 @@ fn saved_machine_update_notice_lines(
     ];
     lines.extend(labels.into_iter().map(|label| format!("  {label}")));
     lines.push(
-        "run `herdr update` on each one. it will tell you what to restart there.".to_string(),
+        "run `hivey update` on each one. it will tell you what to restart there.".to_string(),
     );
     lines
 }
@@ -2548,7 +2548,7 @@ mod tests {
                 "your SSH machines run their own herdr and may be older:",
                 "  rohan",
                 "  workbox",
-                "run `herdr update` on each one. it will tell you what to restart there.",
+                "run `hivey update` on each one. it will tell you what to restart there.",
             ]
         );
     }
@@ -2566,16 +2566,16 @@ mod tests {
         let default = KeptServer {
             label: "default",
             version: "0.9.1",
-            stop_command: "herdr server stop",
+            stop_command: "hivey server stop",
             attach_command: Some("herdr"),
         };
         assert_eq!(
             kept_server_notice_lines(&[default], "0.10.0"),
             [
                 "",
-                "your running server is still v0.9.1. run `herdr` to reconnect; everything keeps working.",
+                "your running server is still v0.9.1. run `hivey` to reconnect; everything keeps working.",
                 "server fixes in v0.10.0 apply only after it restarts.",
-                "when your agents are idle, run `herdr server stop`, then `herdr`.",
+                "when your agents are idle, run `hivey server stop`, then `hivey`.",
                 "this closes running panes and their agents.",
             ]
         );
@@ -2583,13 +2583,13 @@ mod tests {
         let work = KeptServer {
             label: "work",
             version: "0.9.0",
-            stop_command: "herdr session stop work",
-            attach_command: Some("herdr session attach work"),
+            stop_command: "hivey session stop work",
+            attach_command: Some("hivey session attach work"),
         };
         let default = KeptServer {
             label: "default",
             version: "0.9.1",
-            stop_command: "herdr server stop",
+            stop_command: "hivey server stop",
             attach_command: Some("herdr"),
         };
         assert_eq!(
@@ -2598,8 +2598,8 @@ mod tests {
                 "",
                 "your running servers are still older. reconnect as usual; everything keeps working.",
                 "server fixes in v0.10.0 apply only after each one restarts:",
-                "  default  v0.9.1  `herdr server stop`, then `herdr`",
-                "  work     v0.9.0  `herdr session stop work`, then `herdr session attach work`",
+                "  default  v0.9.1  `hivey server stop`, then `hivey`",
+                "  work     v0.9.0  `hivey session stop work`, then `hivey session attach work`",
                 "restart one when its agents are idle. this closes its panes and their agents.",
             ]
         );
@@ -2608,13 +2608,13 @@ mod tests {
         let socket_override = KeptServer {
             label: "/tmp/herdr.sock",
             version: "0.9.1",
-            stop_command: "herdr server stop",
+            stop_command: "hivey server stop",
             attach_command: None,
         };
         let lines = kept_server_notice_lines(&[socket_override], "0.10.0");
         assert_eq!(
             lines[3],
-            "when your agents are idle, run `herdr server stop`, then herdr with the same socket override."
+            "when your agents are idle, run `hivey server stop`, then hivey with the same socket override."
         );
     }
 
@@ -2966,15 +2966,15 @@ mod tests {
     fn update_install_instruction_distinguishes_install_from_restart() {
         assert_eq!(
             update_install_instruction(HERDR_UPDATE_COMMAND),
-            "detach, run `herdr update`, then run Herdr again to reconnect"
+            "detach, run `hivey update`, then run hivey again to reconnect"
         );
         assert_eq!(
             update_install_instruction(HOMEBREW_UPDATE_COMMAND),
-            "detach, run `brew update && brew upgrade herdr`, then run Herdr again to reconnect"
+            "detach, run `brew update && brew upgrade herdr`, then run hivey again to reconnect"
         );
         assert_eq!(
             update_install_instruction(MISE_UPDATE_COMMAND),
-            "detach, run `mise upgrade herdr`, then run Herdr again to reconnect"
+            "detach, run `mise upgrade herdr`, then run hivey again to reconnect"
         );
     }
 
@@ -3121,8 +3121,8 @@ mod tests {
             target: RunningUpdateTarget {
                 name: Some("work".to_string()),
                 label: "work".to_string(),
-                stop_command: "herdr session stop work".to_string(),
-                attach_command: Some("herdr session attach work".to_string()),
+                stop_command: "hivey session stop work".to_string(),
+                attach_command: Some("hivey session attach work".to_string()),
                 socket_path: crate::session::api_socket_path_for(Some("work")),
                 client_socket_path: crate::session::client_socket_path_for(Some("work")),
                 must_be_running: true,
@@ -3265,7 +3265,7 @@ mod tests {
             "unexpected error: {err}"
         );
         assert!(
-            err.contains("herdr session stop work"),
+            err.contains("hivey session stop work"),
             "unexpected error: {err}"
         );
     }
@@ -3344,8 +3344,8 @@ mod tests {
             target: RunningUpdateTarget {
                 name: Some("work".to_string()),
                 label: "work".to_string(),
-                stop_command: "herdr session stop work".to_string(),
-                attach_command: Some("herdr session attach work".to_string()),
+                stop_command: "hivey session stop work".to_string(),
+                attach_command: Some("hivey session attach work".to_string()),
                 socket_path: crate::session::api_socket_path_for(Some("work")),
                 client_socket_path: crate::session::client_socket_path_for(Some("work")),
                 must_be_running: true,
@@ -3380,8 +3380,8 @@ mod tests {
             target: RunningUpdateTarget {
                 name: Some("work".to_string()),
                 label: "work".to_string(),
-                stop_command: "herdr session stop work".to_string(),
-                attach_command: Some("herdr session attach work".to_string()),
+                stop_command: "hivey session stop work".to_string(),
+                attach_command: Some("hivey session attach work".to_string()),
                 socket_path: crate::session::api_socket_path_for(Some("work")),
                 client_socket_path: crate::session::client_socket_path_for(Some("work")),
                 must_be_running: true,

@@ -1810,7 +1810,7 @@ command = ["sh", "-c", '"$HERDR_BIN_PATH" --list >/dev/null; printf "%s\n" "$?" 
             assert_eq!(
                 (action_status.trim(), pane_status.trim()),
                 ("0", "0"),
-                "plugin action and pane must launch Herdr after its executable is replaced"
+                "plugin action and pane must launch hivey after its executable is replaced"
             );
             return;
         }

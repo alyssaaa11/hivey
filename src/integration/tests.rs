@@ -1722,7 +1722,7 @@ fn install_copilot_writes_hook_and_updates_settings() {
         if let Some(entries) = settings["hooks"].get(event) {
             assert!(
                 !entries.to_string().contains(COPILOT_HOOK_INSTALL_NAME),
-                "expected herdr hooks.{event} entries to be removed"
+                "expected hivey hooks.{event} entries to be removed"
             );
         }
     }
@@ -4019,7 +4019,7 @@ fn install_mastracode_writes_hook_and_updates_hooks_json() {
     let hooks = hooks_file.as_object().unwrap();
     for (event, action) in MASTRACODE_HOOK_EVENTS {
         let entries = hooks.get(event).and_then(Value::as_array).unwrap();
-        assert_eq!(entries.len(), 1, "{event} should have one Herdr hook");
+        assert_eq!(entries.len(), 1, "{event} should have one hivey hook");
         let command = entries[0].get("command").and_then(Value::as_str).unwrap();
         assert_eq!(
             command,
@@ -4404,7 +4404,7 @@ fn install_antigravity_cli_writes_hook_and_updates_hooks_json() {
 
     for (event, action) in ANTIGRAVITY_CLI_HOOK_EVENTS {
         let entries = block.get(event).and_then(Value::as_array).unwrap();
-        assert_eq!(entries.len(), 1, "{event} should hold one Herdr entry");
+        assert_eq!(entries.len(), 1, "{event} should hold one hivey entry");
         let handler = &entries[0];
 
         // Handlers must be a flat list; the matcher/hooks wrapper is only

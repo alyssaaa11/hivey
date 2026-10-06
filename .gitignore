@@ -27,6 +27,6 @@ __pycache__/
 /.wrangler/
 **/.wrangler/
 
-# Private Claude Code settings, sessions and local skills: never published
+# hivey: private Claude Code settings, sessions and local skills: never published
 .claude/
 **/.claude/

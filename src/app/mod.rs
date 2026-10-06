@@ -861,7 +861,7 @@ impl App {
                 != self.startup_per_agent_delay
         {
             diagnostics.push(
-                "session.startup_per_agent_delay_ms changes require restarting Herdr; kept current setting"
+                "session.startup_per_agent_delay_ms changes require restarting hivey; kept current setting"
                     .into(),
             );
         }
@@ -872,7 +872,7 @@ impl App {
             && config.kitty_graphics_enabled() != self.state.kitty_graphics_enabled
         {
             diagnostics.push(
-                "terminal.kitty_graphics changes require restarting Herdr; kept current setting"
+                "terminal.kitty_graphics changes require restarting hivey; kept current setting"
                     .into(),
             );
         }
@@ -1533,7 +1533,7 @@ mod tests {
         crate::release_notes::save_pending("99.99.99", "### Changed\n- One").unwrap();
         app.handle_internal_event(AppEvent::UpdateReady {
             version: "99.99.99".into(),
-            install_command: "herdr update".into(),
+            install_command: "hivey update".into(),
         });
 
         assert_eq!(
@@ -1762,7 +1762,7 @@ mod tests {
         assert_eq!(
             report.diagnostics,
             vec![
-                "terminal.kitty_graphics changes require restarting Herdr; kept current setting"
+                "terminal.kitty_graphics changes require restarting hivey; kept current setting"
                     .to_owned()
             ]
         );
@@ -1783,7 +1783,7 @@ mod tests {
         assert_eq!(report.status, crate::config::ConfigReloadStatus::Partial);
         assert_eq!(app.startup_per_agent_delay, Duration::from_millis(100));
         assert_eq!(report.diagnostics, vec![
-            "session.startup_per_agent_delay_ms changes require restarting Herdr; kept current setting"
+            "session.startup_per_agent_delay_ms changes require restarting hivey; kept current setting"
         ]);
 
         let report = app.apply_live_config(&config, &[], &["session".into()], false);
@@ -1942,7 +1942,7 @@ mod tests {
         );
         assert_eq!(
             app.state.config_diagnostic.as_deref(),
-            Some("config.toml; herdr config check")
+            Some("config.toml; hivey config check")
         );
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
@@ -2004,7 +2004,7 @@ mod tests {
         assert_eq!(app.state.pane_borders, target_pane_borders);
         assert_eq!(
             app.state.config_diagnostic.as_deref(),
-            Some("config.toml has unknown keys; herdr config check")
+            Some("config.toml has unknown keys; hivey config check")
         );
 
         std::env::remove_var(crate::config::CONFIG_PATH_ENV_VAR);
@@ -2133,7 +2133,7 @@ mod tests {
             .config_diagnostic
             .as_deref()
             .is_some_and(|message| {
-                message == "config.toml invalid; keeping current config; herdr config check"
+                message == "config.toml invalid; keeping current config; hivey config check"
             }));
         assert!(app.state.toast.is_none());
 
@@ -3267,7 +3267,7 @@ mod tests {
             app.event_tx
                 .try_send(AppEvent::UpdateReady {
                     version: format!("9.9.{i}"),
-                    install_command: "herdr update".into(),
+                    install_command: "hivey update".into(),
                 })
                 .unwrap();
         }

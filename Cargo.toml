@@ -1,6 +1,6 @@
 [package]
 name = "hivey"
-version = "0.9.13"
+version = "0.9.14"
 edition = "2021"
 build = "build.rs"
 description = "terminal workspace for swarms of AI coding agents (fork of herdr)"
@@ -12,10 +12,12 @@ include = [
     "src/**/*",
     "assets/sounds/*",
     "docs/next/api/herdr-api.schema.json",
-    "skills/herdr/SKILL.md",
+    "skills/hivey/SKILL.md",
     "distribution/install.ps1",
     "README.md",
     "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_LICENSES.md",
     "Cargo.toml",
 ]
 

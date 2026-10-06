@@ -8,14 +8,14 @@ use serde::Serialize;
 use crate::client::endpoint::{EndpointCatalog, ProfileId, MAX_LABEL_BYTES};
 
 const HELP: &str = "Usage:
-  herdr machine list [--json]
-  herdr machine status [<label-or-id>] [--json]
-  herdr machine reconnect <label-or-id>
-  herdr machine add <ssh-target> [--label <label>] [--remote-session <name>]
-  herdr machine rename <profile-id> --label <label>
-  herdr machine remove <profile-id>
-  herdr machine enable <profile-id>
-  herdr machine disable <profile-id>
+  hivey machine list [--json]
+  hivey machine status [<label-or-id>] [--json]
+  hivey machine reconnect <label-or-id>
+  hivey machine add <ssh-target> [--label <label>] [--remote-session <name>]
+  hivey machine rename <profile-id> --label <label>
+  hivey machine remove <profile-id>
+  hivey machine enable <profile-id>
+  hivey machine disable <profile-id>
 
 Add prepares the remote Herdr installation and starts its server before saving.
 Missing or incompatible installations require approval in an interactive terminal.
@@ -60,7 +60,7 @@ fn list(args: &[String]) -> std::io::Result<i32> {
         [] => false,
         [flag] if flag == "--json" => true,
         _ => {
-            eprintln!("usage: herdr machine list [--json]");
+            eprintln!("usage: hivey machine list [--json]");
             return Ok(2);
         }
     };
@@ -115,7 +115,7 @@ fn status(args: &[String]) -> std::io::Result<i32> {
         } else if !arg.starts_with('-') && selector.is_none() {
             selector = Some(arg.as_str());
         } else {
-            eprintln!("usage: herdr machine status [<label-or-id>] [--json]");
+            eprintln!("usage: hivey machine status [<label-or-id>] [--json]");
             return Ok(2);
         }
     }
@@ -179,7 +179,7 @@ fn status(args: &[String]) -> std::io::Result<i32> {
 fn reconnect(args: &[String]) -> std::io::Result<i32> {
     use std::io::IsTerminal;
     let [selector] = args else {
-        eprintln!("usage: herdr machine reconnect <label-or-id>");
+        eprintln!("usage: hivey machine reconnect <label-or-id>");
         return Ok(2);
     };
     let catalog = load_catalog()?;
@@ -191,7 +191,7 @@ fn reconnect(args: &[String]) -> std::io::Result<i32> {
         }
     };
     if !std::io::stdin().is_terminal() {
-        eprintln!("reconnect requires an interactive terminal; use herdr machine status for noninteractive checks");
+        eprintln!("reconnect requires an interactive terminal; use hivey machine status for noninteractive checks");
         return Ok(2);
     }
     let mut authentication = crate::remote::ssh_authentication_command(&profile.target)?;
@@ -251,7 +251,7 @@ fn parse_add_args(args: &[String]) -> Result<AddArgs, String> {
         }
     }
     let target = target.ok_or_else(|| {
-        "usage: herdr machine add <ssh-target> [--label <label>] [--remote-session <name>]"
+        "usage: hivey machine add <ssh-target> [--label <label>] [--remote-session <name>]"
             .to_owned()
     })?;
     Ok(AddArgs {
@@ -470,11 +470,11 @@ fn render_remote_session_picker(
 fn rename(args: &[String]) -> std::io::Result<i32> {
     let args = super::expand_equals_args(args, &["--label"]);
     let [raw_id, flag, label] = args.as_slice() else {
-        eprintln!("usage: herdr machine rename <profile-id> --label <label>");
+        eprintln!("usage: hivey machine rename <profile-id> --label <label>");
         return Ok(2);
     };
     if flag != "--label" {
-        eprintln!("usage: herdr machine rename <profile-id> --label <label>");
+        eprintln!("usage: hivey machine rename <profile-id> --label <label>");
         return Ok(2);
     }
     let id = match ProfileId::parse(raw_id.clone()) {
@@ -502,7 +502,7 @@ fn rename(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn remove(args: &[String]) -> std::io::Result<i32> {
-    let Some(id) = one_profile_id(args, "usage: herdr machine remove <profile-id>")? else {
+    let Some(id) = one_profile_id(args, "usage: hivey machine remove <profile-id>")? else {
         return Ok(2);
     };
     let mut catalog = load_catalog()?;
@@ -536,7 +536,7 @@ fn remove(args: &[String]) -> std::io::Result<i32> {
 
 fn set_enabled(args: &[String], enabled: bool) -> std::io::Result<i32> {
     let action = if enabled { "enable" } else { "disable" };
-    let usage = format!("usage: herdr machine {action} <profile-id>");
+    let usage = format!("usage: hivey machine {action} <profile-id>");
     let Some(id) = one_profile_id(args, &usage)? else {
         return Ok(2);
     };

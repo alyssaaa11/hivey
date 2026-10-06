@@ -97,7 +97,7 @@ pub(crate) fn run_update(args: &[String]) -> i32 {
     }
 }
 
-/// Variables a herdr pane exports that would point a hivey process at herdr's server.
+/// Variables a hivey pane exports that would point a hivey process at herdr's server.
 const INHERITED_HERDR_VARS: &[&str] = &[
     "HERDR_ENV",
     "HERDR_SOCKET_PATH",
@@ -112,7 +112,7 @@ const INHERITED_HERDR_VARS: &[&str] = &[
     "HERDR_REATTACH_COMMAND",
 ];
 
-/// hivey panes keep herdr's `HERDR_*` variables so existing tools (`herdr agent prompt`,
+/// hivey panes keep herdr's `HERDR_*` variables so existing tools (`hivey agent prompt`,
 /// Claude hooks reading `HERDR_PANE_ID`) talk to hivey unchanged. But when hivey is
 /// launched from inside a *herdr* pane, those variables point at herdr's server and
 /// would make hivey attach to it or refuse to start as "nested". Drop them in that case.

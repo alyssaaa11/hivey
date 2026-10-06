@@ -55,7 +55,7 @@ struct Live {
     workspace_id: String,
     status: AgentStatus,
     since: Instant,
-    /// `(source, agent, session id)` herdr stores for the pane's agent.
+    /// `(source, agent, session id)` hivey stores for the pane's agent.
     session: Option<(String, String, String)>,
 }
 
@@ -672,7 +672,7 @@ fn escalate(state: &mut State, swarm: &Swarm, agent: &SwarmAgent, reason: &str, 
     }
 }
 
-/// Herdr resumes agents after a restart with only `claude --resume <id>` / `codex resume
+/// hivey resumes agents after a restart with only `claude --resume <id>` / `codex resume
 /// <id>`, dropping the swarm's flags (permission mode, model, add-dirs). Report the full
 /// command instead (see `adapter`), again whenever an agent's session changes.
 fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {

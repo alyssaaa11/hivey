@@ -1,4 +1,4 @@
-//! Wire protocol for herdr server/client communication.
+//! Wire protocol for hivey server/client communication.
 //!
 //! Defines the message types, framing, version negotiation, and safety
 //! constraints for the binary protocol over local sockets.
@@ -1780,11 +1780,11 @@ pub fn check_client_version(client_version: u32) -> VersionCheck {
         VersionCheck::Compatible
     } else if client_version < PROTOCOL_VERSION {
         VersionCheck::Incompatible(format!(
-            "client version {client_version} is older than server version {PROTOCOL_VERSION}; please upgrade your herdr client"
+            "client version {client_version} is older than server version {PROTOCOL_VERSION}; please upgrade your hivey client"
         ))
     } else {
         VersionCheck::Incompatible(format!(
-            "client version {client_version} is newer than server version {PROTOCOL_VERSION}; please upgrade the herdr server"
+            "client version {client_version} is newer than server version {PROTOCOL_VERSION}; please upgrade the hivey server"
         ))
     }
 }
@@ -2827,7 +2827,7 @@ mod tests {
                 preview: false,
             }),
             update_available: Some("0.8.3".into()),
-            update_install_command: "herdr update".into(),
+            update_install_command: "hivey update".into(),
             server_keybindings_toml: Some("[keys]\nprefix = \"ctrl+a\"\n".into()),
             latest_release_notes_available: true,
             integration_updates_available: true,
@@ -2958,7 +2958,7 @@ mod tests {
 
     #[test]
     fn server_window_title_roundtrip() {
-        for title in [Some("herdr api".to_owned()), None] {
+        for title in [Some("hivey api".to_owned()), None] {
             let msg = ServerMessage::WindowTitle { title };
             let encoded = bincode::serde::encode_to_vec(&msg, bincode::config::standard()).unwrap();
             let (decoded, _): (ServerMessage, _) =

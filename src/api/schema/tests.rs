@@ -353,12 +353,12 @@ fn client_window_title_requests_round_trip() {
     let set = Request {
         id: "req_title_set".into(),
         method: Method::ClientWindowTitleSet(ClientWindowTitleSetParams {
-            title: "herdr api".into(),
+            title: "hivey api".into(),
         }),
     };
     let json = serde_json::to_value(&set).unwrap();
     assert_eq!(json["method"], "client.window_title.set");
-    assert_eq!(json["params"]["title"], "herdr api");
+    assert_eq!(json["params"]["title"], "hivey api");
     let restored: Request = serde_json::from_value(json).unwrap();
     assert_eq!(restored, set);
 

@@ -112,7 +112,7 @@ pub fn load() -> Option<SessionSnapshot> {
                     warn!(
                         event = "persist.restore", subsystem = "persist", outcome = "unsupported_version",
                         path = %path.display(), file_version = version, supported = SNAPSHOT_VERSION,
-                        "session file is from a newer herdr version, ignoring"
+                        "session file is from a newer hivey version, ignoring"
                     );
                     return None;
                 }
@@ -146,7 +146,7 @@ pub fn load_history() -> Option<SessionHistorySnapshot> {
                     warn!(
                         file_version = version,
                         supported = SNAPSHOT_VERSION,
-                        "session history file is from a newer herdr version, ignoring"
+                        "session history file is from a newer hivey version, ignoring"
                     );
                     return None;
                 }

@@ -74,7 +74,7 @@ pub(crate) fn spawn_handoff_import(
         fallback_exe = std::env::current_exe().map_err(|err| {
             io::Error::new(
                 err.kind(),
-                format!("failed to determine herdr executable path: {err}"),
+                format!("failed to determine hivey executable path: {err}"),
             )
         })?;
         &fallback_exe
@@ -257,7 +257,7 @@ pub(crate) fn receive(socket_path: &Path, token: &str) -> io::Result<ReceivedHan
         .is_some_and(|version| version != crate::build_info::version())
     {
         return Err(io::Error::other(format!(
-            "handoff expected herdr v{}, but this server is v{}",
+            "handoff expected hivey v{}, but this server is v{}",
             manifest.expected_version.as_deref().unwrap_or("unknown"),
             crate::build_info::version()
         )));

@@ -370,7 +370,7 @@ pub(crate) fn integration_update_instructions(
         .iter()
         .map(|target| {
             format!(
-                "`herdr integration install {}`",
+                "`hivey integration install {}`",
                 integration_target_label(*target)
             )
         })
@@ -394,7 +394,7 @@ pub(crate) fn print_outdated_update_notice() -> bool {
         .map(|integration| integration.target)
         .collect::<Vec<_>>();
     eprintln!(
-        "installed herdr integrations need updating; {}.",
+        "installed hivey integrations need updating; {}.",
         integration_update_instructions(&targets).replace('`', "")
     );
     true
@@ -470,7 +470,7 @@ pub(crate) fn integration_status_at(
 
     // Grok only invokes the hook when the herdr-owned `hooks/herdr.json`
     // registers it, so a current hook script with a missing or broken config
-    // is a nonfunctional install: report it as outdated so `herdr integration
+    // is a nonfunctional install: report it as outdated so `hivey integration
     // status` flags it and a reinstall rewrites both files.
     if target == crate::api::schema::IntegrationTarget::Grok
         && state == super::IntegrationStatusKind::Current

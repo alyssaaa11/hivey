@@ -549,10 +549,10 @@ fn api_window_title_wins_until_it_is_cleared() {
     let (mut server, control_rx) = window_title_test_server();
     server.app.configure_window_title("{workspace}");
 
-    server.handle_client_window_title_api("set".into(), Some("herdr api".into()));
+    server.handle_client_window_title_api("set".into(), Some("hivey api".into()));
     assert_eq!(
         next_window_title(&control_rx),
-        Some(Some("herdr api".to_string()))
+        Some(Some("hivey api".to_string()))
     );
 
     server.app.state.workspaces[0].custom_name = Some("ops".into());
@@ -574,10 +574,10 @@ fn clearing_the_api_title_falls_back_to_herdr_when_window_titles_are_disabled() 
     let (mut server, control_rx) = window_title_test_server();
     server.app.configure_window_title("");
 
-    server.handle_client_window_title_api("set".into(), Some("herdr api".into()));
+    server.handle_client_window_title_api("set".into(), Some("hivey api".into()));
     assert_eq!(
         next_window_title(&control_rx),
-        Some(Some("herdr api".to_string()))
+        Some(Some("hivey api".to_string()))
     );
 
     server.handle_client_window_title_api("clear".into(), None);
@@ -6955,7 +6955,7 @@ fn update_notification_reaches_client_shell_independent_of_delivery() {
 
     let changed = server.handle_internal_event_with_forwarding(AppEvent::UpdateReady {
         version: "9.9.9".to_string(),
-        install_command: "herdr update".into(),
+        install_command: "hivey update".into(),
     });
 
     assert!(changed);
@@ -6992,7 +6992,7 @@ fn update_notification_is_semantic_for_system_delivery() {
 
     let changed = server.handle_internal_event_with_forwarding(AppEvent::UpdateReady {
         version: "9.9.9".to_string(),
-        install_command: "herdr update".into(),
+        install_command: "hivey update".into(),
     });
 
     assert!(changed);
@@ -7006,10 +7006,10 @@ fn update_notification_is_semantic_for_system_delivery() {
                 notification.kind,
                 protocol::SemanticNotificationKind::UpdateInstalled
             );
-            assert_eq!(notification.title, "Herdr v9.9.9 available");
+            assert_eq!(notification.title, "hivey v9.9.9 available");
             assert_eq!(
                 notification.body.as_deref(),
-                Some("detach, run `herdr update`, then run Herdr again to reconnect")
+                Some("detach, run `hivey update`, then run hivey again to reconnect")
             );
         }
         other => panic!("expected semantic update notification, got {other:?}"),

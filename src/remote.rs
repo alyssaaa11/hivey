@@ -33,7 +33,7 @@ pub(crate) fn run_remote_api_bridge(args: &[String]) -> std::io::Result<()> {
         }
         _ => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "usage: herdr remote-api-bridge [--check]",
+            "usage: hivey remote-api-bridge [--check]",
         )),
     }
 }
@@ -55,7 +55,7 @@ pub(crate) fn print_remote_error_hint(err: &std::io::Error, target: &str) {
             ssh_check_command(target)
         );
         eprintln!(
-            "hint: if your SSH key has a passphrase, load it into ssh-agent with `ssh-add` before running `herdr --remote`."
+            "hint: if your SSH key has a passphrase, load it into ssh-agent with `ssh-add` before running `hivey --remote`."
         );
     }
 }

@@ -58,7 +58,7 @@ pub(crate) fn create_remote_ssh_config_dir(_control_socket_name: &str) -> std::i
     }
     Err(std::io::Error::new(
         std::io::ErrorKind::AlreadyExists,
-        "failed to create private herdr ssh config directory",
+        "failed to create private hivey ssh config directory",
     ))
 }
 

@@ -249,7 +249,7 @@ fn validate_min_herdr_version(value: Option<&str>) -> Result<String, (&'static s
     if required > current {
         return Err((
             "plugin_requires_newer_herdr",
-            format!("plugin requires Herdr {required} or newer; current Herdr is {current}"),
+            format!("plugin requires hivey {required} or newer; current hivey is {current}"),
         ));
     }
     Ok(required.to_string())

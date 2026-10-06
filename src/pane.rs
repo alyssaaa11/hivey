@@ -5876,7 +5876,7 @@ mod tests {
 
         tx.try_send(AppEvent::UpdateReady {
             version: "9.9.9".into(),
-            install_command: "herdr update".into(),
+            install_command: "hivey update".into(),
         })
         .unwrap();
 

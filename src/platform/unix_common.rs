@@ -304,7 +304,7 @@ pub(crate) fn create_remote_ssh_config_dir(control_socket_name: &str) -> std::io
         return Err(err);
     }
     let message = if path_fits {
-        "failed to create private herdr ssh config directory"
+        "failed to create private hivey ssh config directory"
     } else {
         "SSH control socket path exceeds the Unix socket length limit"
     };

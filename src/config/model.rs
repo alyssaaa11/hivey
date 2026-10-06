@@ -1059,7 +1059,7 @@ pub struct AdvancedConfig {
 #[derive(Debug, Deserialize)]
 #[serde(default)]
 pub struct RemoteConfig {
-    /// Add keepalive fallbacks and private connection reuse for `herdr --remote`.
+    /// Add keepalive fallbacks and private connection reuse for `hivey --remote`.
     /// Set false to run plain ssh unchanged. Default: true.
     pub manage_ssh_config: bool,
 }
@@ -1075,7 +1075,7 @@ impl Default for RemoteConfig {
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct ExperimentalConfig {
-    /// Allow launching herdr inside an existing herdr pane. Default: false.
+    /// Allow launching herdr inside an existing hivey pane. Default: false.
     pub allow_nested: bool,
     /// Deprecated compatibility key for `terminal.kitty_graphics`.
     pub kitty_graphics: Option<bool>,

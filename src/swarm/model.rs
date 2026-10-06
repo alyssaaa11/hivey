@@ -80,7 +80,7 @@ pub(crate) fn role_color(
 pub(crate) struct SwarmAgent {
     /// Short name inside the swarm (`scout`, `critic`, `coordinator`).
     pub key: String,
-    /// Server-wide herdr agent name (`app-ideas-scout`); absent for scripts.
+    /// Server-wide hivey agent name (`app-ideas-scout`); absent for scripts.
     pub herdr_name: Option<String>,
     pub role: Role,
     pub model: Option<String>,

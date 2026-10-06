@@ -9,7 +9,7 @@ const NESTED_HERDR_MESSAGES: [&str; 6] = [
     "recursion is a pathway to many abilities some consider to be... unnatural.",
     "you were so preoccupied with whether you could, you didn't stop to think if you should. — dr. malcolm",
     "recursive herdring is disabled. somewhere, a call stack breathes a sigh of relief.",
-    "recursive descent denied. there is, in fact, such a thing as too much herdr.",
+    "recursive descent denied. there is, in fact, such a thing as too much hivey.",
     "recursion detected. base case not found. aborting.",
 ];
 
@@ -64,7 +64,7 @@ mod update;
 mod workspace;
 mod worktree;
 
-const DEFAULT_CONFIG: &str = r##"# herdr configuration
+const DEFAULT_CONFIG: &str = r##"# hivey configuration
 # Place this file at ~/.config/herdr/config.toml
 
 # Show first-run notification setup on startup.
@@ -77,7 +77,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 #                  vesper
 # name = "catppuccin"
 
-# Follow host terminal light/dark appearance and switch Herdr UI themes.
+# Follow host terminal light/dark appearance and switch hivey UI themes.
 # Existing manual behavior is unchanged unless this is true.
 # auto_switch = false
 # dark_name = "catppuccin"
@@ -121,12 +121,12 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # kitty_graphics = true
 
 [update]
-# Update channel used by background version checks and `herdr update`.
+# Update channel used by background version checks and `hivey update`.
 # Stable builds default to "stable". Windows preview builds default to "preview"
 # so existing preview installs stay there until explicitly switched.
 # channel = "stable"
 
-# Check herdr.dev for new Herdr versions in the background.
+# Check herdr.dev for new hivey versions in the background.
 # version_check = true
 
 # Check herdr.dev for remote agent-detection manifest updates in the background.
@@ -162,7 +162,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # previous_agent = ""     # optional, unset by default
 # next_agent = ""         # optional, unset by default
 # focus_agent = ""        # optional indexed binding, e.g. "prefix+alt+1..9"
-# remote_image_paste = "ctrl+v" # only active in herdr --remote; empty disables raw-key image paste
+# remote_image_paste = "ctrl+v" # only active in hivey --remote; empty disables raw-key image paste
 # new_tab = "prefix+c"
 # rename_tab = "prefix+shift+t"
 # previous_tab = "prefix+p"
@@ -247,7 +247,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Collapsed sidebar presentation: "compact" keeps the narrow status rail, "hidden" uses zero width.
 # sidebar_collapsed_mode = "compact"
 
-# Terminal width at or below which Herdr uses the mobile single-column layout.
+# Terminal width at or below which hivey uses the mobile single-column layout.
 # Increase this for foldables, tablets, or wide phone terminals.
 # mobile_width_threshold = 64
 
@@ -271,7 +271,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # right_click_passthrough_modifier = ""
 
 # Force a full redraw when the outer terminal regains focus.
-# Set false to reduce visible flashing when switching back to Herdr.
+# Set false to reduce visible flashing when switching back to hivey.
 # Trade-off: rare host terminal surface corruption may persist until the next full redraw.
 # redraw_on_focus_gained = true
 
@@ -317,14 +317,14 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 
 # Ordered status entries at the right edge of the desktop tab bar.
 # Supported types: zoom, hostname, datetime, text, and command.
-# Hostname, datetime, and command entries resolve on the Herdr server.
+# Hostname, datetime, and command entries resolve on the hivey server.
 # tab_bar_right = []
 # tab_bar_right_separator = " "
 
-# Title Herdr writes to the terminal it runs in, which is what window managers
+# Title hivey writes to the terminal it runs in, which is what window managers
 # show in title, tab, and group bars. Tokens are {hostname}, {workspace}, {tab},
 # {pane}, and {terminal_title}; {{ and }} are literal braces.
-# The title renders on the Herdr server, so {hostname} names the host the panes
+# The title renders on the hivey server, so {hostname} names the host the panes
 # run on even when attaching from a remote client.
 # Set to "" to leave the outer terminal title alone.
 # window_title = "{hostname}: {workspace}"
@@ -365,7 +365,7 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 # Background notification popup delivery
 [ui.toast]
 # off = disable pop-up notifications
-# herdr = show in-app toasts
+# hivey = show in-app toasts
 # terminal = ask the outer terminal to show a desktop notification
 # system = ask the OS notification service directly
 # delivery = "off"
@@ -393,24 +393,24 @@ const DEFAULT_CONFIG: &str = r##"# herdr configuration
 
 [session]
 # Resume supported AI-agent panes into their native conversation sessions after
-# a Herdr server restart. Requires official integrations that report session refs.
+# a hivey server restart. Requires official integrations that report session refs.
 # resume_agents_on_restore = true
 # Milliseconds between automatic agent restores; 0 starts them without spacing.
 # startup_per_agent_delay_ms = 100
 
 [remote]
-# Whether herdr manages the ssh config used for `herdr --remote`.
-# When true (default), herdr runs remote ssh through a generated config that
+# Whether hivey manages the ssh config used for `hivey --remote`.
+# When true (default), hivey runs remote ssh through a generated config that
 # includes your ~/.ssh/config first and adds ServerAliveInterval/
 # ServerAliveCountMax as fallbacks (so any keepalive values you set yourself
-# still win) to survive idle network/NAT timeouts. Herdr also uses a private
+# still win) to survive idle network/NAT timeouts. hivey also uses a private
 # per-attach OpenSSH control socket to reuse the first authenticated connection.
 # Set false to run plain ssh against your ssh config unchanged — this does not
-# force keepalive or multiplexing off, it only stops herdr from adding its own.
+# force keepalive or multiplexing off, it only stops hivey from adding its own.
 # manage_ssh_config = true
 
 [experimental]
-# Allow launching herdr from inside a herdr-managed pane.
+# Allow launching hivey from inside a herdr-managed pane.
 # allow_nested = false
 # Save recent pane screen history across full server restarts.
 pane_history = false
@@ -467,7 +467,7 @@ fn random_nested_message() -> &'static str {
 
 fn exit_if_nested_disabled(config: &config::Config) {
     if should_block_nested(config) {
-        eprintln!("\x1b[1merror:\x1b[0m nested herdr is disabled by default.");
+        eprintln!("\x1b[1merror:\x1b[0m nested hivey is disabled by default.");
         eprintln!("see configuration if you want to enable it.");
         eprintln!();
         eprintln!("\x1b[2m\"{}\"\x1b[0m", random_nested_message());
@@ -511,7 +511,7 @@ fn main() -> io::Result<()> {
         Ok(args) => args,
         Err(err) => {
             eprintln!("error: {err}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("run 'hivey --help' for usage");
             std::process::exit(2);
         }
     };
@@ -526,7 +526,7 @@ fn main() -> io::Result<()> {
         Ok(args) => args,
         Err(err) => {
             eprintln!("error: {err}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("run 'hivey --help' for usage");
             std::process::exit(2);
         }
     };
@@ -534,7 +534,7 @@ fn main() -> io::Result<()> {
         Ok(parsed) => parsed,
         Err(err) => {
             eprintln!("error: {err}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("run 'hivey --help' for usage");
             std::process::exit(2);
         }
     };
@@ -549,7 +549,7 @@ fn main() -> io::Result<()> {
         })
     {
         eprintln!("error: --remote can only be used with the default launch command");
-        eprintln!("run 'herdr --help' for usage");
+        eprintln!("run 'hivey --help' for usage");
         std::process::exit(2);
     }
 
@@ -587,7 +587,7 @@ fn main() -> io::Result<()> {
             }
             Err(err) => {
                 eprintln!("{err}");
-                eprintln!("usage: herdr update [--handoff]");
+                eprintln!("usage: hivey update [--handoff]");
                 std::process::exit(2);
             }
         };
@@ -608,91 +608,91 @@ fn main() -> io::Result<()> {
         platform::begin_cli_output();
         println!("hivey — terminal workspace for swarms of AI coding agents (fork of herdr)");
         println!();
-        println!("Usage: herdr [options]");
-        println!("       herdr --session <name> [options]");
-        println!("       herdr --machine <label-or-id> <command>");
-        println!("       herdr --remote <ssh-target> [--session <name>]");
-        println!("       herdr session attach <name>");
-        println!("       herdr completion zsh");
-        println!("       herdr update [--handoff]");
-        println!("       herdr channel set <stable|preview>");
-        println!("       herdr machine <subcommand> ...");
-        println!("       herdr server stop");
-        println!("       herdr server reload-config");
-        println!("       herdr api <subcommand> ...");
-        println!("       herdr completion <shell>");
-        println!("       herdr config <subcommand> ...");
-        println!("       herdr channel <subcommand> ...");
-        println!("       herdr workspace <subcommand> ...");
-        println!("       herdr worktree <subcommand> ...");
-        println!("       herdr tab <subcommand> ...");
-        println!("       herdr notification <subcommand> ...");
-        println!("       herdr agent <subcommand> ...");
-        println!("       herdr pane <subcommand> ...");
-        println!("       herdr session <subcommand> ...");
-        println!("       herdr integration <subcommand> ...");
+        println!("Usage: hivey [options]");
+        println!("       hivey --session <name> [options]");
+        println!("       hivey --machine <label-or-id> <command>");
+        println!("       hivey --remote <ssh-target> [--session <name>]");
+        println!("       hivey session attach <name>");
+        println!("       hivey completion zsh");
+        println!("       hivey update [--handoff]");
+        println!("       hivey channel set <stable|preview>");
+        println!("       hivey machine <subcommand> ...");
+        println!("       hivey server stop");
+        println!("       hivey server reload-config");
+        println!("       hivey api <subcommand> ...");
+        println!("       hivey completion <shell>");
+        println!("       hivey config <subcommand> ...");
+        println!("       hivey channel <subcommand> ...");
+        println!("       hivey workspace <subcommand> ...");
+        println!("       hivey worktree <subcommand> ...");
+        println!("       hivey tab <subcommand> ...");
+        println!("       hivey notification <subcommand> ...");
+        println!("       hivey agent <subcommand> ...");
+        println!("       hivey pane <subcommand> ...");
+        println!("       hivey session <subcommand> ...");
+        println!("       hivey integration <subcommand> ...");
         println!();
         println!("Common commands:");
         for (command, description) in [
             ("herdr", "Launch or attach to the persistent session"),
             (
-                "herdr status [server|client]",
+                "hivey status [server|client]",
                 "Show local client and running server status",
             ),
-            ("herdr update", "Download and install the latest version"),
-            ("herdr completion zsh", "Generate shell completions for zsh"),
+            ("hivey update", "Download and install the latest version"),
+            ("hivey completion zsh", "Generate shell completions for zsh"),
             (
-                "herdr server stop",
+                "hivey server stop",
                 "Stop the running server via the API socket",
             ),
             (
-                "herdr channel set <stable|preview>",
+                "hivey channel set <stable|preview>",
                 "Choose the stable or preview update channel",
             ),
             (
-                "herdr server reload-config",
+                "hivey server reload-config",
                 "Reload config.toml in the running server",
             ),
             (
-                "herdr config reset-keys",
+                "hivey config reset-keys",
                 "Back up config.toml and remove custom keybindings",
             ),
             (
-                "herdr channel <subcommand>",
+                "hivey channel <subcommand>",
                 "Manage the stable or preview update channel",
             ),
-            ("herdr machine <subcommand>", "Manage saved SSH machines"),
+            ("hivey machine <subcommand>", "Manage saved SSH machines"),
             (
-                "herdr api <subcommand>",
+                "hivey api <subcommand>",
                 "Inspect socket API metadata and live runtime state",
             ),
             (
-                "herdr workspace <subcommand>",
+                "hivey workspace <subcommand>",
                 "Workspace helpers over the socket API",
             ),
             (
-                "herdr worktree <subcommand>",
+                "hivey worktree <subcommand>",
                 "Git worktree helpers over the socket API",
             ),
-            ("herdr tab <subcommand>", "Tab helpers over the socket API"),
+            ("hivey tab <subcommand>", "Tab helpers over the socket API"),
             (
-                "herdr notification <subcommand>",
+                "hivey notification <subcommand>",
                 "Notification helpers over the socket API",
             ),
             (
-                "herdr agent <subcommand>",
+                "hivey agent <subcommand>",
                 "Agent/terminal helpers over the socket API",
             ),
             (
-                "herdr pane <subcommand>",
+                "hivey pane <subcommand>",
                 "Pane control helpers over the socket API",
             ),
             (
-                "herdr session <subcommand>",
+                "hivey session <subcommand>",
                 "Manage named persistent sessions",
             ),
             (
-                "herdr integration <subcommand>",
+                "hivey integration <subcommand>",
                 "Manage built-in agent integrations",
             ),
         ] {
@@ -700,12 +700,12 @@ fn main() -> io::Result<()> {
         }
         println!();
         println!("Advanced commands:");
-        println!("  {:<32} Run as headless server", "herdr server");
+        println!("  {:<32} Run as headless server", "hivey server");
         println!();
         println!("Options:");
         println!("  --session <name>    Use or create a named persistent session");
         println!("  --machine <label-or-id>  Run an API command on a saved SSH machine");
-        println!("  --remote <target>   Attach through SSH to a remote Herdr server");
+        println!("  --remote <target>   Attach through SSH to a remote herdr server");
         println!("  --remote-keybindings <local|server>");
         println!("                      Keybindings for --remote app attach (default: local)");
         println!("  --handoff           Opt into live handoff for update or remote attach");
@@ -717,7 +717,7 @@ fn main() -> io::Result<()> {
         println!("Config: {}", config::config_path().display());
         println!("Logs:   {}", logging::help_log_paths_summary());
         println!("Env:    HERDR_CONFIG_PATH overrides config file path");
-        println!("Home:   https://herdr.dev");
+        println!("Home:   https://github.com/jcsancho/hivey"); // hivey
         println!();
         println!("{}", cli::AGENT_HELP_FOOTER);
         return Ok(());
@@ -758,7 +758,7 @@ fn main() -> io::Result<()> {
         let arg_name = arg.split_once('=').map(|(name, _)| name).unwrap_or(arg);
         if arg.starts_with('-') && !known_flags.contains(&arg_name) {
             eprintln!("unknown option: {arg}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("run 'hivey --help' for usage");
             std::process::exit(2);
         }
         if !arg.starts_with('-')
@@ -780,7 +780,7 @@ fn main() -> io::Result<()> {
             .contains(&arg.as_str())
         {
             eprintln!("unknown command: {arg}");
-            eprintln!("run 'herdr --help' for usage");
+            eprintln!("run 'hivey --help' for usage");
             std::process::exit(2);
         }
     }

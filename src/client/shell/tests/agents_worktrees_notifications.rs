@@ -1357,7 +1357,7 @@ fn worktree_prepare_rejection_notice_expires() {
         &request_id,
         Err(ClientShellEndpointError {
             code: Some("not_git_worktree".into()),
-            message: "Herdr worktree actions require a workspace inside a Git work tree".into(),
+            message: "hivey worktree actions require a workspace inside a Git work tree".into(),
         }),
     );
     let notice = state
