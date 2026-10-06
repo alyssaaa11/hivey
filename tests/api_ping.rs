@@ -322,7 +322,7 @@ fn spawned_server_ignores_inherited_pane_env() {
     let startup_cwd = base.join("startup");
     fs::create_dir_all(&startup_cwd).unwrap();
 
-    // A shell inside a herdr pane passes these to every process it starts.
+    // A shell inside a hivey pane passes these to every process it starts.
     let saved: Vec<_> = ["HERDR_STARTUP_CWD", "HERDR_SESSION"]
         .into_iter()
         .map(|name| (name, std::env::var_os(name)))

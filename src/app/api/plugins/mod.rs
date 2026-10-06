@@ -1825,7 +1825,7 @@ command = ["sh", "-c", '"$HERDR_BIN_PATH" --list >/dev/null; printf "%s\n" "$?" 
                 .as_nanos()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let executable = root.join("herdr test");
+        let executable = root.join("hivey test");
         std::fs::copy(std::env::current_exe().unwrap(), &executable).unwrap();
         let result = std::process::Command::new(&executable)
             .args([

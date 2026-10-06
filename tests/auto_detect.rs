@@ -125,7 +125,7 @@ fn spawn_server(
     }
 }
 
-/// Spawn `herdr` (no subcommand) — the auto-detect launch path.
+/// Spawn `hivey` (no subcommand) — the auto-detect launch path.
 fn spawn_herdr_auto(
     config_home: &Path,
     runtime_dir: &Path,
@@ -306,7 +306,7 @@ fn session_attach_without_terminal_leaves_no_session() {
     assert_eq!(before.stdout, after.stdout, "session inventory changed");
 }
 
-/// Running `herdr` with no server present starts a server
+/// Running `hivey` with no server present starts a server
 /// and attaches as client.
 #[test]
 fn auto_detect_no_server_spawns_server_and_attaches() {
@@ -327,7 +327,7 @@ fn auto_detect_no_server_spawns_server_and_attaches() {
         "client socket should not exist initially"
     );
 
-    // Run `herdr` (no subcommand) — should auto-detect, spawn server, attach as client.
+    // Run `hivey` (no subcommand) — should auto-detect, spawn server, attach as client.
     let herdr = spawn_herdr_auto(&config_home, &runtime_dir, &api_socket, &client_socket);
 
     // Wait for both sockets to appear (server was spawned).
@@ -355,7 +355,7 @@ fn auto_detect_no_server_spawns_server_and_attaches() {
     cleanup_spawned_herdr(herdr, base);
 }
 
-/// Running `herdr` with a server already running attaches
+/// Running `hivey` with a server already running attaches
 /// as client directly (no second server).
 #[test]
 fn auto_detect_server_running_attaches_directly() {
@@ -376,7 +376,7 @@ fn auto_detect_server_running_attaches_directly() {
     // Verify server is running.
     assert!(process_exists(server_pid), "server should be running");
 
-    // Run `herdr` (no subcommand) — should detect the running server and attach.
+    // Run `hivey` (no subcommand) — should detect the running server and attach.
     let client = spawn_herdr_auto(&config_home, &runtime_dir, &api_socket, &client_socket);
 
     // Wait a moment for the client to attach.
@@ -418,7 +418,7 @@ fn auto_detect_socket_path_consistency() {
     let api_socket = runtime_dir.join("herdr.sock");
     let client_socket = runtime_dir.join("herdr-client.sock");
 
-    // Run `herdr` with custom socket paths.
+    // Run `hivey` with custom socket paths.
     let herdr = spawn_herdr_auto(&config_home, &runtime_dir, &api_socket, &client_socket);
 
     // Wait for both sockets to appear at the custom paths.
@@ -465,7 +465,7 @@ fn cli_subcommands_work_through_server() {
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_socket(&client_socket, Duration::from_secs(10));
 
-    // Test `herdr workspace list` through the server's API socket.
+    // Test `hivey workspace list` through the server's API socket.
     let output = run_cli(&api_socket, &["workspace", "list"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -479,7 +479,7 @@ fn cli_subcommands_work_through_server() {
         "workspace list output should contain 'result': {stdout}"
     );
 
-    // Test `herdr pane list` through the server's API socket.
+    // Test `hivey pane list` through the server's API socket.
     let output = run_cli(&api_socket, &["pane", "list"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
@@ -496,7 +496,7 @@ fn cli_subcommands_work_through_server() {
 }
 
 /// Verify that the server spawned by auto-detect
-/// persists after the client exits, and a new `herdr` can reattach.
+/// persists after the client exits, and a new `hivey` can reattach.
 #[test]
 fn auto_detect_server_persists_and_reattaches() {
     let _lock = test_lock();
@@ -506,7 +506,7 @@ fn auto_detect_server_persists_and_reattaches() {
     let api_socket = runtime_dir.join("herdr.sock");
     let client_socket = runtime_dir.join("herdr-client.sock");
 
-    // Run `herdr` — auto-detect spawns server + attaches client.
+    // Run `hivey` — auto-detect spawns server + attaches client.
     let mut client1 = spawn_herdr_auto(&config_home, &runtime_dir, &api_socket, &client_socket);
     wait_for_socket(&api_socket, Duration::from_secs(10));
     wait_for_socket(&client_socket, Duration::from_secs(10));
@@ -541,7 +541,7 @@ fn auto_detect_server_persists_and_reattaches() {
         "client socket should still exist after client exit"
     );
 
-    // Run `herdr` again — should detect the running server and reattach.
+    // Run `hivey` again — should detect the running server and reattach.
     let client2 = spawn_herdr_auto(&config_home, &runtime_dir, &api_socket, &client_socket);
     thread::sleep(Duration::from_millis(500));
 
@@ -726,7 +726,7 @@ fn auto_detect_respects_nested_guard_before_auto_attach() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("nested herdr is disabled by default"),
+        stderr.contains("nested hivey is disabled by default"),
         "stderr should mention nested-launch guard: {stderr}"
     );
 

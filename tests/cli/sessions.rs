@@ -210,7 +210,7 @@ fn dead_server_cli_reports_one_session_aware_json_line() {
         assert_eq!(
             response["error"]["message"],
             format!(
-                "no herdr server is running at {}; run `{attach_command}` to start or attach it",
+                "no hivey server is running at {}; run `{attach_command}` to start or attach it",
                 socket_path.display()
             )
         );
@@ -228,7 +228,7 @@ fn dead_server_cli_reports_one_session_aware_json_line() {
         &runtime_dir,
         &["--session", "foo", "workspace", "create"],
     );
-    assert_server_not_running(missing, &named_socket, "herdr session attach foo");
+    assert_server_not_running(missing, &named_socket, "hivey session attach foo");
 
     let stale_socket = runtime_dir.join("stale.sock");
     drop(UnixListener::bind(&stale_socket).unwrap());
@@ -319,7 +319,7 @@ fn integration_status_outdated_only_prints_action_for_legacy_install() {
     fs::create_dir_all(&extensions_dir).unwrap();
     fs::write(
         extensions_dir.join("herdr-agent-state.ts"),
-        "// legacy herdr integration\n",
+        "// legacy hivey integration\n",
     )
     .unwrap();
 
@@ -338,8 +338,8 @@ fn integration_status_outdated_only_prints_action_for_legacy_install() {
     assert_eq!(output.status.code(), Some(0));
     assert!(output.stdout.is_empty());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("installed herdr integrations need updating"));
-    assert!(stderr.contains("herdr integration install pi"));
+    assert!(stderr.contains("installed hivey integrations need updating"));
+    assert!(stderr.contains("hivey integration install pi"));
 
     cleanup_test_base(&base);
 }

@@ -469,7 +469,7 @@ fn client_sees_headless_startup_config_diagnostic() {
     assert!(
         wait_until(Duration::from_secs(8), Duration::from_millis(20), || {
             let output = read_output(&output);
-            output.contains("config.toml") && output.contains("herdr config check")
+            output.contains("config.toml") && output.contains("hivey config check")
         }),
         "client shell should render startup config diagnostic; output: {:?}",
         read_output(&output)
@@ -520,7 +520,7 @@ fn server_unreachable_shows_clear_error() {
         "stderr should mention connection failure: {stderr}"
     );
     assert!(
-        stderr.contains("Is herdr server running?"),
+        stderr.contains("Is hivey server running?"),
         "stderr should include actionable guidance: {stderr}"
     );
     assert!(
@@ -1635,7 +1635,7 @@ fn client_restores_terminal_on_server_eof() {
     assert_client_restores_terminal(|server, _client| {
         // Kill the server unexpectedly; the client socket closes and the
         // client reader hits EOF, mirroring the ssh bridge dying under
-        // `herdr --remote`.
+        // `hivey --remote`.
         if let Some(pid) = server.child.process_id() {
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGKILL);

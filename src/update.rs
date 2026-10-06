@@ -970,7 +970,7 @@ fn plan_running_server_updates(
             Some(server) => server,
             None if target.must_be_running => {
                 return Err(format!(
-                        "herdr target {} looked running, but its status API did not respond at {}. stop it with `{}` and run `hivey update` again",
+                        "hivey target {} looked running, but its status API did not respond at {}. stop it with `{}` and run `hivey update` again",
                     target.label,
                     target.socket_path.display(),
                     target.stop_command
@@ -978,7 +978,7 @@ fn plan_running_server_updates(
             }
             None if client_protocol_server_is_running_at(&target.client_socket_path) => {
                 return Err(format!(
-                    "herdr target {} has a client socket, but its status API did not respond at {}. stop it with `{}` and run `hivey update` again",
+                    "hivey target {} has a client socket, but its status API did not respond at {}. stop it with `{}` and run `hivey update` again",
                     target.label,
                     target.socket_path.display(),
                     target.stop_command
@@ -1067,7 +1067,7 @@ fn running_update_targets() -> Result<Vec<RunningUpdateTarget>, String> {
                 Some(&session.name)
             }),
             attach_command: Some(if session.default {
-                "herdr".to_string()
+                "hivey".to_string()
             } else {
                 format!("hivey session attach {}", session.name)
             }),
@@ -1487,7 +1487,7 @@ fn recover_failed_live_handoff_for_update(
         }
         FailedHandoffServerState::Unknown(status_error) => {
             eprintln!(
-                "herdr could not determine server state for {} {} after the failed handoff: {status_error}",
+                "hivey could not determine server state for {} {} after the failed handoff: {status_error}",
                 plan.target_noun(),
                 plan.label()
             );
@@ -2284,7 +2284,7 @@ impl KeptServer<'_> {
     fn reconnect(&self) -> String {
         match self.attach_command {
             Some(attach) => format!("`{attach}`"),
-            None => "herdr with the same socket override".to_string(),
+            None => "hivey with the same socket override".to_string(),
         }
     }
 }
@@ -2567,7 +2567,7 @@ mod tests {
             label: "default",
             version: "0.9.1",
             stop_command: "hivey server stop",
-            attach_command: Some("herdr"),
+            attach_command: Some("hivey"),
         };
         assert_eq!(
             kept_server_notice_lines(&[default], "0.10.0"),
@@ -2590,7 +2590,7 @@ mod tests {
             label: "default",
             version: "0.9.1",
             stop_command: "hivey server stop",
-            attach_command: Some("herdr"),
+            attach_command: Some("hivey"),
         };
         assert_eq!(
             kept_server_notice_lines(&[default, work], "0.10.0"),

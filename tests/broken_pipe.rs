@@ -21,7 +21,7 @@ fn run_with_closed_stdout(args: &[&str]) -> Output {
         .stdout(closed_pipe_writer())
         .stderr(Stdio::piped())
         .output()
-        .expect("run herdr CLI")
+        .expect("run hivey CLI")
 }
 
 fn assert_quiet_sigpipe(output: Output) {

@@ -631,7 +631,7 @@ fn start_global_watchdog() {
         thread::sleep(WATCHDOG_SCAN_INTERVAL);
 
         if let Err(err) = cleanup_servers_with_missing_runtime_dir() {
-            eprintln!("herdr test cleanup watchdog error: {err}");
+            eprintln!("hivey test cleanup watchdog error: {err}");
         }
     });
 }

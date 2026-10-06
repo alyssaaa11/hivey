@@ -296,7 +296,7 @@ fn headless_api_request_drains_all_pending_internal_events_before_reading_state(
             .event_tx
             .try_send(AppEvent::UpdateReady {
                 version: format!("4.0.{i}"),
-                install_command: "herdr install".into(),
+                install_command: "hivey install".into(),
             })
             .unwrap();
     }

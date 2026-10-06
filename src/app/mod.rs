@@ -1358,7 +1358,7 @@ mod tests {
             app.event_tx
                 .try_send(AppEvent::UpdateReady {
                     version: format!("2.0.{i}"),
-                    install_command: "herdr install".into(),
+                    install_command: "hivey install".into(),
                 })
                 .unwrap();
         }
@@ -1380,7 +1380,7 @@ mod tests {
             app.event_tx
                 .try_send(AppEvent::UpdateReady {
                     version: format!("3.0.{i}"),
-                    install_command: "herdr install".into(),
+                    install_command: "hivey install".into(),
                 })
                 .unwrap();
         }

@@ -289,7 +289,7 @@ fn root_and_command_group_help_point_agents_to_plain_text_docs() {
             "Are you an AI? Use these resources ONLY IF your task specifically asks you to:",
             "https://herdr.dev/agent-guide.md",
             "https://herdr.dev/llms.txt",
-            "herdr --skill",
+            "hivey --skill",
         ] {
             assert!(
                 stdout.contains(expected),
@@ -360,7 +360,7 @@ fn removed_wait_and_agent_send_commands_are_rejected() {
         .arg("--help")
         .output()
         .unwrap();
-    assert!(!String::from_utf8_lossy(&help.stdout).contains("herdr wait <subcommand>"));
+    assert!(!String::from_utf8_lossy(&help.stdout).contains("hivey wait <subcommand>"));
 
     let send = Command::new(env!("CARGO_BIN_EXE_hivey"))
         .args(["agent", "send", "reviewer", "hello"])
@@ -368,8 +368,8 @@ fn removed_wait_and_agent_send_commands_are_rejected() {
         .unwrap();
     assert_eq!(send.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&send.stderr);
-    assert!(stderr.contains("herdr agent send-keys"));
-    assert!(!stderr.contains("herdr agent send <"));
+    assert!(stderr.contains("hivey agent send-keys"));
+    assert!(!stderr.contains("hivey agent send <"));
 }
 
 #[test]
@@ -461,7 +461,7 @@ fn root_help_hides_explicit_client_command() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        !stdout.contains("herdr client"),
+        !stdout.contains("hivey client"),
         "root help should not advertise the internal client command: {stdout}"
     );
 }
@@ -476,7 +476,7 @@ fn root_help_advertises_api_schema_command_group() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("herdr api <subcommand>"),
+        stdout.contains("hivey api <subcommand>"),
         "root help should advertise the api command group: {stdout}"
     );
 }
@@ -492,7 +492,7 @@ fn api_schema_default_output_is_a_short_summary() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Herdr API schema"), "stdout: {stdout}");
     assert!(
-        stdout.contains("Use `herdr api schema --json`"),
+        stdout.contains("Use `hivey api schema --json`"),
         "stdout: {stdout}"
     );
     assert!(
@@ -604,7 +604,7 @@ fn explicit_client_command_respects_nested_guard() {
     assert_eq!(output.status.code(), Some(1));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("nested herdr is disabled by default"),
+        stderr.contains("nested hivey is disabled by default"),
         "client should fail at the nested guard before connecting: {stderr}"
     );
 }

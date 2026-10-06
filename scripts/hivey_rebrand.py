@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebrand herdr's user-facing text to hivey in src/ (idempotent; `hivey update --check` runs it
+"""Rebrand herdr's user-facing text to hivey in src/ and tests/ (idempotent; `hivey update --check` runs it
 after every herdr merge, after scripts/hivey_hooks.py).
 
 What changes: CLI help, usage and messages (`herdr pane …` → `hivey pane …`, "restart the Herdr
@@ -33,7 +33,7 @@ COMMAND_RULES = [
 # 2. herdr/Herdr used as a word inside sentence text of "..." literals → hivey. Whole-literal values
 #    ("herdr": config values, binary names, labels) and herdr.sock / herdr-x / herdr:x are left.
 STRING = re.compile(r'"(?:[^"\\]|\\.)*"')
-PROSE_WORD = re.compile(r'(?<= )[Hh]erdr(?=[ ,;)!?]|\.(?![\w])|$)|(?<=")Herdr(?= [a-z])')
+PROSE_WORD = re.compile(r'(?<= )[Hh]erdr(?=[ ,;)!?]|\.(?![\w])|$)|(?<=")[Hh]erdr(?= [a-z])')
 PROSE_KEEP = ("Herdr API",)
 PROSE_SKIP = ("src/cli/machine.rs", "src/cli/spec/machine.rs")  # remote machines run herdr
 
@@ -66,6 +66,23 @@ FIXUPS = {
     "src/update.rs": [
         ("your SSH machines run their own hivey and may be older:",
          "your SSH machines run their own herdr and may be older:"),
+        # the command users run to reattach to the default session
+        ('            attach_command: Some(if session.default {\n                "herdr".to_string()',
+         '            attach_command: Some(if session.default {\n                "hivey".to_string()'),
+        # test fixture for the same notice: its input is that reattach command
+        ('            stop_command: "hivey server stop",\n            attach_command: Some("herdr"),',
+         '            stop_command: "hivey server stop",\n            attach_command: Some("hivey"),'),
+    ],
+    # logs are filtered by crate name, which is hivey: "herdr=info" logged nothing at all
+    "src/logging.rs": [
+        ('    let filter =\n        EnvFilter::try_from_env("HERDR_LOG").unwrap_or_else(|_| EnvFilter::new("herdr=info"));',
+         '    // hivey: tracing targets are the crate name.\n    let filter =\n        EnvFilter::try_from_env("HERDR_LOG").unwrap_or_else(|_| EnvFilter::new("hivey=info"));'),
+    ],
+    "src/terminal_effects.rs": [
+        ('    let title = title.unwrap_or("herdr");', '    let title = title.unwrap_or("hivey"); // hivey'),
+        # the sanitizer test feeds "herdr api" through: its output is not branding
+        ('assert_eq!(output, b"\\x1b]0;hivey api\\x07");', 'assert_eq!(output, b"\\x1b]0;herdr api\\x07");'),
+        ('assert_eq!(output, b"\\x1b]0;herdr\\x07");', 'assert_eq!(output, b"\\x1b]0;hivey\\x07");'),
     ],
     "src/session.rs": [
         ('        None => "herdr".to_string(),\n    }\n}\n\npub fn local_stop_command',
@@ -111,7 +128,8 @@ def rebrand(rel, text):
 def main():
     check = "--check" in sys.argv[1:]
     changed = []
-    for path in sorted(ROOT.glob("src/**/*.rs")):
+    # tests/ too: integration tests assert on the same user-facing messages.
+    for path in sorted([*ROOT.glob("src/**/*.rs"), *ROOT.glob("tests/**/*.rs")]):
         rel = path.relative_to(ROOT).as_posix()
         text = path.read_text()
         new = rebrand(rel, text)
