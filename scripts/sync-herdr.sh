@@ -6,7 +6,8 @@
 #                                 running sessions (agents keep running). No tests, no questions:
 #                                 it prints "hivey updated: <old> → <new>".
 #   hivey update --check          maintainer: also merge new herdr commits (on branch sync-herdr),
-#                                 reapply the hivey renames, build, test, smoke-test in a throwaway
+#                                 reapply the hivey renames and user-facing rebrand, build,
+#                                 regenerate THIRD_PARTY_LICENSES.md, test, smoke-test in a throwaway
 #                                 session, then ask before merging into main + push + install.
 #   hivey update --check --yes    same, without the question.
 #
@@ -153,6 +154,8 @@ fi
 
 say "reapply hivey renames"
 python3 scripts/hivey_hooks.py >/dev/null
+# User-facing text: new herdr help/usage/messages say hivey too (see the script for what stays herdr).
+python3 scripts/hivey_rebrand.py
 if [ -n "$(git status --porcelain)" ]; then
   git commit -qam "fix: reapply hivey renames after herdr merge"
 fi
@@ -160,6 +163,14 @@ fi
 say "build"
 ensure_rust_toolchain || { echo "hivey update: Rust is not ready (see above)"; exit 1; }
 cargo build --release 2>&1 | grep -vE "external contributor policy" | tail -2
+
+# After the build: the libghostty-vt Zig packages are fetched by then.
+say "third-party licenses"
+python3 scripts/third_party_licenses.py
+if [ -n "$(git status --porcelain THIRD_PARTY_LICENSES.md)" ]; then
+  git commit -q -m "chore: regenerate THIRD_PARTY_LICENSES.md" THIRD_PARTY_LICENSES.md
+  echo "dependencies changed: THIRD_PARTY_LICENSES.md updated"
+fi
 UNPUSHED=$(git rev-list --count origin/main..HEAD)
 if cmp -s "$NEWBIN" "$BIN" && [ "$UNPUSHED" = 0 ]; then
   say "hivey is up to date: $BEFORE"
