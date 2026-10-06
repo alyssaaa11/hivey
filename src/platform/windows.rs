@@ -139,7 +139,7 @@ pub(crate) fn local_server_connection_error(error: std::io::Error) -> std::io::E
         error.kind(),
         format!(
             "For an elevated server, use an administrator terminal. Sharing with ordinary \
-             clients requires stopping it there and restarting its `herdr server` command \
+             clients requires stopping it there and restarting its `hivey server` command \
              with --allow-unelevated-clients (closes panes). {error}"
         ),
     )
