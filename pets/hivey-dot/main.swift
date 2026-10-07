@@ -501,6 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let pet = PetView(frame: NSRect(x: 0, y: 0, width: 240, height: 170))
     let bubble = BubbleView(frame: NSRect(x: 0, y: 150, width: 240, height: 90))
     private var speech: Process?
+    private var speechInterruptible = true
     private var hideBubble: DispatchWorkItem?
     private var watchItem: NSMenuItem!
     private var voiceItem: NSMenuItem!
@@ -603,16 +604,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func say(_ text: String, aloud: Bool = true) {
-        speech?.terminate()
+        if speechInterruptible { speech?.terminate() }   // hivey's lines queue instead
         hideBubble?.cancel()
         bubble.text = text
         guard aloud && speakAloud else { scheduleHide(after: 2.5); return }
         pet.talking = true
 
         // `say` reads text from stdin, so text starting with "-" is never parsed as a flag
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/say")
-        if let voice = UserDefaults.standard.string(forKey: "voice") { p.arguments = ["-v", voice] }
+        let (p, interruptible) = speechProcess()
+        speechInterruptible = interruptible
         let pipe = Pipe()
         p.standardInput = pipe
         p.terminationHandler = { [weak self] proc in

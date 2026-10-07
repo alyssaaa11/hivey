@@ -318,7 +318,10 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
             integration_messages: Vec::new(),
             loading_integrations: false,
             installing_integrations: false,
-            // hivey: settings overlay fields for pets, creators and skills.
+            // hivey: settings overlay fields for voice, pets, creators and skills.
+            voice_provider: crate::swarm::voice::Provider::Tts,
+            voice_current: None,
+            voice_message: None,
             pet_current: None,
             pet_message: None,
             creators: Vec::new(),

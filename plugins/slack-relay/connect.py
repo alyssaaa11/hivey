@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -55,6 +56,9 @@ def current():
         return {"connected": False, "error": "no Slack token set"}
     try:
         data, scopes = auth_test(token)
+    except urllib.error.URLError as err:
+        # No network (or Slack is down): not a token problem, so `hivey slack check` stays quiet
+        return {"connected": False, "offline": True, "error": f"cannot reach Slack: {err.reason}"}
     except (RuntimeError, OSError) as err:
         return {"connected": False, "error": f"Slack refused the token: {err}"}
     return {"connected": True, "team": data.get("team"), "user": data.get("user"),

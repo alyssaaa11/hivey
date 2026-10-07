@@ -1577,6 +1577,7 @@ impl ClientShellState {
                             section: ClientSettingsSection::Indicators
                                 | ClientSettingsSection::Sound
                                 | ClientSettingsSection::Toast
+                                | ClientSettingsSection::Voice
                                 | ClientSettingsSection::Pets,
                             ..
                         }))

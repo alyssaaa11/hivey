@@ -18,6 +18,9 @@ usage: hivey slack connect [--force]   connect your Slack workspace: create the 
        hivey slack add <slug> [--channel ID]
                                      give a running swarm or agent its own channel (#<slug>,
                                      created or joined) and open the Slack relay in its space
+       hivey slack check [on|off]      hivey runs this when a window opens: a notification
+                                     when Slack isn't connected or lacks permissions (quiet
+                                     when offline); off stops the reminder, on brings it back
   New ones: hivey swarm launch … --slack. The hivey agent: hivey home setup --slack (#hivey).";
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
@@ -34,6 +37,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             run_script("connect.py", &script_args).map(|ok| if ok { 0 } else { 1 })
         }
         Some("add") => add(&rest).map(|()| 0),
+        Some("check") => check(&rest),
         Some("help" | "--help" | "-h") => {
             println!("{HELP}");
             return Ok(0);
@@ -92,6 +96,111 @@ pub(super) fn connected() -> bool {
             .status()
             .is_ok_and(|status| status.success())
     })
+}
+
+/// `~/.hivey/slack.json`: `remind` (default on) — whether a window opening checks Slack.
+fn check_settings_path() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(|home| Path::new(&home).join(".hivey").join("slack.json"))
+}
+
+fn remind() -> bool {
+    check_settings_path()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|saved| saved["remind"].as_bool())
+        .unwrap_or(true)
+}
+
+fn set_remind(on: bool) -> Result<(), String> {
+    let path = check_settings_path().ok_or("no HOME")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    let text = serde_json::to_string_pretty(&json!({ "remind": on })).unwrap_or_default();
+    std::fs::write(&path, text + "\n").map_err(|err| err.to_string())
+}
+
+/// What a window opening should tell the user about Slack, from `connect.py --status --json`:
+/// nothing when it works or Slack can't be reached (offline), else a title and a body.
+fn check_notice(state: &Value) -> Option<(String, String)> {
+    if state["offline"].as_bool() == Some(true) {
+        return None;
+    }
+    let fix = "Run: hivey slack connect --force (or ask your hivey agent). \
+               Turn this reminder off: hivey slack check off";
+    if state["connected"].as_bool() != Some(true) {
+        let why = state["error"].as_str().unwrap_or("no Slack token set");
+        return Some(("Slack is not connected".into(), format!("{why}. {fix}")));
+    }
+    let missing: Vec<&str> = state["missing_scopes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    (!missing.is_empty()).then(|| {
+        (
+            "Slack is missing permissions".into(),
+            format!(
+                "{} (add them under OAuth & Permissions and reinstall the app). {fix}",
+                missing.join(", ")
+            ),
+        )
+    })
+}
+
+/// `hivey slack check [on|off]`: run in the background when a hivey window opens.
+fn check(args: &[String]) -> Result<i32, String> {
+    match args.first().map(String::as_str) {
+        Some(value @ ("on" | "off")) => {
+            set_remind(value == "on")?;
+            println!("Slack reminder when hivey opens: {value}");
+            return Ok(0);
+        }
+        Some(other) => return Err(format!("unknown option {other:?} (on or off)")),
+        None => {}
+    }
+    if !remind() {
+        return Ok(0);
+    }
+    // The window has just opened: give its server a moment to answer plugin.list.
+    let mut command = None;
+    for _ in 0..10 {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        if let Ok(found) = script("connect.py") {
+            command = Some(found);
+            break;
+        }
+    }
+    let Some(mut command) = command else {
+        // No Slack relay plugin: Slack isn't part of this install.
+        return Ok(0);
+    };
+    let output = command
+        .args(["--status", "--json"])
+        .stderr(Stdio::null())
+        .output()
+        .map_err(|err| format!("cannot run connect.py: {err}"))?;
+    let state: Value = serde_json::from_slice(&output.stdout).unwrap_or(Value::Null);
+    let Some((title, body)) = check_notice(&state) else {
+        return Ok(0);
+    };
+    let exe = std::env::current_exe().map_err(|err| err.to_string())?;
+    Command::new(exe)
+        .args([
+            "notification",
+            "show",
+            &title,
+            "--body",
+            &body,
+            "--sound",
+            "request",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|err| err.to_string())?;
+    Ok(1)
 }
 
 /// Creates (or finds and joins) the public channel `#name`; returns its id.
@@ -173,4 +282,31 @@ fn add(args: &[String]) -> Result<(), String> {
     ensure_relay(slug, &root, &channel)?;
     println!("{slug} ⇄ Slack {channel}: messages there reach it, its replies are posted there");
     Ok(())
+}
+
+#[cfg(test)]
+mod check_tests {
+    use super::*;
+
+    #[test]
+    fn quiet_when_connected_or_offline() {
+        let ok = json!({"connected": true, "team": "AI", "user": "henry", "missing_scopes": []});
+        assert_eq!(check_notice(&ok), None);
+        let offline = json!({"connected": false, "offline": true, "error": "cannot reach Slack"});
+        assert_eq!(check_notice(&offline), None);
+    }
+
+    #[test]
+    fn notices_a_missing_token_or_scopes() {
+        let none = json!({"connected": false, "error": "no Slack token set"});
+        let (title, body) = check_notice(&none).unwrap_or_default();
+        assert_eq!(title, "Slack is not connected");
+        assert!(body.starts_with("no Slack token set."));
+        let scopes = json!({"connected": true, "missing_scopes": ["channels:join"]});
+        let (title, body) = check_notice(&scopes).unwrap_or_default();
+        assert_eq!(title, "Slack is missing permissions");
+        assert!(body.starts_with("channels:join"));
+        // A broken status script (no JSON) still means Slack isn't working.
+        assert!(check_notice(&Value::Null).is_some());
+    }
 }

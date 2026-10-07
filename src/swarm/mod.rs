@@ -12,6 +12,7 @@ pub(crate) mod home;
 pub(crate) mod model;
 pub(crate) mod schedule;
 pub(crate) mod skills_library;
+pub(crate) mod voice;
 
 pub(crate) use engine::{handle_request, start};
 

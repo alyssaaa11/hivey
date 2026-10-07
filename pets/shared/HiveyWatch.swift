@@ -419,3 +419,19 @@ final class HiveyChat: NSObject, NSTextFieldDelegate {
 final class ChatPanel: NSPanel {
     override var canBecomeKey: Bool { true }
 }
+
+/// The process that speaks a pet's line (the text goes to its stdin): `hivey voice say`, so the
+/// pet uses the provider, voice and quiet hours from hivey settings → voice and waits its turn
+/// behind the Claude Code hook; plain `say` when hivey isn't installed. `interruptible`: whether
+/// terminating it stops the speech (hivey's speaker is its child, so it is not).
+func speechProcess() -> (process: Process, interruptible: Bool) {
+    let p = Process()
+    if let hivey = HiveyWatcher().findHivey() {
+        p.executableURL = URL(fileURLWithPath: hivey)
+        p.arguments = ["voice", "say"]
+        return (p, false)
+    }
+    p.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+    if let voice = UserDefaults.standard.string(forKey: "voice") { p.arguments = ["-v", voice] }
+    return (p, true)
+}

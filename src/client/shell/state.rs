@@ -393,6 +393,8 @@ pub(super) enum ClientSettingsSection {
     Sound,
     Toast,
     Integrations,
+    // hivey: who reads agents' spoken summaries, and with which voice
+    Voice,
     // hivey: the desktop pet
     Pets,
     // hivey: the swarm and agent creators `hivey swarm new` uses, and the skills plugin
@@ -408,6 +410,7 @@ impl ClientSettingsSection {
         Self::Sound,
         Self::Toast,
         Self::Integrations,
+        Self::Voice,
         Self::Pets,
         Self::Plugins,
         Self::Skills,
@@ -420,6 +423,7 @@ impl ClientSettingsSection {
             Self::Sound => "sound",
             Self::Toast => "toasts",
             Self::Integrations => "integrations",
+            Self::Voice => "voice",
             Self::Pets => "pets",
             Self::Plugins => "plugins",
             Self::Skills => "skills",
@@ -455,6 +459,11 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) skill_dir_current: Option<std::path::PathBuf>,
     pub(super) skills_online: bool,
     pub(super) skills_message: Option<String>,
+    /// hivey: settings → voice: who reads agents' spoken summaries (`~/.hivey/voice.json`),
+    /// its voice, and what the last choice did (saved with `hivey voice` in the background).
+    pub(super) voice_provider: crate::swarm::voice::Provider,
+    pub(super) voice_current: Option<String>,
+    pub(super) voice_message: Option<String>,
 }
 
 #[derive(Debug)]

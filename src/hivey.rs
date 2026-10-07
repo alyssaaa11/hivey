@@ -29,8 +29,10 @@ impl WindowMarker {
             .map_err(|err| tracing::debug!(%err, "hivey window marker"))
             .ok();
         if PETS_SUPPORTED {
-            show_pet();
+            run_in_background(&["pet", "show"]);
         }
+        // A notification when Slack isn't connected (quiet offline; `hivey slack check off`)
+        run_in_background(&["slack", "check"]);
         Self(marker)
     }
 }
@@ -43,13 +45,14 @@ impl Drop for WindowMarker {
     }
 }
 
-/// `hivey pet show` in the background (it does nothing when no pet is chosen or it's running).
-fn show_pet() {
+/// `hivey <args>` in the background, e.g. `pet show` (it does nothing when no pet is chosen or
+/// it's running) and `slack check`.
+fn run_in_background(args: &[&str]) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
     let spawned = std::process::Command::new(exe)
-        .args(["pet", "show"])
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -59,7 +62,7 @@ fn show_pet() {
         Ok(mut child) => {
             std::thread::spawn(move || child.wait());
         }
-        Err(err) => tracing::debug!(%err, "hivey pet show"),
+        Err(err) => tracing::debug!(%err, ?args, "hivey background command"),
     }
 }
 

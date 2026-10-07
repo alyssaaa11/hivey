@@ -14,11 +14,13 @@ mod pet;
 mod skill;
 mod skills;
 mod slack;
+mod voice;
 pub(super) use home::run as run_home_command;
 pub(super) use pet::run as run_pet_command;
 pub(super) use skill::run_skill_command;
 pub(super) use skills::run as run_skills_command;
 pub(super) use slack::run as run_slack_command;
+pub(super) use voice::run as run_voice_command;
 
 const SWARM_HELP: &str = "\
 hivey swarm commands:

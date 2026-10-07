@@ -78,7 +78,8 @@ pub(super) fn load_creators() -> (
 }
 
 /// The installed skills plugins and the one creators follow.
-pub(super) fn load_skill_providers() -> (Vec<crate::swarm::skills_library::Provider>, Option<String>) {
+pub(super) fn load_skill_providers() -> (Vec<crate::swarm::skills_library::Provider>, Option<String>)
+{
     use crate::swarm::skills_library as library;
     let found = library::providers();
     let current = library::pick_provider(&found, library::chosen_provider().as_deref())
@@ -133,7 +134,10 @@ impl ClientShellState {
                 return;
             }
             settings.skill_provider_current = Some(provider.id.clone());
-            settings.creator_message = Some(format!("new agents get their skills with {}", provider.name));
+            settings.creator_message = Some(format!(
+                "new agents get their skills with {}",
+                provider.name
+            ));
             outcome.actions.push(ClientShellAction::RunHivey(vec![
                 "skills".into(),
                 "providers".into(),
@@ -163,6 +167,50 @@ impl ClientShellState {
             "--default".into(),
             creator.id,
         ]));
+        outcome.repaint = true;
+    }
+
+    /// Settings → voice: a row sets the provider and its voice together (or turns speech off),
+    /// saved with `hivey voice … --test`, which also speaks a sample.
+    fn choose_voice(&mut self, selected: usize, outcome: &mut ClientShellInput) {
+        use crate::swarm::voice::{self, Provider};
+        let Some(&(provider, name, _)) = voice::choices().get(selected) else {
+            return;
+        };
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        if voice::choice_index(settings.voice_provider, settings.voice_current.as_deref())
+            == Some(selected)
+        {
+            return;
+        }
+        settings.voice_provider = provider;
+        settings.voice_current = name.map(str::to_string);
+        let args = match name {
+            Some(name) => {
+                settings.voice_message = Some(if provider.available() {
+                    format!("{} voice: {name} (playing a sample)", provider.id())
+                } else {
+                    format!(
+                        "{} is not installed on this computer: nothing will be spoken",
+                        provider.id()
+                    )
+                });
+                vec![
+                    "voice".into(),
+                    "use".into(),
+                    provider.id().into(),
+                    name.into(),
+                    "--test".into(),
+                ]
+            }
+            None => {
+                settings.voice_message = Some("agents stay silent".to_string());
+                vec!["voice".into(), "provider".into(), Provider::Off.id().into()]
+            }
+        };
+        outcome.actions.push(ClientShellAction::RunHivey(args));
         outcome.repaint = true;
     }
 
@@ -211,6 +259,9 @@ impl ClientShellState {
             skill_dir_current: None,
             skills_online: true,
             skills_message: None,
+            voice_provider: crate::swarm::voice::provider(),
+            voice_current: crate::swarm::voice::voice(crate::swarm::voice::provider()),
+            voice_message: None,
         }));
     }
 
@@ -227,6 +278,11 @@ impl ClientShellState {
                     .iter()
                     .position(|(_, id, _)| *id == current.as_deref())
                     .unwrap_or(PET_CHOICES.len() - 1)
+            }
+            ClientSettingsSection::Voice => {
+                use crate::swarm::voice;
+                let provider = voice::provider();
+                voice::choice_index(provider, voice::voice(provider).as_deref()).unwrap_or(0)
             }
             ClientSettingsSection::Plugins => 0,
             ClientSettingsSection::Skills => 0,
@@ -257,6 +313,12 @@ impl ClientShellState {
                 (settings.skill_providers, settings.skill_provider_current) =
                     load_skill_providers();
                 settings.creator_message = None;
+            }
+            if section == ClientSettingsSection::Voice {
+                use crate::swarm::voice;
+                settings.voice_provider = voice::provider();
+                settings.voice_current = voice::voice(settings.voice_provider);
+                settings.voice_message = None;
             }
             if section == ClientSettingsSection::Skills {
                 use crate::swarm::skills_library as library;
@@ -294,6 +356,7 @@ impl ClientShellState {
                 ClientSettingsSection::Integrations => settings.integrations.len(),
                 ClientSettingsSection::Pets if PETS_SUPPORTED => PET_CHOICES.len(),
                 ClientSettingsSection::Pets => 0,
+                ClientSettingsSection::Voice => crate::swarm::voice::choices().len(),
                 ClientSettingsSection::Plugins => {
                     settings.creators.len() + settings.skill_providers.len()
                 }
@@ -421,6 +484,7 @@ impl ClientShellState {
                 );
             }
             ClientSettingsSection::Integrations => self.install_recommended_integrations(outcome),
+            ClientSettingsSection::Voice => self.choose_voice(selected, outcome),
             ClientSettingsSection::Pets => self.choose_pet(selected, outcome),
             ClientSettingsSection::Plugins => self.choose_creator(selected, outcome),
             ClientSettingsSection::Skills => self.choose_skills_setting(selected, outcome),

@@ -42,12 +42,14 @@ pub(super) fn render_settings_overlay(
     let integration_height = 14u16
         .saturating_add(settings.integrations.len().max(1) as u16)
         .saturating_add(settings.integration_messages.len().min(6) as u16);
+    // hivey: larger than herdr's 76×22 so every tab and the longer hivey lists (voice,
+    // plugins, skills) fit; `popup` still shrinks it to small terminals.
     let height = if settings.section == ClientSettingsSection::Integrations {
-        integration_height.max(22)
+        integration_height.max(30)
     } else {
-        22
+        30
     };
-    let popup = popup(buffer.area, 76, height)?;
+    let popup = popup(buffer.area, 110, height)?;
     let inner = panel(buffer, popup, palette.accent, palette.panel_bg)?;
     if inner.width < 20 || inner.height < 8 {
         return None;
@@ -200,6 +202,9 @@ pub(super) fn render_settings_overlay(
         ClientSettingsSection::Integrations => {
             render_integrations(buffer, content, settings, palette);
         }
+        ClientSettingsSection::Voice => {
+            render_voice(buffer, content, settings, palette, &mut choice_hits);
+        }
         ClientSettingsSection::Pets => {
             render_pets(buffer, content, settings, palette, &mut choice_hits);
         }
@@ -312,6 +317,97 @@ fn render_choice_section(
             palette,
         );
         hits.push((rect, index));
+    }
+}
+
+/// hivey: who reads agents' spoken summaries: one row per provider and voice, then off
+/// (✓ the one used). Rows have no gap so the list fits.
+fn render_voice(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    use crate::swarm::voice;
+    put_text(
+        buffer,
+        area.x,
+        area.y,
+        area.width,
+        "voice",
+        Style::default()
+            .fg(palette.text)
+            .bg(palette.panel_bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    put_text(
+        buffer,
+        area.x,
+        area.y + 1,
+        area.width,
+        "who reads agents' summaries aloud (the Claude Code hook and the pet)",
+        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+    );
+    let current = voice::choice_index(settings.voice_provider, settings.voice_current.as_deref());
+    let rows: Vec<(String, bool)> = voice::choices()
+        .iter()
+        .enumerate()
+        .map(|(index, (provider, name, about))| {
+            let missing = if provider.available() {
+                ""
+            } else {
+                " (not installed)"
+            };
+            (
+                format!(
+                    "{:<4} {:<11} {about}{missing}",
+                    provider.id(),
+                    name.unwrap_or("")
+                ),
+                current == Some(index),
+            )
+        })
+        .collect();
+    let mut y = area.y + 3;
+    for (index, (label, current)) in rows.iter().enumerate() {
+        if y >= area.bottom() {
+            return;
+        }
+        let rect = Rect::new(area.x, y, area.width, 1);
+        draw_choice(
+            buffer,
+            rect,
+            label,
+            index == settings.selected,
+            *current,
+            palette,
+        );
+        hits.push((rect, index));
+        y += 1;
+    }
+    let mut lines = Vec::new();
+    if let Some(message) = &settings.voice_message {
+        lines.push((message.clone(), palette.accent));
+    }
+    lines.push((
+        "more voices: hivey voice list · quiet hours: hivey voice quiet 22-8".to_string(),
+        palette.overlay1,
+    ));
+    y += 1;
+    for (text, color) in lines {
+        if y >= area.bottom() {
+            break;
+        }
+        put_text(
+            buffer,
+            area.x,
+            y,
+            area.width,
+            &format!(" {text}"),
+            Style::default().fg(color).bg(palette.panel_bg),
+        );
+        y += 1;
     }
 }
 
