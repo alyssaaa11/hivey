@@ -25,6 +25,11 @@ and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hi
   (builds from the user's hivey clone, hands sessions off live); `--check` pushes, so ask first.
 - Secrets: never write tokens into files or prompts; plugins read them via `token_command`
   (e.g. envsave). Key *names* are fine.
+- **Skills, agents and swarms you create are saved with skylls** (if `skylls --version` works):
+  look for existing ones first (`skylls find <words> --json --limit 5`, also `agents find`,
+  `swarms find`); after creating one, offer `skylls push <skill folder>`, `skylls agents push
+  <agent folder>` or `skylls swarms push <swarm folder>` and run it only with the user's yes.
+  Share (`skylls share … @user`) only when asked; never `--skip-scan`.
 
 ## Sessions: start, attach, detach, close
 

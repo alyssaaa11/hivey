@@ -47,3 +47,10 @@ the user to confirm. Put project MCP servers in `<agent folder>/.mcp.json`.
 --skills <a,b> --tools <x,y>` (add `--model` or `--kind codex` only if the user asked). Check it started with `hivey swarm info <name>`, then
 tell the user: the agent's name, its space, the wiki path and Slack channel if any, and that
 they can close this designer tab.
+
+## 5. Save and share (skylls)
+If `skylls --version` works, offer to save the agent so the user can reuse and share it. Only
+with their yes: `skylls agents push <agent folder> -m "<what it does>"` (it takes the agent's
+memory along). Push scans for secrets and personal data and refuses if it finds any: remove
+them, never pass `--skip-scan`. Share only when the user asks (`skylls agents share <name>
+@user`). Publish any new skill you wrote for it the same way (`hivey skills guide`, step 6).

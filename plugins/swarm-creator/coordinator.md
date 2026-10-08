@@ -48,3 +48,10 @@ master. Register it: `hivey swarm profile <name> --description "<one line>" --sk
 Tell the user the space, the Slack channel and the wiki path. Then coordinate: answer the
 agents' messages (`hivey msg inbox`), check progress with `hivey swarm list`, review deliverables
 against their checks, and report to the user when the task is done.
+
+## 6. Save and share (skylls)
+If `skylls --version` works, once the swarm is launched offer to save it so the user can reuse
+and share it. Only with their yes: `skylls swarms push <root> -m "<what it does>"`. Push scans
+for secrets and personal data and refuses if it finds any: remove them, never pass
+`--skip-scan`. Share only when the user asks (`skylls swarms share <name> @user`). Publish any
+new skill you wrote for an agent the same way (`hivey skills guide`, step 6).
