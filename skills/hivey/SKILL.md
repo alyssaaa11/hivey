@@ -26,7 +26,7 @@ and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hi
 - Secrets: never write tokens into files or prompts; plugins read them via `token_command`
   (e.g. envsave). Key *names* are fine.
 - **Skills, agents and swarms you create are saved with skylls** (if `skylls --version` works):
-  look for existing ones first (`skylls find <words> --json --limit 5`, also `agents find`,
+  look for existing ones first (`skylls --json find <words> --limit 5`, also `agents find`,
   `swarms find`); after creating one, offer `skylls push <skill folder>`, `skylls agents push
   <agent folder>` or `skylls swarms push <swarm folder>` and run it only with the user's yes.
   Share (`skylls share … @user`) only when asked; never `--skip-scan`.
@@ -60,7 +60,7 @@ Mouse: click a swarm in the sidebar → focuses its master; hover → info card.
 hivey swarm new "<task>"                      # the swarm creator designs + launches it (asks first)
 hivey swarm new --agent "<task>"              # one solo agent in this folder (agent creator)
 hivey swarm providers [--default <id>]        # swarm / agent creators; * = used (settings → plugins)
-hivey skills [list|guide|copy|add|find|dir|online]  # skills library for new agents (settings → skills)
+hivey skills [guide|add|find|online|providers]  # new agents' skills: skylls + skills.sh (settings → skills)
 hivey swarm list [--json]                     # swarms, agents, roles, states, queued messages
 hivey swarm info [<slug>]                     # agents, Slack channel, vault, addons, budget, tasks…
 hivey swarm master [<slug>] [--focus]         # the master pane (focus it)

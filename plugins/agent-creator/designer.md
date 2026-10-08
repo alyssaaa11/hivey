@@ -38,7 +38,7 @@ Sections, in this order:
   `hivey swarm directory`.
 - **Status**: a dated checklist it updates as it goes, so a fresh session can resume.
 Give it the skills its task needs: run `hivey skills guide` and follow it (it picks them from
-the user's skills library, may search skills.sh with the user's OK, and installs them in
+skylls (the user's and friends' published skills), may search skills.sh with the user's OK, and installs them in
 `<agent folder>/.claude/skills/` only, never globally). Show the skills in the summary you ask
 the user to confirm. Put project MCP servers in `<agent folder>/.mcp.json`.
 

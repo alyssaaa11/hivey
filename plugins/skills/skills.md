@@ -4,16 +4,15 @@ Follow this for every agent you create, after its mission is clear and before yo
 Skills go **only into the agent's own folder** (`<agent folder>/.claude/skills/`), never into
 the global Claude Code skills: global skills load into every session and crowd its context.
 
-1. **Library first.** `hivey skills` shows the user's skills library (default `~/SKILLS`; the
-   user can change it in settings → skills) and whether online search is on.
-   `hivey skills list` lists every skill with its description; narrow with
-   `hivey skills list --grep <word>`, one word per capability the agent needs (e.g. `slack`,
-   `pdf`, `browser`, `stock`). Pick only what the agent will really use (usually 2–6); each
+1. **skylls first.** The skills library is skylls: the user's published skills and the ones
+   friends shared with them. `hivey skills` says whether skylls is installed and whether online
+   search is on (if skylls is missing, ask the user before installing it; `hivey skills` shows
+   how). Search once per capability the agent needs, one or two words each (e.g. `slack`,
+   `pdf`, `browser`, `stock`):
+   `skylls --json find <words> --limit 5` (one JSON object per line: `name`, `owner`,
+   `summary`, `installed`). Pick only what the agent will really use (usually 2–6); each
    extra skill costs context in every one of its sessions.
-   If `skylls --version` works, also search the user's published skills and the ones friends
-   shared: `skylls find <word> --json --limit 5` (`installed: false` means not on this machine
-   yet; `owner` says whose it is).
-2. **Missing capabilities.** If the library has nothing for something the agent needs and
+2. **Missing capabilities.** If skylls has nothing for something the agent needs and
    `hivey skills` says online search is on, search skills.sh, following the `find-skills`
    skill (https://www.skills.sh/vercel-labs/skills/find-skills; installed globally):
    - first the leaderboard, https://skills.sh/ (popular, battle-tested skills by domain);
@@ -23,15 +22,14 @@ the global Claude Code skills: global skills load into every session and crowd i
    Judge results: prefer 1,000+ installs, official or well-known sources (`vercel-labs`,
    `anthropics`, the tool's own vendor) and GitHub stars; skip unmaintained or obscure ones.
    Don't install anything yet.
-3. **Put the choice in the plan**: per agent, `Skills: a, b (library) · c (skylls, from
+3. **Put the choice in the plan**: per agent, `Skills: a, b (skylls) · c (skylls, from
    <owner>) · owner/repo@skill (skills.sh, to install)`. Ask the user to confirm; online
    skills always need a yes, since they run with the agent's permissions.
 4. **Install, once the agent's folder exists:**
-   - library skills: `hivey skills copy <agent folder> <skill> [<skill>…]`
-   - skills.sh skills: `hivey skills add <agent folder> <owner/repo> --skill <name>`
-     (installs into that folder only).
    - skylls skills: `(cd <agent folder> && skylls add <name> -a claude)` (no `-g`: into that
      folder only; add `--from <owner>` when several people have one with that name).
+   - skills.sh skills: `hivey skills add <agent folder> <owner/repo> --skill <name>`
+     (installs into that folder only).
    Check `ls <agent folder>/.claude/skills`.
 5. **Tell the agent.** In its CLAUDE.md, list its skills under Method with one line on when to
    use each, and pass them to `hivey swarm launch … --skills a,b` (or `hivey swarm profile`) so

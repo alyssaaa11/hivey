@@ -609,7 +609,7 @@ fn render_plugins(
     }
 }
 
-/// hivey: the skills library folder (✓ the current one) and online skill search.
+/// hivey: online skill search; the library is skylls.
 fn render_skills(
     buffer: &mut Buffer,
     area: Rect,
@@ -617,29 +617,10 @@ fn render_skills(
     palette: &Palette,
     hits: &mut Vec<(Rect, usize)>,
 ) {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let mut labels: Vec<String> = settings
-        .skill_dirs
-        .iter()
-        .map(|dir| {
-            let mark = if settings.skill_dir_current.as_ref() == Some(dir) {
-                "✓"
-            } else {
-                " "
-            };
-            let shown = dir.display().to_string();
-            let shown = match shown.strip_prefix(&home) {
-                Some(rest) if !home.is_empty() => format!("~{rest}"),
-                _ => shown,
-            };
-            let count = crate::swarm::skills_library::list(dir).len();
-            format!("{mark} library  {shown:<32} {count} skills")
-        })
-        .collect();
-    labels.push(format!(
-        "{} online   search skills.sh for skills the library lacks (asks first)",
+    let labels = [format!(
+        "{} online   search skills.sh for skills skylls lacks (asks first)",
         if settings.skills_online { "✓" } else { " " }
-    ));
+    )];
     let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
     render_choice_section(
         buffer,
@@ -658,10 +639,17 @@ fn render_skills(
     if let Some(message) = &settings.skills_message {
         lines.push((message.clone(), palette.accent));
     }
-    lines.push((
-        "another folder: hivey skills dir <folder>".to_string(),
-        palette.overlay1,
-    ));
+    lines.push(if settings.skylls_installed {
+        (
+            "library: skylls, your published skills and friends' (skylls find <words>)".to_string(),
+            palette.overlay1,
+        )
+    } else {
+        (
+            "library: skylls is not installed (hivey skills shows how to install it)".to_string(),
+            palette.accent,
+        )
+    });
     for (text, color) in lines {
         if y >= area.bottom() {
             break;
@@ -823,8 +811,7 @@ mod tests {
             creator_message: None,
             skill_providers: Vec::new(),
             skill_provider_current: None,
-            skill_dirs: Vec::new(),
-            skill_dir_current: None,
+            skylls_installed: false,
             skills_online: true,
             skills_message: None,
         }

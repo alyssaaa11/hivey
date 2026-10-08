@@ -1409,9 +1409,9 @@ fn plugins_tab_picks_the_creator_per_kind() {
     assert!(outcome.actions.is_empty());
 }
 
-/// hivey: settings → skills sets the library folder and online search through `hivey skills`.
+/// hivey: settings → skills toggles online search through `hivey skills` (the library is skylls).
 #[test]
-fn skills_tab_sets_the_library_and_online_search() {
+fn skills_tab_toggles_online_search() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
@@ -1419,8 +1419,6 @@ fn skills_tab_sets_the_library_and_online_search() {
     state.open_settings_overlay();
     state.select_settings_section(ClientSettingsSection::Skills, &mut outcome);
     if let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_mut() {
-        settings.skill_dirs = vec!["/lib/a".into(), "/lib/b".into()];
-        settings.skill_dir_current = Some("/lib/a".into());
         settings.skills_online = true;
     }
     let run = |state: &mut ClientShellState, index: usize| {
@@ -1430,21 +1428,17 @@ fn skills_tab_sets_the_library_and_online_search() {
         outcome.actions
     };
     assert!(matches!(
-        &run(&mut state, 1)[..],
-        [ClientShellAction::RunHivey(args)] if args == &["skills", "dir", "/lib/b"]
-    ));
-    // The current folder again: nothing
-    assert!(run(&mut state, 1).is_empty());
-    // The last row toggles online search
-    assert!(matches!(
-        &run(&mut state, 2)[..],
+        &run(&mut state, 0)[..],
         [ClientShellAction::RunHivey(args)] if args == &["skills", "online", "off"]
+    ));
+    assert!(matches!(
+        &run(&mut state, 0)[..],
+        [ClientShellAction::RunHivey(args)] if args == &["skills", "online", "on"]
     ));
     let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_ref() else {
         panic!("settings closed");
     };
-    assert!(!settings.skills_online);
-    assert_eq!(settings.skill_dir_current, Some("/lib/b".into()));
+    assert!(settings.skills_online);
 }
 
 #[test]

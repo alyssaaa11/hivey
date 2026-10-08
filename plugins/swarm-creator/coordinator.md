@@ -19,7 +19,7 @@ the team and the models, and whether you should run a monitoring pass every N mi
 (`--heartbeat`, e.g. 30m) or not. Change it until they say yes.
 
 **Skills:** before showing the plan, run `hivey skills guide` and follow it for every agent:
-skills come from the user's skills library (or skills.sh, only with the user's OK), go in the
+skills come from skylls, the user's and friends' published skills (or skills.sh, only with the user's OK), go in the
 plan per agent, and are installed in each agent's own folder after step 4, never globally.
 
 ## 3. Slack and memory

@@ -31,12 +31,12 @@ command) and the `hivey` CLI:
   `hivey plugin link <hivey repo>/plugins/swarm-creator` (or `agent-creator`). Check usage with
   `hivey swarm <command> --help`, which never runs anything.
 - **Skills:** the creators give each agent its skills (`hivey skills guide`): from the user's
-  skills library (settings → skills, default `~/SKILLS`), skills.sh only with the user's OK,
+  library, skylls (their and friends' published skills), skills.sh only with the user's OK,
   installed in the agent's own folder, never globally. `hivey skills` shows the setup.
 - **Save and share with skylls** (when `skylls --version` works): skills, agents and swarms
   the user creates can be published to their own private repos and shared with friends. The
   creators offer it at the end; find what the user or friends already published with
-  `skylls find|agents find|swarms find <words> --json --limit 5`. Publish (`skylls push`,
+  `skylls --json find|agents find|swarms find <words> --limit 5`. Publish (`skylls push`,
   `skylls agents push <folder>`, `skylls swarms push <folder>`) only with the user's yes, and
   share (`skylls share … @user`) only when they ask. Never pass `--skip-scan`.
 - **Obsidian wiki memory, every time you create an agent or swarm:** ask the user whether it

@@ -1,5 +1,6 @@
-//! `hivey skills`: the skills library swarm and agent creators pick each agent's skills from,
-//! and skills.sh (`npx skills`) for skills the library doesn't have. Skills always go into the
+//! `hivey skills`: how swarm and agent creators give each agent its skills: from skylls (the
+//! user's published skills and the ones friends shared), and skills.sh (`npx skills`) for
+//! skills skylls doesn't have. Skills always go into the
 //! agent's own folder (`<agent>/.claude/skills`), never the global Claude Code skills; only
 //! `find-skills` is global (install.sh adds it).
 
@@ -7,13 +8,8 @@ use crate::swarm::skills_library as library;
 use std::path::Path;
 
 const HELP: &str = "\
-usage: hivey skills                          the library folder, its skills count, online search
-       hivey skills list [--grep WORD] [--json]
-                                             the library's skills (name and description)
-       hivey skills dir <folder>             use another library folder (default ~/SKILLS)
+usage: hivey skills                          is skylls installed, online search
        hivey skills online on|off            may creators search skills.sh for missing skills
-       hivey skills copy <agent folder> <skill>...
-                                             copy library skills into <agent folder>/.claude/skills
        hivey skills guide                    the instructions creators follow to pick and install
                                              each agent's skills (from the chosen skills plugin)
        hivey skills providers [--default ID] installed skills plugins (* = used)
@@ -21,8 +17,13 @@ usage: hivey skills                          the library folder, its skills coun
                                              results: https://www.skills.sh/vercel-labs/skills/find-skills)
        hivey skills add <agent folder> <package> [--skill NAME]
                                              install a skills.sh skill into that agent only
-  Also in hivey settings → skills. Swarm and agent creators use these to give every agent the
-  skills its task needs; only find-skills is installed globally.";
+  The library is skylls: skylls --json find <words>, then in the agent's folder
+  skylls add <name> -a claude. Also in hivey settings → skills. Only find-skills is
+  installed globally.";
+
+/// What `hivey skills` says when skylls is missing.
+const SKYLLS_INSTALL: &str =
+    "bash -c \"$(curl -fsSL https://raw.githubusercontent.com/jcsancho/skylls/main/install.sh)\"";
 
 /// The command line for the skills.sh CLI.
 fn npx_skills() -> std::process::Command {
@@ -31,10 +32,12 @@ fn npx_skills() -> std::process::Command {
     command
 }
 
-fn status(dir: &Path) -> i32 {
-    let count = library::list(dir).len();
-    let exists = if dir.is_dir() { "" } else { " (missing)" };
-    println!("skills library: {}{exists}, {count} skills", dir.display());
+fn status() -> i32 {
+    if library::skylls_installed() {
+        println!("skills library: skylls (skylls --json find <words>)");
+    } else {
+        println!("skills library: skylls, not installed: {SKYLLS_INSTALL}");
+    }
     println!(
         "online search (skills.sh, asks before installing): {}",
         if library::online() { "on" } else { "off" }
@@ -52,50 +55,18 @@ fn status(dir: &Path) -> i32 {
 }
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
-    let dir = library::dir();
     let code = match args.first().map(String::as_str) {
-        None | Some("status") => status(&dir),
+        None | Some("status") => status(),
         Some("help" | "--help" | "-h") => {
             println!("{HELP}");
             0
         }
-        Some("list") => {
-            let json = args.iter().any(|arg| arg == "--json");
-            let grep = args
-                .iter()
-                .position(|arg| arg == "--grep")
-                .and_then(|index| args.get(index + 1))
-                .map(|word| word.to_lowercase());
-            let skills: Vec<_> = library::list(&dir)
-                .into_iter()
-                .filter(|skill| {
-                    grep.as_ref().is_none_or(|word| {
-                        skill.name.to_lowercase().contains(word)
-                            || skill.description.to_lowercase().contains(word)
-                    })
-                })
-                .collect();
-            if json {
-                let items: Vec<_> = skills
-                    .iter()
-                    .map(|skill| {
-                        serde_json::json!({ "name": skill.name, "description": skill.description })
-                    })
-                    .collect();
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&items).unwrap_or_default()
-                );
-            } else {
-                for skill in &skills {
-                    let short: String = skill.description.chars().take(110).collect();
-                    println!("{:<28} {short}", skill.name);
-                }
-                if skills.is_empty() {
-                    println!("no skills found in {}", dir.display());
-                }
-            }
-            0
+        Some(old @ ("list" | "dir" | "copy")) => {
+            eprintln!(
+                "hivey skills {old}: the skills folder is gone, skills come from skylls: \
+                 skylls --json find <words>, then in the agent's folder skylls add <name> -a claude"
+            );
+            2
         }
         Some("guide") => {
             let (provider, text) = library::guide();
@@ -120,7 +91,11 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             let current = library::pick_provider(&providers, library::chosen_provider().as_deref())
                 .map(|provider| provider.id.clone());
             for provider in &providers {
-                let mark = if current.as_deref() == Some(provider.id.as_str()) { "*" } else { " " };
+                let mark = if current.as_deref() == Some(provider.id.as_str()) {
+                    "*"
+                } else {
+                    " "
+                };
                 println!("{mark} {:<24} {}", provider.id, provider.name);
             }
             if providers.is_empty() {
@@ -131,27 +106,6 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             }
             0
         }
-        Some("dir") => match args.get(1) {
-            Some(folder) => {
-                let path = library::expand(folder);
-                if !path.is_dir() {
-                    eprintln!("hivey skills: {} is not a folder", path.display());
-                    1
-                } else {
-                    library::set_dir(&path)?;
-                    println!(
-                        "skills library: {} ({} skills)",
-                        path.display(),
-                        library::list(&path).len()
-                    );
-                    0
-                }
-            }
-            None => {
-                println!("{}", dir.display());
-                0
-            }
-        },
         Some("online") => match args.get(1).map(String::as_str) {
             Some(value @ ("on" | "off")) => {
                 library::set_online(value == "on")?;
@@ -163,22 +117,6 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
                 2
             }
         },
-        Some("copy") if args.len() >= 3 => {
-            match library::copy_into(&dir, &library::expand(&args[1]), &args[2..]) {
-                Ok(copied) => {
-                    println!(
-                        "copied into {}/.claude/skills: {}",
-                        args[1],
-                        copied.join(", ")
-                    );
-                    0
-                }
-                Err(err) => {
-                    eprintln!("hivey skills: {err}");
-                    1
-                }
-            }
-        }
         Some("find") if args.len() >= 2 => npx_skills()
             .arg("find")
             .args(&args[1..])

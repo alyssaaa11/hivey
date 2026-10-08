@@ -2,7 +2,7 @@ id = "hivey.skills"
 name = "Skills"
 version = "0.1.0"
 min_herdr_version = "0.9.0"
-description = "Skills provider (built in): picks each new agent's skills from your skills library, finds missing ones on skills.sh, installs them in the agent's own folder"
+description = "Skills provider (built in): picks each new agent's skills from skylls, finds missing ones on skills.sh, installs them in the agent's own folder"
 platforms = ["linux", "macos"]
 
 # A skills provider is any plugin with a `skills.md` next to its manifest: the instructions swarm

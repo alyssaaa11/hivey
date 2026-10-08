@@ -7,7 +7,7 @@
 # Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), installs the hivey
 # skill and the global find-skills skill for Claude Code, links the bundled plugins (dashboard,
 # Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the swarm
-# sidebar and Option keys, asks for your Slack bot token, your skills folder (default ~/SKILLS)
+# sidebar and Option keys, asks for your Slack bot token, checks skylls (the skills library)
 # and a desktop pet (macOS), and sets up the hivey agent in ~/.hivey/agent (needs Claude Code;
 # Slack channel #hivey when connected). Swarms and agents keep their Obsidian wiki in their own
 # folder (<folder>/obsidian), so there is no Obsidian folder to set up.
@@ -143,23 +143,22 @@ if [ "$SETUP" = 1 ]; then
     echo "skipped: no terminal to type the token in (later: hivey slack connect)"
   fi
 
-  say "skills library (where creators pick each new agent's skills)"
+  say "skills library: skylls (where creators find, save and share skills, agents and swarms)"
+  if command -v skylls >/dev/null 2>&1; then
+    echo "skylls $(skylls --version 2>/dev/null | awk '{print $NF}') found"
+  else
+    echo "skylls is not installed; install it with:"
+    echo "  bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/jcsancho/skylls/main/install.sh)\""
+  fi
   if [ -t 0 ] || (: </dev/tty) 2>/dev/null; then
-    SKILLS_DIR=$("$BIN" skills dir 2>/dev/null || echo "$HOME/SKILLS")
-    printf 'Your skills folder [%s]: ' "$SKILLS_DIR"
-    read -r answer </dev/tty || answer=""
-    SKILLS_DIR="${answer:-$SKILLS_DIR}"
-    SKILLS_DIR="${SKILLS_DIR/#\~/$HOME}"
-    mkdir -p "$SKILLS_DIR"
-    "$BIN" skills dir "$SKILLS_DIR" || true
-    printf 'Search skills.sh for skills your library lacks (asks before installing any)? [Y/n] '
+    printf 'Search skills.sh for skills skylls lacks (asks before installing any)? [Y/n] '
     read -r answer </dev/tty || answer=""
     case "$answer" in
       [nN]*) "$BIN" skills online off ;;
       *) "$BIN" skills online on ;;
     esac
   else
-    echo "skipped: no terminal (default $("$BIN" skills dir 2>/dev/null); later: hivey settings → skills)"
+    echo "skipped: no terminal (online search stays on; later: hivey settings → skills)"
   fi
 
   say "desktop pet (optional)"

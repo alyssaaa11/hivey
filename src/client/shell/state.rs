@@ -399,7 +399,7 @@ pub(super) enum ClientSettingsSection {
     Pets,
     // hivey: the swarm and agent creators `hivey swarm new` uses, and the skills plugin
     Plugins,
-    // hivey: the skills library folder and online skill search
+    // hivey: online skill search (the skills library is skylls)
     Skills,
 }
 
@@ -453,10 +453,9 @@ pub(super) struct ClientSettingsOverlay {
     /// hivey: the skills plugins (listed after the creators) and the one creators follow.
     pub(super) skill_providers: Vec<crate::swarm::skills_library::Provider>,
     pub(super) skill_provider_current: Option<String>,
-    /// hivey: settings → skills: library folders to choose from, the current one, whether
-    /// online search is on, and what the last choice did.
-    pub(super) skill_dirs: Vec<std::path::PathBuf>,
-    pub(super) skill_dir_current: Option<std::path::PathBuf>,
+    /// hivey: settings → skills: whether skylls (the library) is installed, whether online
+    /// search is on, and what the last choice did.
+    pub(super) skylls_installed: bool,
     pub(super) skills_online: bool,
     pub(super) skills_message: Option<String>,
     /// hivey: settings → voice: who reads agents' spoken summaries (`~/.hivey/voice.json`),

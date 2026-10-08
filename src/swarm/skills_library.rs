@@ -1,12 +1,12 @@
-//! hivey: the user's skills library, where swarm and agent creators pick each agent's skills.
+//! hivey: where swarm and agent creators get each agent's skills. The library is skylls (the
+//! user's published skills and the ones friends shared); the skills plugin's guide says how.
 //!
-//! Settings live in `~/.hivey/skills.json`: `dir` (default `~/SKILLS`, or `~/skills`) and
+//! Settings live in `~/.hivey/skills.json`: `provider` (the skills plugin creators follow) and
 //! `online` (whether creators may also search skills.sh with `npx skills find`, always asking
-//! the user before installing one). Changed with `hivey skills dir|online`, settings → skills,
-//! or install.sh.
+//! the user before installing one). Changed with `hivey skills online|providers` or settings.
 
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// The skills provider that ships with hivey (the repo's `plugins/skills`).
 pub(crate) const BUILTIN_PROVIDER: &str = "hivey.skills";
@@ -58,10 +58,17 @@ pub(crate) fn set_provider(id: &str) -> std::io::Result<()> {
 
 /// The provider creators follow: the chosen one when installed, else the built-in one, else
 /// the first one.
-pub(crate) fn pick_provider<'a>(providers: &'a [Provider], chosen: Option<&str>) -> Option<&'a Provider> {
+pub(crate) fn pick_provider<'a>(
+    providers: &'a [Provider],
+    chosen: Option<&str>,
+) -> Option<&'a Provider> {
     chosen
         .and_then(|id| providers.iter().find(|provider| provider.id == id))
-        .or_else(|| providers.iter().find(|provider| provider.id == BUILTIN_PROVIDER))
+        .or_else(|| {
+            providers
+                .iter()
+                .find(|provider| provider.id == BUILTIN_PROVIDER)
+        })
         .or_else(|| providers.first())
 }
 
@@ -75,13 +82,6 @@ pub(crate) fn guide() -> (String, String) {
             Some((provider.id.clone(), text))
         })
         .unwrap_or_else(|| (BUILTIN_PROVIDER.to_string(), BUILTIN_GUIDE.to_string()))
-}
-
-/// A skill in the library: its folder name, and the description from its SKILL.md.
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Skill {
-    pub(crate) name: String,
-    pub(crate) description: String,
 }
 
 fn home() -> PathBuf {
@@ -119,24 +119,6 @@ pub(crate) fn expand(path: &str) -> PathBuf {
     }
 }
 
-/// The library folder: the one set, else `~/SKILLS` or `~/skills` if one exists, else
-/// `~/SKILLS`.
-pub(crate) fn dir() -> PathBuf {
-    if let Some(dir) = settings()["dir"].as_str() {
-        return expand(dir);
-    }
-    let home = home();
-    ["SKILLS", "skills"]
-        .iter()
-        .map(|name| home.join(name))
-        .find(|path| path.is_dir())
-        .unwrap_or_else(|| home.join("SKILLS"))
-}
-
-pub(crate) fn set_dir(path: &Path) -> std::io::Result<()> {
-    save("dir", json!(path.display().to_string()))
-}
-
 /// Whether creators may search skills.sh for skills the library doesn't have (default yes).
 pub(crate) fn online() -> bool {
     settings()["online"].as_bool().unwrap_or(true)
@@ -146,116 +128,16 @@ pub(crate) fn set_online(on: bool) -> std::io::Result<()> {
     save("online", json!(on))
 }
 
-/// Folders that look like skills libraries, for settings → skills: the current one, then
-/// `~/SKILLS`, `~/skills` and `~/.claude/skills` when they exist (each once).
-pub(crate) fn candidates() -> Vec<PathBuf> {
-    let home = home();
-    let mut found = vec![dir()];
-    for path in [
-        home.join("SKILLS"),
-        home.join("skills"),
-        home.join(".claude").join("skills"),
-    ] {
-        let same = |known: &PathBuf| {
-            known == &path
-                || std::fs::canonicalize(known).ok() == std::fs::canonicalize(&path).ok()
-        };
-        if path.is_dir() && !found.iter().any(same) {
-            found.push(path);
-        }
-    }
-    found
-}
-
-/// The description in a SKILL.md's front matter (one line, folded `>` / `|` blocks joined).
-pub(crate) fn description(skill_md: &str) -> String {
-    let mut lines = skill_md.lines();
-    if lines.next().map(str::trim) != Some("---") {
-        return String::new();
-    }
-    let mut collecting = false;
-    let mut parts: Vec<&str> = Vec::new();
-    for line in lines {
-        if line.trim() == "---" {
-            break;
-        }
-        if collecting {
-            if line.starts_with(char::is_whitespace) && !line.trim().is_empty() {
-                parts.push(line.trim());
-                continue;
-            }
-            break;
-        }
-        if let Some(value) = line.strip_prefix("description:") {
-            let value = value.trim();
-            if value.is_empty() || matches!(value, ">" | "|" | ">-" | "|-") {
-                collecting = true;
-            } else {
-                parts.push(value.trim_matches('"'));
-                break;
-            }
-        }
-    }
-    parts.join(" ")
-}
-
-/// The skills in a library folder (sub-folders with a SKILL.md), by name.
-pub(crate) fn list(dir: &Path) -> Vec<Skill> {
-    let mut skills: Vec<Skill> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|entry| {
-            let text = std::fs::read_to_string(entry.path().join("SKILL.md")).ok()?;
-            Some(Skill {
-                name: entry.file_name().to_string_lossy().to_string(),
-                description: description(&text),
-            })
-        })
-        .collect();
-    skills.sort_by(|a, b| a.name.cmp(&b.name));
-    skills
-}
-
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        if name == "__pycache__" || name == ".DS_Store" {
-            continue;
-        }
-        let kind = entry.file_type()?;
-        if kind.is_dir() {
-            copy_dir(&entry.path(), &to.join(&name))?;
-        } else if kind.is_file() {
-            std::fs::copy(entry.path(), to.join(&name))?;
-        }
-    }
-    Ok(())
-}
-
-/// Copies skills from the library into `<agent>/.claude/skills/` (an existing copy is
-/// replaced, so a re-run picks up library changes). The skills copied.
-pub(crate) fn copy_into(library: &Path, agent: &Path, names: &[String]) -> Result<Vec<String>, String> {
-    let target = agent.join(".claude").join("skills");
-    let mut copied = Vec::new();
-    for name in names {
-        if name.contains('/') || name.starts_with('.') {
-            return Err(format!("{name:?} is not a skill name"));
-        }
-        let source = library.join(name);
-        if !source.join("SKILL.md").is_file() {
-            return Err(format!("no skill {name:?} in {}", library.display()));
-        }
-        let dest = target.join(name);
-        if dest.exists() {
-            std::fs::remove_dir_all(&dest).map_err(|err| format!("{}: {err}", dest.display()))?;
-        }
-        copy_dir(&source, &dest).map_err(|err| format!("{name}: {err}"))?;
-        copied.push(name.clone());
-    }
-    Ok(copied)
+/// Whether the skylls CLI is on PATH (the skills library creators use).
+pub(crate) fn skylls_installed() -> bool {
+    let names: &[&str] = if cfg!(windows) {
+        &["skylls.exe", "skylls.cmd", "skylls"]
+    } else {
+        &["skylls"]
+    };
+    std::env::var_os("PATH").is_some_and(|path| {
+        std::env::split_paths(&path).any(|dir| names.iter().any(|name| dir.join(name).is_file()))
+    })
 }
 
 #[cfg(test)]
@@ -279,48 +161,23 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].id, "x.skills");
         // Chosen, else built in, else first
-        let builtin = Provider { id: BUILTIN_PROVIDER.into(), name: "Skills".into(), root: with.clone() };
+        let builtin = Provider {
+            id: BUILTIN_PROVIDER.into(),
+            name: "Skills".into(),
+            root: with.clone(),
+        };
         let both = vec![found[0].clone(), builtin];
-        assert_eq!(pick_provider(&both, Some("x.skills")).unwrap().id, "x.skills");
+        assert_eq!(
+            pick_provider(&both, Some("x.skills")).unwrap().id,
+            "x.skills"
+        );
         assert_eq!(pick_provider(&both, None).unwrap().id, BUILTIN_PROVIDER);
-        assert_eq!(pick_provider(&both, Some("gone")).unwrap().id, BUILTIN_PROVIDER);
+        assert_eq!(
+            pick_provider(&both, Some("gone")).unwrap().id,
+            BUILTIN_PROVIDER
+        );
         assert_eq!(pick_provider(&found, None).unwrap().id, "x.skills");
         assert!(pick_provider(&[], None).is_none());
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn description_reads_inline_and_folded_front_matter() {
-        assert_eq!(
-            description("---\nname: a\ndescription: Does a thing\n---\nbody"),
-            "Does a thing"
-        );
-        assert_eq!(
-            description("---\nname: b\ndescription: >\n  Folded line one\n  and two.\nother: x\n---"),
-            "Folded line one and two."
-        );
-        assert_eq!(description("no front matter"), "");
-    }
-
-    #[test]
-    fn list_and_copy_skills_from_a_library() {
-        let root = std::env::temp_dir().join(format!("hivey-skills-test-{}", std::process::id()));
-        let library = root.join("lib");
-        for (name, text) in [("alpha", "---\ndescription: First\n---\n"), ("beta", "---\ndescription: Second\n---\n")] {
-            std::fs::create_dir_all(library.join(name).join("scripts")).unwrap();
-            std::fs::write(library.join(name).join("SKILL.md"), text).unwrap();
-            std::fs::write(library.join(name).join("scripts").join("run.sh"), "echo").unwrap();
-        }
-        std::fs::create_dir_all(library.join("not-a-skill")).unwrap();
-        let names: Vec<String> = list(&library).into_iter().map(|skill| skill.name).collect();
-        assert_eq!(names, ["alpha", "beta"]);
-
-        let agent = root.join("agent");
-        let copied = copy_into(&library, &agent, &["beta".to_string()]).unwrap();
-        assert_eq!(copied, ["beta"]);
-        assert!(agent.join(".claude/skills/beta/scripts/run.sh").is_file());
-        assert!(copy_into(&library, &agent, &["missing".to_string()]).is_err());
-        assert!(copy_into(&library, &agent, &["../lib".to_string()]).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

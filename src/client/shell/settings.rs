@@ -88,27 +88,19 @@ pub(super) fn load_skill_providers() -> (Vec<crate::swarm::skills_library::Provi
 }
 
 impl ClientShellState {
-    /// Settings → skills: a library folder (rows before the last) or online search (the last
-    /// row, toggled), saved with `hivey skills` in the background.
+    /// Settings → skills: online search (the only row, toggled), saved with `hivey skills` in
+    /// the background. The library itself is skylls.
     fn choose_skills_setting(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
             return;
         };
-        let args = if let Some(dir) = settings.skill_dirs.get(selected).cloned() {
-            if settings.skill_dir_current.as_ref() == Some(&dir) {
-                return;
-            }
-            settings.skills_message = Some(format!("skills library: {}", dir.display()));
-            settings.skill_dir_current = Some(dir.clone());
-            vec!["skills".into(), "dir".into(), dir.display().to_string()]
-        } else if selected == settings.skill_dirs.len() {
-            settings.skills_online = !settings.skills_online;
-            let value = if settings.skills_online { "on" } else { "off" };
-            settings.skills_message = Some(format!("online skill search {value}"));
-            vec!["skills".into(), "online".into(), value.into()]
-        } else {
+        if selected != 0 {
             return;
-        };
+        }
+        settings.skills_online = !settings.skills_online;
+        let value = if settings.skills_online { "on" } else { "off" };
+        settings.skills_message = Some(format!("online skill search {value}"));
+        let args = vec!["skills".into(), "online".into(), value.into()];
         outcome.actions.push(ClientShellAction::RunHivey(args));
         outcome.repaint = true;
     }
@@ -286,8 +278,7 @@ impl ClientShellState {
             creator_message: None,
             skill_providers: Vec::new(),
             skill_provider_current: None,
-            skill_dirs: Vec::new(),
-            skill_dir_current: None,
+            skylls_installed: false,
             skills_online: true,
             skills_message: None,
             voice_provider: crate::swarm::voice::provider(),
@@ -355,8 +346,7 @@ impl ClientShellState {
             }
             if section == ClientSettingsSection::Skills {
                 use crate::swarm::skills_library as library;
-                settings.skill_dirs = library::candidates();
-                settings.skill_dir_current = Some(library::dir());
+                settings.skylls_installed = library::skylls_installed();
                 settings.skills_online = library::online();
                 settings.skills_message = None;
             }
@@ -395,7 +385,7 @@ impl ClientShellState {
                 ClientSettingsSection::Plugins => {
                     settings.creators.len() + settings.skill_providers.len()
                 }
-                ClientSettingsSection::Skills => settings.skill_dirs.len() + 1,
+                ClientSettingsSection::Skills => 1,
             },
             _ => 0,
         }
