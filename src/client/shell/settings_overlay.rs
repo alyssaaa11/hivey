@@ -321,7 +321,7 @@ fn render_choice_section(
 }
 
 /// hivey: who reads agents' spoken summaries: one row per provider and voice, then off
-/// (✓ the one used). Rows have no gap so the list fits.
+/// (✓ the one used), then the volume levels side by side. Rows have no gap so the list fits.
 fn render_voice(
     buffer: &mut Buffer,
     area: Rect,
@@ -386,12 +386,65 @@ fn render_voice(
         hits.push((rect, index));
         y += 1;
     }
+    // Volume levels: one line of buttons, numbered after the voice rows.
+    y += 1;
+    if y + 1 >= area.bottom() {
+        return;
+    }
+    put_text(
+        buffer,
+        area.x,
+        y,
+        area.width,
+        "volume  louder to hear it over music (1 is normal; high levels may distort)",
+        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+    );
+    y += 1;
+    let current_volume = voice::volume_index(settings.voice_volume);
+    let mut x = area.x;
+    for (level, volume) in voice::VOLUME_LEVELS.iter().enumerate() {
+        let label = if voice::is_normal_volume(*volume) {
+            "1 normal".to_string()
+        } else {
+            volume.to_string()
+        };
+        // " ▸ " + label + " ✓" + a space between buttons
+        let width = label.chars().count() as u16 + 6;
+        if x + width > area.right() {
+            break;
+        }
+        let rect = Rect::new(x, y, width - 1, 1);
+        let index = rows.len() + level;
+        draw_choice(
+            buffer,
+            rect,
+            &label,
+            index == settings.selected,
+            current_volume == Some(level),
+            palette,
+        );
+        hits.push((rect, index));
+        x += width;
+    }
+    if current_volume.is_none() {
+        put_text(
+            buffer,
+            x,
+            y,
+            area.right().saturating_sub(x),
+            &format!(" now {}", settings.voice_volume),
+            Style::default().fg(palette.accent).bg(palette.panel_bg),
+        );
+    }
+    y += 1;
     let mut lines = Vec::new();
     if let Some(message) = &settings.voice_message {
         lines.push((message.clone(), palette.accent));
     }
     lines.push((
-        "more voices: hivey voice list · quiet hours: hivey voice quiet 22-8".to_string(),
+        "more voices: hivey voice list · quiet hours: hivey voice quiet 22-8 · any volume: \
+         hivey voice volume 1.7"
+            .to_string(),
         palette.overlay1,
     ));
     y += 1;
@@ -741,5 +794,97 @@ fn render_integrations(
             " installing…",
             Style::default().fg(palette.overlay1).bg(palette.panel_bg),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn voice_settings(volume: f64, selected: usize) -> ClientSettingsOverlay {
+        let config = ClientShellConfig::from_config(&crate::config::Config::default());
+        ClientSettingsOverlay {
+            section: ClientSettingsSection::Voice,
+            selected,
+            original_theme_name: String::new(),
+            original_palette: config.palette,
+            integrations: Vec::new(),
+            integration_messages: Vec::new(),
+            loading_integrations: false,
+            installing_integrations: false,
+            voice_provider: crate::swarm::voice::Provider::Tts,
+            voice_current: Some("am_michael".into()),
+            voice_volume: volume,
+            voice_message: None,
+            pet_current: None,
+            pet_message: None,
+            creators: Vec::new(),
+            creator_current: (None, None),
+            creator_message: None,
+            skill_providers: Vec::new(),
+            skill_provider_current: None,
+            skill_dirs: Vec::new(),
+            skill_dir_current: None,
+            skills_online: true,
+            skills_message: None,
+        }
+    }
+
+    fn screen(buffer: &Buffer) -> String {
+        let area = buffer.area;
+        (area.y..area.bottom())
+            .map(|y| {
+                (area.x..area.right())
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn voice_tab_offers_clickable_volume_levels_after_the_voices() {
+        use crate::swarm::voice;
+        let voices = voice::choices().len();
+        let selected = voices + 2; // the 1.5 button
+        let settings = voice_settings(1.5, selected);
+        let palette = settings.original_palette.clone();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 120, 40));
+        let rendered = render_settings_overlay(&mut buffer, &settings, false, &palette)
+            .expect("the settings popup fits");
+        let text = screen(&buffer);
+        if std::env::var_os("HIVEY_SHOW_SETTINGS").is_some() {
+            println!("{text}");
+        }
+        assert!(text.contains("volume  louder"), "{text}");
+        assert!(text.contains("1 normal"), "{text}");
+        assert!(text.contains("▸ 1.5 ✓"), "selected and current: {text}");
+        let indices: Vec<usize> = rendered
+            .settings_choices
+            .iter()
+            .map(|(_, index)| *index)
+            .collect();
+        let expected: Vec<usize> = (0..voices + voice::VOLUME_LEVELS.len()).collect();
+        assert_eq!(
+            indices, expected,
+            "every voice and volume level is clickable"
+        );
+        // Volume buttons share one line.
+        let rows: Vec<u16> = rendered.settings_choices[voices..]
+            .iter()
+            .map(|(rect, _)| rect.y)
+            .collect();
+        assert!(rows.windows(2).all(|pair| pair[0] == pair[1]), "{rows:?}");
+    }
+
+    #[test]
+    fn a_volume_set_by_hand_is_shown_next_to_the_levels() {
+        let settings = voice_settings(1.7, 0);
+        let palette = settings.original_palette.clone();
+        let mut buffer = Buffer::empty(Rect::new(0, 0, 120, 40));
+        render_settings_overlay(&mut buffer, &settings, false, &palette).expect("fits");
+        assert!(screen(&buffer).contains("now 1.7"));
     }
 }

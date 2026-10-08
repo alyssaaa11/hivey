@@ -12,10 +12,12 @@ usage: hivey voice                        the provider, its voice and quiet hour
                                           naming a provider also switches to it
        hivey voice list [PROVIDER]        installed voices (* = used)
        hivey voice quiet START-END|off    local hours when nothing is spoken, e.g. 22-8
+       hivey voice volume [N|reset]       how loud: 1 is normal, 1.5 or 150% is louder (up to
+                                          4; high values may distort), 0.5 quieter
        hivey voice say [text…]            speak it now, or stdin without text (silent when off
                                           or in quiet hours; lines queue, never overlap)
        hivey voice test                   speak a sample, even in quiet hours
-  provider and use take --test to speak a sample after saving (hivey settings does).
+  provider, use and volume take --test to speak a sample after saving (hivey settings does).
   Also in hivey settings → voice. Settings live in ~/.hivey/voice.json.";
 
 const SAMPLE: &str = "Done testing the voice, on hivey.";
@@ -42,7 +44,47 @@ fn status() -> i32 {
         Some((start, end)) => println!("quiet:    {start}:00 to {end}:00"),
         None => println!("quiet:    never"),
     }
+    println!("volume:   {}", volume_label(voice::volume()));
     0
+}
+
+fn volume_label(volume: f64) -> String {
+    if voice::is_normal_volume(volume) {
+        "1 (normal)".to_string()
+    } else {
+        format!("{volume} ({:.0}%)", volume * 100.0)
+    }
+}
+
+/// Saves the line to a temporary file and plays it at `volume`; `None` when that isn't possible
+/// here (no afplay), so the caller plays it the normal way.
+fn speak_at_volume(provider: Provider, text: &str, volume: f64) -> Option<i32> {
+    let file = std::env::temp_dir().join(format!(
+        "hivey-voice-{}.{}",
+        std::process::id(),
+        voice::audio_extension(provider)
+    ));
+    let mut play = voice::play_command(&file, volume)?;
+    let mut render =
+        voice::render_command(provider, voice::voice(provider).as_deref(), text, &file)?;
+    // tts prints "Audio saved to …"; the Stop hook and the pets only want the sound.
+    render.stdout(std::process::Stdio::null());
+    let code = match render.status() {
+        Ok(status) if status.success() => match play.status() {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(err) => {
+                eprintln!("hivey voice: cannot run afplay: {err}");
+                1
+            }
+        },
+        Ok(status) => status.code().unwrap_or(1),
+        Err(err) => {
+            eprintln!("hivey voice: cannot run {}: {err}", provider.id());
+            1
+        }
+    };
+    let _ = std::fs::remove_file(&file);
+    Some(code)
 }
 
 /// Speaks `text` and waits for it to finish; `force` ignores quiet hours.
@@ -61,6 +103,12 @@ fn speak(text: &str, force: bool) -> i32 {
     };
     // Released when it goes out of scope, after the line has been spoken.
     let _turn = voice::speaking_turn();
+    let volume = voice::volume();
+    if !voice::is_normal_volume(volume) {
+        if let Some(code) = speak_at_volume(provider, text, volume) {
+            return code;
+        }
+    }
     match command.status() {
         Ok(status) => status.code().unwrap_or(1),
         Err(err) => {
@@ -108,7 +156,10 @@ fn use_voice(args: &[String]) -> std::io::Result<i32> {
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     // `--test` only for the commands that save; `say` speaks its text as given.
-    let saves = matches!(args.first().map(String::as_str), Some("provider" | "use"));
+    let saves = matches!(
+        args.first().map(String::as_str),
+        Some("provider" | "use" | "volume")
+    );
     let test = saves && args.iter().any(|arg| arg == "--test");
     let args: Vec<String> = args
         .iter()
@@ -189,6 +240,32 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
                 eprintln!("usage: hivey voice quiet START-END|off  (hours 0-23, e.g. 22-8)");
                 2
             }
+        },
+        Some("volume") => match args.get(1).map(String::as_str) {
+            None => {
+                println!("volume: {}", volume_label(voice::volume()));
+                0
+            }
+            Some("reset" | "normal") => {
+                voice::set_volume(1.0)?;
+                println!("volume: {}", volume_label(1.0));
+                0
+            }
+            Some(text) => match voice::parse_volume(text) {
+                Some(volume) => {
+                    voice::set_volume(volume)?;
+                    println!("volume: {}", volume_label(volume));
+                    0
+                }
+                None => {
+                    eprintln!(
+                        "usage: hivey voice volume N|reset  (1 is normal, e.g. 1.5 or 150%; \
+                         0.05 to {})",
+                        voice::MAX_VOLUME
+                    );
+                    2
+                }
+            },
         },
         Some("say") if args.len() > 1 => speak(&args[1..].join(" "), false),
         Some("say") => {

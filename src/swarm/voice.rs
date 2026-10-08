@@ -3,12 +3,19 @@
 //! `say` command, or none.
 //!
 //! Settings live in `~/.hivey/voice.json`: `provider` ("tts", "say" or "off"), `voices` (the
-//! voice per provider; none means the provider's own default) and `quiet_hours` ([start, end],
-//! local hours when nothing is spoken).
+//! voice per provider; none means the provider's own default), `quiet_hours` ([start, end],
+//! local hours when nothing is spoken) and `volume` (1.0 when absent: as the provider plays it;
+//! any other value saves the line to a file and plays it with `afplay` at that volume).
 
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Loudest volume accepted: above 1 `afplay` amplifies, and far above it the voice distorts.
+pub(crate) const MAX_VOLUME: f64 = 4.0;
+const MIN_VOLUME: f64 = 0.05;
+/// The volumes hivey settings offers (any other with `hivey voice volume`).
+pub(crate) const VOLUME_LEVELS: &[f64] = &[0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Provider {
@@ -223,6 +230,51 @@ fn say_voice_name(line: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
+/// The playback volume: 1.0 (the provider's own level) unless set.
+pub(crate) fn volume() -> f64 {
+    volume_from(&settings()["volume"])
+}
+
+fn volume_from(value: &Value) -> f64 {
+    value
+        .as_f64()
+        .filter(|volume| volume.is_finite() && *volume >= MIN_VOLUME)
+        .map(|volume| volume.min(MAX_VOLUME))
+        .unwrap_or(1.0)
+}
+
+/// Saves the volume; 1.0 removes the setting (back to the provider's own playback).
+pub(crate) fn set_volume(volume: f64) -> std::io::Result<()> {
+    save(|saved| {
+        saved["volume"] = if is_normal_volume(volume) {
+            Value::Null
+        } else {
+            json!(volume)
+        }
+    })
+}
+
+pub(crate) fn is_normal_volume(volume: f64) -> bool {
+    (volume - 1.0).abs() < 1e-9
+}
+
+/// The entry of `VOLUME_LEVELS` for a volume (none for a level set by hand, e.g. 1.7).
+pub(crate) fn volume_index(volume: f64) -> Option<usize> {
+    VOLUME_LEVELS
+        .iter()
+        .position(|level| (level - volume).abs() < 1e-9)
+}
+
+/// Parses `1.5` or `150%` into 1.5 (between 0.05 and 4).
+pub(crate) fn parse_volume(text: &str) -> Option<f64> {
+    let text = text.trim();
+    let volume = match text.strip_suffix('%') {
+        Some(percent) => percent.trim().parse::<f64>().ok()? / 100.0,
+        None => text.parse::<f64>().ok()?,
+    };
+    (volume.is_finite() && (MIN_VOLUME..=MAX_VOLUME).contains(&volume)).then_some(volume)
+}
+
 /// Quiet hours ([start, end], local hours 0-23; end excluded; may wrap midnight).
 pub(crate) fn quiet_hours() -> Option<(u8, u8)> {
     let hours = settings()["quiet_hours"].as_array()?.clone();
@@ -289,10 +341,41 @@ pub(crate) fn speaking_turn() -> Option<std::fs::File> {
 /// The command that speaks `text` with this provider and voice (`None` for off or when the
 /// provider's command is missing).
 pub(crate) fn command(provider: Provider, voice: Option<&str>, text: &str) -> Option<Command> {
+    provider_command(provider, voice, text, None)
+}
+
+/// The command that saves `text` spoken with this provider and voice to `out`, for
+/// `play_command` (`None` for off or when the provider's command is missing).
+pub(crate) fn render_command(
+    provider: Provider,
+    voice: Option<&str>,
+    text: &str,
+    out: &Path,
+) -> Option<Command> {
+    provider_command(provider, voice, text, Some(out))
+}
+
+/// The audio file type `render_command` writes for a provider.
+pub(crate) fn audio_extension(provider: Provider) -> &'static str {
+    match provider {
+        Provider::Tts => "mp3",
+        Provider::Say | Provider::Off => "aiff",
+    }
+}
+
+fn provider_command(
+    provider: Provider,
+    voice: Option<&str>,
+    text: &str,
+    out: Option<&Path>,
+) -> Option<Command> {
     let mut command = match provider {
         Provider::Tts => {
             let mut command = Command::new(tts_bin()?);
-            command.arg("--talk");
+            match out {
+                Some(out) => command.arg("--output").arg(out),
+                None => command.arg("--talk"),
+            };
             if let Some(voice) = voice {
                 command.args(["--voice", voice]);
             }
@@ -303,12 +386,27 @@ pub(crate) fn command(provider: Provider, voice: Option<&str>, text: &str) -> Op
             if let Some(voice) = voice {
                 command.args(["-v", voice]);
             }
+            if let Some(out) = out {
+                command.arg("-o").arg(out);
+            }
             command
         }
         Provider::Off => return None,
     };
     // `--` keeps a summary that starts with `-` from being read as an option.
     command.arg("--").arg(text);
+    Some(command)
+}
+
+/// `afplay -v VOLUME FILE`, or `None` when afplay isn't there (then the provider plays the line
+/// itself at its own level).
+pub(crate) fn play_command(file: &Path, volume: f64) -> Option<Command> {
+    let afplay = find_on_path("afplay").or_else(|| {
+        let system = PathBuf::from("/usr/bin/afplay");
+        system.is_file().then_some(system)
+    })?;
+    let mut command = Command::new(afplay);
+    command.arg("-v").arg(format!("{volume}")).arg(file);
     Some(command)
 }
 
@@ -342,6 +440,40 @@ mod tests {
         assert_eq!(parse_quiet_hours(" 9 - 17 "), Some((9, 17)));
         assert_eq!(parse_quiet_hours("24-8"), None);
         assert_eq!(parse_quiet_hours("off"), None);
+    }
+
+    #[test]
+    fn parses_volume() {
+        assert_eq!(parse_volume("1.5"), Some(1.5));
+        assert_eq!(parse_volume(" 150% "), Some(1.5));
+        assert_eq!(parse_volume("0.5"), Some(0.5));
+        assert_eq!(parse_volume("4"), Some(4.0));
+        assert_eq!(parse_volume("5"), None);
+        assert_eq!(parse_volume("0"), None);
+        assert_eq!(parse_volume("-1"), None);
+        assert_eq!(parse_volume("loud"), None);
+        assert_eq!(parse_volume("NaN"), None);
+    }
+
+    #[test]
+    fn stored_volume_defaults_to_normal_and_is_capped() {
+        assert_eq!(volume_from(&Value::Null), 1.0);
+        assert_eq!(volume_from(&json!(1.5)), 1.5);
+        assert_eq!(volume_from(&json!(9)), MAX_VOLUME);
+        assert_eq!(volume_from(&json!(0)), 1.0);
+        assert_eq!(volume_from(&json!("loud")), 1.0);
+        assert!(is_normal_volume(1.0));
+        assert!(!is_normal_volume(1.5));
+    }
+
+    #[test]
+    fn volume_levels_are_valid_and_found() {
+        for (index, level) in VOLUME_LEVELS.iter().enumerate() {
+            assert_eq!(parse_volume(&level.to_string()), Some(*level));
+            assert_eq!(volume_index(*level), Some(index));
+        }
+        assert!(volume_index(1.0).is_some());
+        assert_eq!(volume_index(1.7), None);
     }
 
     #[test]

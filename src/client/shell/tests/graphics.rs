@@ -321,6 +321,7 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
             // hivey: settings overlay fields for voice, pets, creators and skills.
             voice_provider: crate::swarm::voice::Provider::Tts,
             voice_current: None,
+            voice_volume: 1.0,
             voice_message: None,
             pet_current: None,
             pet_message: None,

@@ -171,10 +171,16 @@ impl ClientShellState {
     }
 
     /// Settings → voice: a row sets the provider and its voice together (or turns speech off),
-    /// saved with `hivey voice … --test`, which also speaks a sample.
+    /// saved with `hivey voice … --test`, which also speaks a sample. The choices after the
+    /// voices are the volume levels.
     fn choose_voice(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         use crate::swarm::voice::{self, Provider};
-        let Some(&(provider, name, _)) = voice::choices().get(selected) else {
+        let voices = voice::choices();
+        if selected >= voices.len() {
+            self.choose_volume(selected - voices.len(), outcome);
+            return;
+        }
+        let Some(&(provider, name, _)) = voices.get(selected) else {
             return;
         };
         let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
@@ -211,6 +217,31 @@ impl ClientShellState {
             }
         };
         outcome.actions.push(ClientShellAction::RunHivey(args));
+        outcome.repaint = true;
+    }
+
+    /// Settings → voice → volume: saved with `hivey voice volume N --test`, which plays a
+    /// sample at that level (again on every click, to compare levels over music).
+    fn choose_volume(&mut self, level: usize, outcome: &mut ClientShellInput) {
+        use crate::swarm::voice::{self, Provider};
+        let Some(&volume) = voice::VOLUME_LEVELS.get(level) else {
+            return;
+        };
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        settings.voice_volume = volume;
+        settings.voice_message = Some(if settings.voice_provider == Provider::Off {
+            format!("volume {volume} saved (the voice is off: nothing is spoken)")
+        } else {
+            format!("volume {volume} (playing a sample)")
+        });
+        outcome.actions.push(ClientShellAction::RunHivey(vec![
+            "voice".into(),
+            "volume".into(),
+            volume.to_string(),
+            "--test".into(),
+        ]));
         outcome.repaint = true;
     }
 
@@ -261,6 +292,7 @@ impl ClientShellState {
             skills_message: None,
             voice_provider: crate::swarm::voice::provider(),
             voice_current: crate::swarm::voice::voice(crate::swarm::voice::provider()),
+            voice_volume: crate::swarm::voice::volume(),
             voice_message: None,
         }));
     }
@@ -318,6 +350,7 @@ impl ClientShellState {
                 use crate::swarm::voice;
                 settings.voice_provider = voice::provider();
                 settings.voice_current = voice::voice(settings.voice_provider);
+                settings.voice_volume = voice::volume();
                 settings.voice_message = None;
             }
             if section == ClientSettingsSection::Skills {
@@ -356,7 +389,9 @@ impl ClientShellState {
                 ClientSettingsSection::Integrations => settings.integrations.len(),
                 ClientSettingsSection::Pets if PETS_SUPPORTED => PET_CHOICES.len(),
                 ClientSettingsSection::Pets => 0,
-                ClientSettingsSection::Voice => crate::swarm::voice::choices().len(),
+                ClientSettingsSection::Voice => {
+                    crate::swarm::voice::choices().len() + crate::swarm::voice::VOLUME_LEVELS.len()
+                }
                 ClientSettingsSection::Plugins => {
                     settings.creators.len() + settings.skill_providers.len()
                 }

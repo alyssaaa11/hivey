@@ -463,6 +463,8 @@ pub(super) struct ClientSettingsOverlay {
     /// its voice, and what the last choice did (saved with `hivey voice` in the background).
     pub(super) voice_provider: crate::swarm::voice::Provider,
     pub(super) voice_current: Option<String>,
+    /// The playback volume (1.0 normal), saved with `hivey voice volume`.
+    pub(super) voice_volume: f64,
     pub(super) voice_message: Option<String>,
 }
 
