@@ -6,7 +6,7 @@ knows every hivey command; `hivey swarm <command> --help` shows usage without ru
 ## 1. Understand the task
 First ask the user for the agent's **name** (kebab-case, `[a-z][a-z0-9-]{0,31}`; suggest the
 folder name; skip the question if the task already says "Name: …"). That one name is used for
-everything: `--slug`, the Slack channel `#<name>` and the Obsidian vault `<name>-wiki`. From
+everything: `--slug` and the Slack channel `#<name>`. From
 the task, work out the **mission** (what it owns, what it must not touch), **deliverables** (exact paths and
 a "done when" for each, ideally a shell check that exits 0 only when done), and what it needs
 (skills, CLIs, MCP servers, secrets). If the folder already has a `CLAUDE.md`, ask whether to
@@ -19,10 +19,11 @@ one at a time, then show a 5-line summary and get a yes before writing anything.
    it's not connected ask the user to run `hivey slack connect` in a terminal (never ask for the
    token in chat), or go on without Slack if they'd rather not.
 2. **Obsidian wiki memory?** (ask) A vault where it keeps what it learns. If the task names an
-   existing vault, use that one. Otherwise create one with the `agents-create-wiki` skill if
-   it's installed, else `python3 ~/.claude/skills/hivey/scripts/new_wiki.py <name> --agent
-   <agent folder> --about "<one line>"` (add `--dir <their Obsidian>` if `~/.hivey/wiki.json`
-   doesn't say where it is; ask them). It copies the user's Obsidian theme when one is set.
+   existing vault, use that one. Otherwise create it inside the agent folder:
+   `python3 ~/.claude/skills/hivey/scripts/new_wiki.py <name> --root <agent folder> --agent
+   <agent folder> --about "<one line>"` makes `<agent folder>/obsidian`, so the agent and its
+   knowledge stay together and can be shared as one folder. Never ask where the user's Obsidian
+   is. It copies the user's Obsidian theme when one is set.
 
 ## 3. Write `<agent folder>/CLAUDE.md`
 Sections, in this order:

@@ -14,7 +14,8 @@ $HERDR_PLUGIN_CONFIG_DIR/config.json:
    "addons": ["hivey.dashboard"], "claude_args": "--dangerously-skip-permissions",
    "slack": "ask", "wiki": "ask"}
   slack: "ask" (when Slack is connected: offer a channel #<slug>), true, or false.
-  wiki: "ask" (offer an Obsidian wiki vault as the team's memory), true, or false.
+  wiki: "ask" (offer an Obsidian wiki vault, <root>/obsidian, as the team's memory), true,
+  or false.
 """
 import json
 import os
@@ -82,10 +83,10 @@ NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 
 def ask_name(task):
     """The swarm's name, asked with a suggestion from the task. One name for everything: the
-    swarm slug, its Slack channel #<name> and its Obsidian vault <name>-wiki."""
+    swarm slug, its folder swarm-<name> and its Slack channel #<name>."""
     suggestion = slugify(task)
     while True:
-        answer = input(f"Name (swarm, Slack channel #name, Obsidian vault name-wiki) "
+        answer = input(f"Name (swarm, Slack channel #name) "
                        f"[{suggestion}]: ").strip()
         name = re.sub(r"[^a-z0-9]+", "-", answer.lower()).strip("-") if answer else suggestion
         if NAME_RE.match(name):
@@ -101,9 +102,6 @@ def config():
         return dict(DEFAULTS)
 
 
-WIKI_SETTINGS = Path.home() / ".hivey" / "wiki.json"
-
-
 def new_wiki_script():
     """The hivey skill's new_wiki.py: next to this plugin in the repo, else installed."""
     here = Path(__file__).resolve().parents[2] / "skills" / "hivey" / "scripts" / "new_wiki.py"
@@ -111,25 +109,19 @@ def new_wiki_script():
     return next((p for p in (here, installed) if p.is_file()), None)
 
 
-def want_wiki(cfg, slug):
-    """None, or the Obsidian folder for the team's wiki vault (asked the first time)."""
+def want_wiki(cfg):
+    """Whether the team gets an Obsidian wiki vault (in its own folder) as memory."""
     if cfg["wiki"] is False or new_wiki_script() is None:
-        return None
-    if cfg["wiki"] is not True and input(
-            f"Give it an Obsidian wiki as memory ({slug}-wiki, where the team keeps what it "
-            "learns)? [Y/n] ").strip().lower() in ("n", "no"):
-        return None
-    try:
-        return json.loads(WIKI_SETTINGS.read_text())["dir"]
-    except (OSError, ValueError, KeyError):
-        default = str(Path.home() / "Obsidian")
-        answer = input(f"Where is your Obsidian folder? [{default}] ").strip()
-        return answer or default
+        return False
+    if cfg["wiki"] is True:
+        return True
+    return input("Give it an Obsidian wiki as memory (in its folder, obsidian/, where the "
+                 "team keeps what it learns)? [Y/n] ").strip().lower() not in ("n", "no")
 
 
-def make_wiki(slug, task, obsidian, agent_dirs):
-    """Creates (or reuses) the vault and links every agent's CLAUDE.md to it; its path."""
-    cmd = [sys.executable, str(new_wiki_script()), slug, "--dir", obsidian, "--about", task[:80]]
+def make_wiki(slug, task, root, agent_dirs):
+    """Creates (or reuses) <root>/obsidian and links every agent's CLAUDE.md to it; its path."""
+    cmd = [sys.executable, str(new_wiki_script()), slug, "--root", str(root), "--about", task[:80]]
     for agent_dir in agent_dirs:
         cmd += ["--agent", str(agent_dir)]
     done = subprocess.run(cmd, capture_output=True, text=True)
@@ -169,7 +161,7 @@ def main():
     if input("Launch this swarm? [Y/n] ").strip().lower() in ("n", "no"):
         sys.exit("cancelled")
     slack = want_slack(cfg, hivey, slug)
-    obsidian = want_wiki(cfg, slug)
+    wiki = want_wiki(cfg)
 
     # --- 2. BRIEF -----------------------------------------------------------------
     (root / "app").mkdir(parents=True, exist_ok=True)
@@ -177,7 +169,7 @@ def main():
         (root / agent).mkdir(exist_ok=True)
         (root / agent / "CLAUDE.md").write_text(
             BRIEF.format(agent=agent, slug=slug, task=task, root=root, job=job.format(root=root)))
-    wiki = make_wiki(slug, task, obsidian, [root / agent for agent in TEAM]) if obsidian else None
+    wiki = make_wiki(slug, task, root, [root / agent for agent in TEAM]) if wiki else None
     if wiki:
         print(f"wiki memory: {wiki}")
 

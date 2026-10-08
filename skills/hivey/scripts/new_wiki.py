@@ -1,23 +1,22 @@
 #!/usr/bin/env python3
 """Create an Obsidian wiki vault as the memory of a hivey agent or swarm (LLM-wiki pattern).
 
-usage: new_wiki.py <name> [--dir PARENT] [--look-from VAULT] [--agent FOLDER]... [--about TEXT]
+usage: new_wiki.py <name> [--root FOLDER] [--look-from VAULT] [--agent FOLDER]... [--about TEXT]
 
-Creates <PARENT>/<name>-wiki/ (raw/ for sources, wiki/ for maintained pages, index.md,
-log.md, CLAUDE.md with the rules, .obsidian/ so Obsidian opens it as a vault) and adds a
-"Memory" section to each --agent FOLDER's CLAUDE.md pointing at it. An existing vault is
-reused, never overwritten. PARENT defaults to the user's Obsidian folder remembered in
-~/.hivey/wiki.json (written the first time --dir is given), else ~/Obsidian.
+The vault lives inside the swarm's or agent's own folder, so everything travels together:
+creates <FOLDER>/obsidian/ (raw/ for sources, wiki/ for maintained pages, index.md, log.md,
+CLAUDE.md with the rules, .obsidian/ so Obsidian opens it as a vault) and adds a "Memory"
+section to each --agent FOLDER's CLAUDE.md pointing at it with a relative path. FOLDER is the
+swarm root or the solo agent's folder (default: the current folder). An existing vault is
+reused, never overwritten.
 Obsidian keeps the look per vault, so a new vault copies the theme, CSS snippets and Style
-Settings of the vault remembered as --look-from (also kept in ~/.hivey/wiki.json); without
-one it opens in stock Obsidian.
+Settings of the vault remembered as --look-from (kept in ~/.hivey/wiki.json); without one it
+opens in stock Obsidian.
 Prints JSON: {"ok": true, "path": "...", "existing": false, "look": true, "agents": [...]}.
-
-Agents with the `agents-create-wiki` skill can use that instead; this is the built-in way.
 """
 import argparse
 import json
-import re
+import os
 import shutil
 import sys
 import time
@@ -25,6 +24,7 @@ from pathlib import Path
 
 SETTINGS = Path.home() / ".hivey" / "wiki.json"
 MARKER = "<!-- hivey: wiki memory -->"
+VAULT = "obsidian"
 
 RULES = """# {name} wiki: rules for the agents that keep it
 
@@ -49,14 +49,11 @@ MEMORY = """
 {marker}
 ## Memory (Obsidian wiki)
 
-Your long-term memory is the Obsidian vault `{path}`. Read its `CLAUDE.md` (the rules) and
-`index.md` before working; save sources in `raw/`, keep `wiki/` pages, `index.md` and
-`log.md` up to date as you learn. Don't keep knowledge only in this conversation.
+Your long-term memory is the Obsidian vault `{path}` (relative to this file's folder). Read
+its `CLAUDE.md` (the rules) and `index.md` before working; save sources in `raw/`, keep
+`wiki/` pages, `index.md` and `log.md` up to date as you learn. Don't keep knowledge only in
+this conversation.
 """
-
-
-def slug(text):
-    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:60] or "agent"
 
 
 def setting(key, given):
@@ -105,21 +102,21 @@ def link(agent_dir, path):
     if MARKER in text:
         return False
     brief.parent.mkdir(parents=True, exist_ok=True)
-    brief.write_text(text.rstrip("\n") + "\n" + MEMORY.format(marker=MARKER, path=path))
+    relative = os.path.relpath(path, brief.parent.resolve())
+    brief.write_text(text.rstrip("\n") + "\n" + MEMORY.format(marker=MARKER, path=relative))
     return True
 
 
 def main():
     parser = argparse.ArgumentParser(description="Obsidian wiki memory for a hivey agent or swarm")
     parser.add_argument("name")
-    parser.add_argument("--dir", help="parent folder (the user's Obsidian); remembered")
+    parser.add_argument("--root", default=".", help="swarm or agent folder; the vault is <root>/obsidian")
     parser.add_argument("--look-from", help="vault whose theme new vaults copy; remembered")
     parser.add_argument("--agent", action="append", default=[], help="agent folder to link")
     parser.add_argument("--about", default="", help="one line: what the agent or swarm does")
     args = parser.parse_args()
-    parent = setting("dir", args.dir) or Path.home() / "Obsidian"
     look_from = setting("look_from", args.look_from)
-    path = parent / f"{slug(args.name)}-wiki"
+    path = Path(args.root).expanduser().resolve() / VAULT
     existing = path.exists()
     look = False
     if not existing:

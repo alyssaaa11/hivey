@@ -7,9 +7,10 @@
 # Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), installs the hivey
 # skill and the global find-skills skill for Claude Code, links the bundled plugins (dashboard,
 # Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the swarm
-# sidebar and Option keys, asks for your Slack bot token, your skills folder (default ~/SKILLS),
-# your Obsidian folder (agents' wiki vaults) and a desktop pet (macOS), and sets up the hivey
-# agent in ~/.hivey/agent (needs Claude Code; Slack channel #hivey when connected).
+# sidebar and Option keys, asks for your Slack bot token, your skills folder (default ~/SKILLS)
+# and a desktop pet (macOS), and sets up the hivey agent in ~/.hivey/agent (needs Claude Code;
+# Slack channel #hivey when connected). Swarms and agents keep their Obsidian wiki in their own
+# folder (<folder>/obsidian), so there is no Obsidian folder to set up.
 # --no-setup skips the questions and the hivey agent. Run it again any time; later updates are
 # just `hivey update`.
 #
@@ -159,55 +160,6 @@ if [ "$SETUP" = 1 ]; then
     esac
   else
     echo "skipped: no terminal (default $("$BIN" skills dir 2>/dev/null); later: hivey settings → skills)"
-  fi
-
-  say "Obsidian (where agents and swarms keep their wiki memory vaults)"
-  WIKI_SETTINGS="$HOME/.hivey/wiki.json"
-  if [ -t 0 ] || (: </dev/tty) 2>/dev/null; then
-    WIKI_DIR=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("dir",""))' \
-      "$WIKI_SETTINGS" 2>/dev/null || true)
-    WIKI_DIR="${WIKI_DIR:-$HOME/Obsidian}"
-    printf 'Your Obsidian folder (new vaults go in it) [%s]: ' "$WIKI_DIR"
-    read -r answer </dev/tty || answer=""
-    WIKI_DIR="${answer:-$WIKI_DIR}"
-    WIKI_DIR="${WIKI_DIR/#\~/$HOME}"
-    mkdir -p "$WIKI_DIR"
-    # New vaults copy the theme and Style Settings of one existing vault (Obsidian keeps the
-    # look per vault); offer the vaults in that folder that have a theme.
-    THEMED=()
-    for vault in "$WIKI_DIR"/*/; do
-      grep -qs '"cssTheme": *"[^"]' "$vault.obsidian/appearance.json" && THEMED+=("${vault%/}")
-    done
-    LOOK_FROM=""
-    if [ "${#THEMED[@]}" -gt 0 ]; then
-      echo "Vaults with a theme new vaults can copy:"
-      for i in "${!THEMED[@]}"; do echo "  $((i + 1))) $(basename "${THEMED[$i]}")"; done
-      printf 'Copy the look of which one? [1, 0 = none] '
-      read -r answer </dev/tty || answer=0
-      answer="${answer:-1}"
-      if [[ "$answer" =~ ^[0-9]+$ ]] && [ "$answer" -ge 1 ] && [ "$answer" -le "${#THEMED[@]}" ]; then
-        LOOK_FROM="${THEMED[$((answer - 1))]}"
-      fi
-    fi
-    python3 - "$WIKI_SETTINGS" "$WIKI_DIR" "$LOOK_FROM" <<'PY'
-import json, sys
-from pathlib import Path
-path, folder, look = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-try:
-    saved = json.loads(path.read_text())
-except (OSError, ValueError):
-    saved = {}
-saved["dir"] = folder
-if look:
-    saved["look_from"] = look
-else:
-    saved.pop("look_from", None)
-path.parent.mkdir(parents=True, exist_ok=True)
-path.write_text(json.dumps(saved) + "\n")
-PY
-    echo "saved in $WIKI_SETTINGS: vaults in $WIKI_DIR${LOOK_FROM:+, look of $(basename "$LOOK_FROM")}"
-  else
-    echo "skipped: no terminal (agents ask for your Obsidian folder the first time)"
   fi
 
   say "desktop pet (optional)"

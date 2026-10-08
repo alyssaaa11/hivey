@@ -38,38 +38,29 @@ class TemplateTests(unittest.TestCase):
         self.assertEqual(cfg["heartbeat"], "")
         self.assertEqual(cfg["master_model"], "opus")
 
-    def test_wiki_is_asked_and_the_obsidian_folder_once(self):
+    def test_wiki_is_asked_without_asking_for_a_folder(self):
         from unittest import mock
-        with tempfile.TemporaryDirectory() as tmp:
-            settings = Path(tmp, "wiki.json")
-            default = str(Path.home() / "Obsidian")
-            cases = [("ask", ["n"], None), ("ask", ["", ""], default),
-                     ("ask", ["", "/x/Obs"], "/x/Obs"), (False, [], None)]
-            with mock.patch.object(setup, "WIKI_SETTINGS", settings):
-                for mode, answers, expected in cases:
-                    replies = iter(answers)
-                    with mock.patch("builtins.input", lambda *_: next(replies)):
-                        self.assertEqual(setup.want_wiki({"wiki": mode}, "demo"), expected)
-                # Once the folder is known it isn't asked again
-                settings.write_text(json.dumps({"dir": "/remembered"}))
-                with mock.patch("builtins.input", lambda *_: ""):
-                    self.assertEqual(setup.want_wiki({"wiki": "ask"}, "demo"), "/remembered")
+        cases = [("ask", "n", False), ("ask", "", True), (True, None, True), (False, None, False)]
+        for mode, answer, expected in cases:
+            with mock.patch("builtins.input", lambda *_: answer):
+                self.assertEqual(setup.want_wiki({"wiki": mode}), expected)
 
-    def test_make_wiki_creates_the_vault_and_links_the_team(self):
+    def test_make_wiki_puts_the_vault_in_the_swarm_folder(self):
         with tempfile.TemporaryDirectory() as tmp:
-            agents = [Path(tmp, name) for name in ("builder", "critic")]
+            root = Path(tmp).resolve() / "swarm-demo"
+            agents = [root / name for name in ("builder", "critic")]
             for agent in agents:
-                agent.mkdir()
+                agent.mkdir(parents=True)
                 (agent / "CLAUDE.md").write_text(f"# {agent.name}\n")
-            # new_wiki.py remembers the folder in $HOME/.hivey: keep that in the scratch dir
             from unittest import mock
             with mock.patch.dict(os.environ, {"HOME": tmp}):
-                path = setup.make_wiki("demo", "a task", str(Path(tmp, "Obsidian")), agents)
-            self.assertTrue(Path(tmp, ".hivey", "wiki.json").is_file())
-            self.assertEqual(path, str(Path(tmp, "Obsidian", "demo-wiki")))
+                path = setup.make_wiki("demo", "a task", root, agents)
+            self.assertEqual(path, str(root / "obsidian"))
             self.assertTrue(Path(path, "index.md").is_file())
+            self.assertTrue(Path(path, ".obsidian").is_dir())
             for agent in agents:
-                self.assertIn(path, (agent / "CLAUDE.md").read_text())
+                # relative, so the folder can be moved or shared as a whole
+                self.assertIn("`../obsidian`", (agent / "CLAUDE.md").read_text())
 
     def test_briefs_name_the_team_and_hivey_messaging(self):
         brief = setup.BRIEF.format(agent="critic", slug="s", task="t", root="/r",

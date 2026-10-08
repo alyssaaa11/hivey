@@ -121,15 +121,16 @@ check `hivey plugin list` / `hivey swarm providers` before relying on them.
 **Creating a swarm or agent: always ask the user three things first** (one question each, then
 act on the answers):
 1. **Name?** Suggest one from the task; normalize to `[a-z][a-z0-9-]{0,31}`. It's the one name
-   used everywhere: the swarm/agent slug (`--slug`), its Slack channel `#<name>` and its
-   Obsidian vault `<name>-wiki` (`new_wiki.py <name>`). Never pick a different name for any.
+   used everywhere: the swarm/agent slug (`--slug`) and its Slack channel `#<name>`. Never
+   pick a different name for either.
 2. **Slack channel?** (see below)
-3. **Obsidian wiki memory?** A vault in the user's Obsidian where it keeps what it learns. If
-   yes and you don't know where their Obsidian is, ask once (default `~/Obsidian`; it's then
-   remembered in `~/.hivey/wiki.json`). Create it with the `agents-create-wiki` skill if it's
-   installed, else `python3 <this skill>/scripts/new_wiki.py <slug> [--dir <obsidian>] --agent
-   <agent folder> [--agent …] --about "<one line>"` (a team: one vault, every agent folder
-   linked). Do it after the agents' CLAUDE.md files exist, and tell the user the vault path.
+3. **Obsidian wiki memory?** A vault where it keeps what it learns, always inside the swarm's
+   or agent's own folder: `<folder>/obsidian`, so the work and its knowledge can be shared as one
+   folder. Never ask where the user's Obsidian is. Create it with `python3 <this
+   skill>/scripts/new_wiki.py <slug> --root <swarm root or agent folder> --agent <agent folder>
+   [--agent …] --about "<one line>"` (a team: one vault, every agent folder linked with a
+   relative path). Do it after the agents' CLAUDE.md files exist, and tell the user the vault
+   path.
    New vaults copy the theme and Style Settings of the vault remembered as `look_from` in
    `~/.hivey/wiki.json` (set it once with `--look-from <their main vault>`); on first open
    the user must click "Turn on community plugins" for the folder colors to show.

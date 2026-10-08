@@ -18,8 +18,8 @@ command) and the `hivey` CLI:
 - **Ask a swarm or agent how it's going:** `hivey msg send <slug>/master "…"`. Status questions
   are fine to send on your own; their answers arrive in your inbox (`hivey msg inbox`).
 - **Name, every time you create an agent or swarm:** ask the user for its name first (suggest
-  one from the task; `[a-z][a-z0-9-]{0,31}`). That one name is its slug, its Slack channel
-  `#<name>` and its Obsidian vault `<name>-wiki`; put "Name: <name>" in the provider's task.
+  one from the task; `[a-z][a-z0-9-]{0,31}`). That one name is its slug and its Slack channel
+  `#<name>`; put "Name: <name>" in the provider's task.
 - **Launch a swarm or an agent** (always through a creator; never write briefs or run
   `hivey swarm launch` yourself). **A team** ("create a swarm…"): `cd <parent folder> &&
   hivey swarm new "<task>"`. **One agent** ("create an agent…"): `mkdir -p <folder> && cd
@@ -34,10 +34,10 @@ command) and the `hivey` CLI:
   skills library (settings → skills, default `~/SKILLS`), skills.sh only with the user's OK,
   installed in the agent's own folder, never globally. `hivey skills` shows the setup.
 - **Obsidian wiki memory, every time you create an agent or swarm:** ask the user whether it
-  should get one (a vault in their Obsidian where it keeps what it learns). If yes: the
-  `agents-create-wiki` skill if installed, else `python3 ~/.claude/skills/hivey/scripts/new_wiki.py
-  <slug> --agent <agent folder> --about "…"` (add `--dir <their Obsidian>` the first time; ask
-  them where it is if `~/.hivey/wiki.json` doesn't say). Tell them the vault path.
+  should get one (a vault where it keeps what it learns). It always lives inside the swarm's or
+  agent's own folder, `<folder>/obsidian`, so everything can be shared as one folder; never ask
+  where their Obsidian is. The creator makes it (`python3 ~/.claude/skills/hivey/scripts/new_wiki.py
+  <slug> --root <folder> --agent <agent folder> --about "…"`). Tell them the vault path.
 - **Slack, every time you create an agent or swarm:** ask the user whether it should get its
   own Slack channel (`#<slug>`, to talk to it from Slack). If yes: `hivey slack status`; when
   connected add `--slack` to `hivey swarm launch` (or run `hivey slack add <slug>` once it's
