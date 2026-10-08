@@ -20,7 +20,7 @@ hivey keeps them alive, wakes them on a schedule, and bridges each swarm to Slac
 From source (macOS or Linux; needs Rust, Zig, python3 and Node.js — see the header of `install.sh`):
 
 ```bash
-git clone git@github.com:jcsancho/hivey.git ~/hivey
+git clone git@github.com:alyssaaa11/hivey.git ~/hivey
 cd ~/hivey && ./install.sh
 ```
 

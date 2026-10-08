@@ -4,7 +4,7 @@ Terminal workspace for swarms of AI coding agents. A private fork of
 [herdr](https://github.com/herdrdev/herdr) (Apache-2.0).
 
 - Design: `docs/hivey-design.md` · Status and next steps: `docs/hivey-status.md`
-- Remotes: `origin` = `jcsancho/hivey` (private), `upstream` = `herdrdev/herdr` (fetch only, push disabled)
+- Remotes: `origin` = `alyssaaa11/hivey` (private), `upstream` = `herdrdev/herdr` (fetch only, push disabled)
 - `AGENTS.md` is herdr's upstream guide. Leave it unmodified so rebases stay clean; this file replaces it for hivey.
 
 ## hivey fork rules
@@ -43,7 +43,7 @@ Terminal workspace for swarms of AI coding agents. A private fork of
 - Lowercase conventional commits (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`), no emojis.
   Descriptive subject; a body when the why isn't obvious.
 - **No AI co-author lines** (no `Co-Authored-By: Claude …`).
-- Commit hivey work on `main` in `jcsancho/hivey`. Never push, open issues, or open PRs
+- Commit hivey work on `main` in `alyssaaa11/hivey`. Never push, open issues, or open PRs
   against `herdrdev/herdr`.
 
 ## Engineering rules (from herdr)

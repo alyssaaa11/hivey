@@ -51,7 +51,7 @@ FIXUPS = {
         ("(fork of hivey)", "(fork of herdr)"),
         ("Attach through SSH to a remote hivey server", "Attach through SSH to a remote herdr server"),
         ('        println!("Home:   https://herdr.dev");',
-         '        println!("Home:   https://github.com/jcsancho/hivey"); // hivey'),
+         '        println!("Home:   https://github.com/alyssaaa11/hivey"); // hivey'),
     ],
     "src/cli/spec.rs": [
         ("Attach through SSH to a remote hivey server", "Attach through SSH to a remote herdr server"),
@@ -103,7 +103,7 @@ FIXUPS = {
 pub(crate) const AGENT_HELP_FOOTER: &str = concat!(
     "Are you an AI? Use these resources ONLY IF your task specifically asks you to:\\n",
     "  Help a human understand or set up hivey, or debug a problem with it:\\n",
-    "    https://github.com/jcsancho/hivey/blob/main/docs/hivey-guide.md\\n",
+    "    https://github.com/alyssaaa11/hivey/blob/main/docs/hivey-guide.md\\n",
     "  Control hivey panes, agents, swarms, or workspaces:\\n",'''),
     ],
 }

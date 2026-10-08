@@ -50,7 +50,7 @@ const TERMINAL_SESSION_CONTROL_USAGE: &str =
 pub(crate) const AGENT_HELP_FOOTER: &str = concat!(
     "Are you an AI? Use these resources ONLY IF your task specifically asks you to:\n",
     "  Help a human understand or set up hivey, or debug a problem with it:\n",
-    "    https://github.com/jcsancho/hivey/blob/main/docs/hivey-guide.md\n",
+    "    https://github.com/alyssaaa11/hivey/blob/main/docs/hivey-guide.md\n",
     "  Control hivey panes, agents, swarms, or workspaces:\n",
     "    SKIP if a hivey skill is already in your context. Otherwise run: hivey --skill",
 );

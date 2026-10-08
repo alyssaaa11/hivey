@@ -1,11 +1,11 @@
 [package]
 name = "hivey"
-version = "0.9.20"
+version = "0.9.21"
 edition = "2021"
 build = "build.rs"
 description = "terminal workspace for swarms of AI coding agents (fork of herdr)"
 license = "Apache-2.0"
-repository = "https://github.com/jcsancho/hivey"
+repository = "https://github.com/alyssaaa11/hivey"
 keywords = ["terminal", "tui", "ai", "agents", "multiplexer"]
 categories = ["command-line-utilities"]
 include = [
