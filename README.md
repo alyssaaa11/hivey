@@ -9,6 +9,10 @@ you can always find, and a built-in message bus (delivery when the agent is idle
 inbox, `@all` / `@role:` / `@masters` addressing, a full log). Agents run side by side in panes,
 hivey keeps them alive, wakes them on a schedule, and bridges each swarm to Slack.
 
+<p align="center">
+  <img src="assets/hivey-demo.gif" alt="a hivey swarm: the master splits a task across agents and reports back" width="520" />
+</p>
+
 **Start here:** [`docs/hivey-guide.md`](docs/hivey-guide.md) · Architecture:
 [`docs/diagrams/hivey-architecture.html`](docs/diagrams/hivey-architecture.html) · New swarm flow:
 [`docs/diagrams/hivey-new-swarm.html`](docs/diagrams/hivey-new-swarm.html) · Write a provider:
