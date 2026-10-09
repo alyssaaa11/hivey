@@ -1,42 +1,101 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="hivey" width="100" />
+  <img src="assets/logo.svg" alt="Hivey" width="100" />
 </p>
 
-# hivey
+# Hivey
 
-**hivey** is a terminal workspace for swarms of AI coding agents: one swarm per space, a master
-you can always find, and a built-in message bus (delivery when the agent is idle, a queue and
-inbox, `@all` / `@role:` / `@masters` addressing, a full log). Agents run side by side in panes,
-hivey keeps them alive, wakes them on a schedule, and bridges each swarm to Slack.
+## All your AI swarms. One terminal.
 
-<p align="center">
-  <img src="assets/hivey-demo.gif" alt="a hivey swarm: the master splits a task across agents and reports back" width="520" />
-</p>
+**Give Hivey the goal. Let it get the team together.**
 
-**Start here:** [`docs/hivey-guide.md`](docs/hivey-guide.md) · Architecture:
-[`docs/diagrams/hivey-architecture.html`](docs/diagrams/hivey-architecture.html) · New swarm flow:
-[`docs/diagrams/hivey-new-swarm.html`](docs/diagrams/hivey-new-swarm.html) · Write a provider:
-[`docs/hivey-providers.md`](docs/hivey-providers.md) · Agent skill: [`skills/hivey/`](skills/hivey/SKILL.md)
-(`hivey skill install`) · Design: [`docs/hivey-design.md`](docs/hivey-design.md).
+Hivey is a terminal workspace and coordinating agent for swarms of AI agents. Talk to Hivey to create and manage your swarms. Each swarm has its own workspace and a dedicated coordinator that directs its agents, keeps the work moving, and reports back to you.
 
-## install
+Run teams with **Claude Code and Codex**, exchange findings across swarms, and stay in touch through **Slack**. Keep reusable knowledge in **Obsidian**, extend the workspace with plugins, and share useful setups through **Skylls**.
 
-From source (macOS or Linux; needs Rust, Zig, python3 and Node.js — see the header of `install.sh`):
+[Website](https://hivey.dev) · [Install](#install) · [User guide](docs/hivey-guide.md) · [Watch the introduction](https://hivey.dev/#film)
+
+[![Watch Meet Hivey — a 20-second character introduction](assets/hivey-video-poster.jpg)](https://hivey.dev/#film)
+
+**[Play the introduction on hivey.dev](https://hivey.dev/#film)** · [Open the MP4](https://github.com/alyssaaa11/hivey/raw/refs/heads/main/assets/hivey-h1.mp4)
+
+*Meet the little H behind your team. This is a stylized character introduction, not a recording of the terminal.*
+
+## How it works
+
+1. **Tell Hivey what you want to do.** Hivey creates a swarm or works with one you already have.
+2. **Let the coordinator lead.** Each swarm's coordinator assigns work to its agents in a separate terminal space.
+3. **Keep teams connected.** Agents message teammates; Hivey and coordinators carry findings and requests across swarms.
+4. **Stay close or step away.** Talk in the terminal or Slack. Detach and return later while agents keep running on your awake, connected machine.
+
+You do not need to prompt every swarm yourself. When you want more detail, talk directly to a swarm's coordinator.
+
+## Your tools, working together
+
+| Tool or capability | What it adds |
+| --- | --- |
+| Claude Code + Codex | Agent support for teams with different roles. |
+| Swarm messaging | Address agents, roles, or a whole swarm, with queued delivery, inboxes, and message history. Coordinators handle communication across swarms. |
+| Slack | Talk to Hivey in its channel and to each swarm's coordinator in that swarm's channel. |
+| Scheduled check-ins | Wake an idle coordinator at configured times. |
+| Obsidian memory | Keep sources, findings, decisions, and reusable knowledge in linked Markdown pages within each swarm's vault. |
+| Skills + plugins | Extend swarm creation, agent setup, dashboards, integrations, and repeatable workflows. |
+| EnvSave | Retrieve configured credentials without pasting API keys into swarm prompts. |
+| Skylls | Share and import skills, agents, and whole swarm setups through a separate platform. |
+| Hivey pet + voice | An optional macOS companion that reacts to agent activity and can speak updates aloud. |
+| herdr runtime | The terminal foundation for panes, sessions, and agent workspaces. |
+
+### Memory that outlives a chat
+
+Swarms can maintain a wiki you can open in Obsidian: original sources, linked knowledge, decisions, and lessons that inform the next task. The approach is inspired by [Karpathy's LLM Wiki as agent memory](https://aaif.io/blog/karpathys-llm-wiki-as-agent-memory). Memory lives in files you and your agents can inspect and maintain.
+
+### Share a team with Skylls
+
+Hivey integrates with **[Skylls](https://skylls.dev/)**, a separate website and tool for sharing skills, agents, and complete swarm setups. Share a setup with friends, let their agents reuse it, or import a team someone has shared with you and adapt it to your own work. Recipients configure their own credentials and agent access.
+
+### On the roadmap
+
+**Native per-swarm whiteboards** are planned: a shared view for tasks, notes, and decisions. They are not included as a shipped feature here.
+
+## Install
+
+Hivey installs from source on **macOS or Linux**.
+
+Before starting, install **Git, Rust/Cargo, Zig 0.16.0, Python 3, and Node.js**. The Hivey lead-agent setup uses Claude Code; configure your chosen agents and their access separately. See [`install.sh`](install.sh) for the current requirements and setup options.
 
 ```bash
-git clone git@github.com:alyssaaa11/hivey.git ~/hivey
-cd ~/hivey && ./install.sh
+git clone https://github.com/alyssaaa11/hivey.git ~/hivey
+cd ~/hivey
+./install.sh
 ```
 
-then start it where the work lives:
+The installer builds Hivey, links bundled plugins, installs its skill, and walks you through the lead agent and optional integrations. To skip the interactive setup, use `./install.sh --no-setup`.
+
+Start Hivey where your work lives:
 
 ```bash
 hivey
 ```
 
-`⌥Q` (or `ctrl+b` `q`) detaches, `hivey` reattaches. Create a swarm with `hivey swarm new "<task>"`.
+Talk to Hivey to get a team started, or create a swarm from the command line:
 
-## development
+```bash
+hivey swarm new "Research and build my next idea"
+```
+
+`⌥Q` (or `ctrl+b`, then `q`) detaches. Run `hivey` to reattach. Detaching does not stop the agents, but your machine must stay awake and connected; Hivey is not a hosted service that continues after your computer sleeps.
+
+Continue with the **[user guide](docs/hivey-guide.md)** for setup and everyday use.
+
+## Explore the project
+
+- [User guide](docs/hivey-guide.md)
+- [Architecture](docs/diagrams/hivey-architecture.html)
+- [New swarm flow](docs/diagrams/hivey-new-swarm.html)
+- [Write a provider](docs/hivey-providers.md)
+- [Agent skill](skills/hivey/SKILL.md) — install with `hivey skill install`
+- [Design](docs/hivey-design.md)
+
+## Development
 
 ```bash
 cargo build --release
@@ -46,14 +105,10 @@ just check       # formatting, tests, and maintenance checks
 python3 scripts/third_party_licenses.py   # regenerate THIRD_PARTY_LICENSES.md after dependency changes
 ```
 
-If you are an AI agent working in this repository, read [`HIVEY.md`](./HIVEY.md) and
-[`AGENTS.md`](./AGENTS.md) first.
+If you are an AI agent working in this repository, read [`HIVEY.md`](HIVEY.md) and [`AGENTS.md`](AGENTS.md) first. Hivey's fork-specific guidance is in `HIVEY.md`.
 
-## credits and license
+## Credits and license
 
-hivey is based on [herdr](https://github.com/herdrdev/herdr), Copyright the herdr authors,
-licensed under the Apache License 2.0. hivey is not affiliated with or endorsed by the herdr
-project; "herdr" is used only to describe where this code comes from. See [`NOTICE`](NOTICE).
+Hivey is based on [herdr](https://github.com/herdrdev/herdr), Copyright the herdr authors, licensed under the Apache License 2.0. Hivey is not affiliated with or endorsed by the herdr project; “herdr” describes where this code comes from. See [`NOTICE`](NOTICE).
 
-hivey is licensed under the [Apache License 2.0](LICENSE). Third-party components and their
-licenses are listed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+Hivey is licensed under the [Apache License 2.0](LICENSE). Third-party components and their licenses are listed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
