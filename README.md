@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Hivey H logo" width="100" />
+  <img src="assets/hivey-h.svg" alt="Hivey H logo" width="100" />
 </p>
 
 # Hivey
