@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="Hivey" width="100" />
+  <img src="assets/logo.svg" alt="Hivey H logo" width="100" />
 </p>
 
 # Hivey
@@ -12,7 +12,9 @@ Hivey is a terminal workspace and coordinating agent for swarms of AI agents. Ta
 
 Run teams with **Claude Code and Codex**, exchange findings across swarms, and stay in touch through **Slack**. Keep reusable knowledge in **Obsidian**, extend the workspace with plugins, and share useful setups through **Skylls**.
 
-[Website](https://hivey.dev) · [Install](#install) · [User guide](docs/hivey-guide.md) · [Watch the introduction](https://hivey.dev/#film)
+[Website](https://hivey.dev) · [Install](#install) · [User guide](docs/hivey-guide.md) · [Watch the introduction](#meet-hivey)
+
+### Meet Hivey
 
 https://github.com/user-attachments/assets/2091568c-07b5-41f2-810c-9c0834372812
 
@@ -33,12 +35,12 @@ You do not need to prompt every swarm yourself. When you want more detail, talk 
 | --- | --- |
 | Claude Code + Codex | Agent support for teams with different roles. |
 | Swarm messaging | Address agents, roles, or a whole swarm, with queued delivery, inboxes, and message history. Coordinators handle communication across swarms. |
-| Slack | Talk to Hivey in its channel and to each swarm's coordinator in that swarm's channel. |
+| Slack | Once connected, talk to Hivey in its channel and to each swarm's coordinator in that swarm's channel. |
 | Scheduled check-ins | Wake an idle coordinator at configured times. |
-| Obsidian memory | Keep sources, findings, decisions, and reusable knowledge in linked Markdown pages within each swarm's vault. |
+| Obsidian memory | Optionally give a swarm a local Markdown wiki for sources, findings, decisions, and reusable knowledge. Open its vault in Obsidian. |
 | Skills + plugins | Extend swarm creation, agent setup, dashboards, integrations, and repeatable workflows. |
-| EnvSave | Retrieve configured credentials without pasting API keys into swarm prompts. |
-| Skylls | Share and import skills, agents, and whole swarm setups through a separate platform. |
+| EnvSave | Configure integrations such as the Slack relay to retrieve credentials with an external `envsave` command. |
+| Skylls | With the separate Skylls tool installed and configured, share and import skills, agents, and whole swarm setups. |
 | Hivey pet + voice | An optional macOS companion that reacts to agent activity and can speak updates aloud. |
 | herdr runtime | The terminal foundation for panes, sessions, and agent workspaces. |
 
@@ -58,7 +60,7 @@ Hivey integrates with **[Skylls](https://skylls.dev/)**, a separate website and 
 
 Hivey installs from source on **macOS or Linux**.
 
-Before starting, install **Git, Rust/Cargo, Zig 0.16.0, Python 3, and Node.js**. The Hivey lead-agent setup uses Claude Code; configure your chosen agents and their access separately. See [`install.sh`](install.sh) for the current requirements and setup options.
+Before starting, install **Git, Rust/Cargo, Zig 0.16.0, and Python 3**. Install **Node.js/npx** for the installer’s skill-library setup. The Hivey lead-agent setup uses Claude Code; configure your chosen agents and their access separately. See [`install.sh`](install.sh) for the current requirements and setup options.
 
 ```bash
 git clone https://github.com/alyssaaa11/hivey.git ~/hivey
@@ -67,6 +69,8 @@ cd ~/hivey
 ```
 
 The installer builds Hivey, links bundled plugins, installs its skill, and walks you through the lead agent and optional integrations. To skip the interactive setup, use `./install.sh --no-setup`.
+
+The default install location is `~/.local/bin/hivey`. If your shell cannot find `hivey`, add `~/.local/bin` to your PATH as the installer explains.
 
 Start Hivey where your work lives:
 

@@ -1,10 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="hivey">
-  <title>hivey</title>
-  <!-- hivey logo: a hive of three cells around a centre cell -->
-  <g stroke="#1f1a12" stroke-width="3" stroke-linejoin="round">
-    <polygon points="60,14 80,25.5 80,48.5 60,60 40,48.5 40,25.5" fill="#f5b82e"/>
-    <polygon points="39,50 59,61.5 59,84.5 39,96 19,84.5 19,61.5" fill="#f5b82e"/>
-    <polygon points="81,50 101,61.5 101,84.5 81,96 61,84.5 61,61.5" fill="#f5b82e"/>
-    <polygon points="60,52 70,57.75 70,69.25 60,75 50,69.25 50,57.75" fill="#1f1a12"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" width="120" height="120" role="img" aria-labelledby="hivey-title"><title id="hivey-title">Hivey H logo</title><rect width="40" height="40" rx="9" fill="#9befc8"/><path d="M10 9h7v9h6V9h7v23h-7V22h-6v10h-7z" fill="#122319"/></svg>
