@@ -14,9 +14,7 @@ Run teams with **Claude Code and Codex**, exchange findings across swarms, and s
 
 [Website](https://hivey.dev) · [Install](#install) · [User guide](docs/hivey-guide.md) · [Watch the introduction](https://hivey.dev/#film)
 
-[![Watch Meet Hivey — a 20-second character introduction](assets/hivey-video-poster.jpg)](https://hivey.dev/#film)
-
-**[Play the introduction on hivey.dev](https://hivey.dev/#film)** · [Open the MP4](https://github.com/alyssaaa11/hivey/raw/refs/heads/main/assets/hivey-h1.mp4)
+https://github.com/user-attachments/assets/2091568c-07b5-41f2-810c-9c0834372812
 
 *Meet the little H behind your team. This is a stylized character introduction, not a recording of the terminal.*
 
