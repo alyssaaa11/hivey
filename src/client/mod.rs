@@ -1575,6 +1575,8 @@ async fn run_client_loop(
                             let _ = stdout.flush();
                         }
                     }
+                    // hivey: quiet mode rings no bell (the host terminal would play its alert)
+                    ServerMessage::TerminalBell { .. } if crate::swarm::quiet::is_on() => {}
                     ServerMessage::TerminalBell { count } => {
                         if let Err(err) =
                             crate::terminal_effects::write_terminal_bells(&mut io::stdout(), count)
