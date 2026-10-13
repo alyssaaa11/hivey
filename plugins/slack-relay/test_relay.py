@@ -1,5 +1,6 @@
 """Tests for the hivey Slack relay: python3 -m unittest plugins/slack-relay/test_relay.py"""
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -7,6 +8,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import relay  # noqa: E402
+
+# Never the real ~/.hivey (its quiet mode, its held posts)
+os.environ["HIVEY_HOME"] = tempfile.mkdtemp()
 
 MANIFEST = {
     "slug": "ideas",
@@ -122,6 +126,86 @@ class RoundTrip(unittest.TestCase):
             again.step()
             self.assertEqual(len(slack.posted), 1)
             self.assertEqual(len(hivey.sent), 1)
+
+
+class QuietMode(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        (self.root / ".swarm").mkdir()
+        (self.root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
+        self.bus = self.root / ".swarm" / "bus.jsonl"
+        self.bus.write_text("")
+        self.slack, self.hivey = FakeSlack(), FakeHivey(self.bus)
+        self.quiet = True
+        self.direct = []  # posts agents held through swarm_slack.py
+
+        def held_posts(channel):
+            taken, self.direct[:] = list(self.direct), []
+            return taken
+
+        self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "masters",
+                                 quiet=lambda: self.quiet, held_posts=held_posts)
+        self.relay.state["last_ts"] = "0"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def agent_reports(self, text):
+        with open(self.bus, "a") as f:
+            f.write(json.dumps({"ev": "msg", "id": text, "from": "ideas/scout",
+                                "to": "coordinator", "swarm": "ideas", "text": text}) + "\n")
+
+    def test_holds_posts_then_sends_one_catch_up(self):
+        self.slack.inbox.append({"ts": "1.000000", "text": "@scout keep going overnight"})
+        self.agent_reports("found 3")
+        self.relay.step()
+        self.agent_reports("found 5")
+        self.direct.append("*[scout]* posted directly")
+        self.relay.step()
+        self.assertEqual(self.slack.posted, [], "nothing reaches Slack in quiet mode")
+        self.assertEqual(len(self.hivey.sent), 1, "Slack → bus keeps working")
+        # Held posts survive a relay restart
+        self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "masters",
+                                 quiet=lambda: self.quiet, held_posts=lambda _channel: [])
+        self.quiet = False
+        self.agent_reports("found 8")
+        self.relay.step()
+        self.assertEqual(len(self.slack.posted), 2)
+        catch_up, after = self.slack.posted
+        self.assertTrue(catch_up.startswith("🌙 *Quiet mode ended: 2 updates"))
+        self.assertIn("found 3", catch_up)
+        self.assertIn("found 5", catch_up)
+        self.assertIn("found 8", after)
+        self.relay.step()
+        self.assertEqual(len(self.slack.posted), 2, "the catch-up is sent once")
+        self.assertEqual(len(self.hivey.sent), 1, "our catch-up post is not injected back")
+
+    def test_catch_up_includes_direct_posts(self):
+        self.direct.append("*[scout]* posted directly")
+        self.quiet = False
+        self.relay.step()
+        self.assertEqual(len(self.slack.posted), 1)
+        self.assertIn("1 update while", self.slack.posted[0])
+        self.assertIn("posted directly", self.slack.posted[0])
+
+    def test_catch_up_is_bounded(self):
+        message = relay.format_catch_up([f"line {n}" for n in range(100)])
+        self.assertIn("100 updates", message)
+        self.assertIn("last 40", message)
+        self.assertNotIn("line 59\n", message)
+        self.assertTrue(message.endswith("line 99"))
+
+
+class HeldPostFiles(unittest.TestCase):
+    def test_take_held_posts_claims_the_channel_file_once(self):
+        held = relay.hivey_dir() / "quiet-held"
+        held.mkdir(parents=True, exist_ok=True)
+        (held / "C9.jsonl").write_text(json.dumps({"text": "*[a]* one"}) + "\nnot json\n"
+                                       + json.dumps({"text": "*[b]* two"}) + "\n")
+        self.assertEqual(relay.take_held_posts("C9"), ["*[a]* one", "*[b]* two"])
+        self.assertEqual(relay.take_held_posts("C9"), [])
+        self.assertEqual(list(held.iterdir()), [])
 
 
 if __name__ == "__main__":

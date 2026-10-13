@@ -28,6 +28,8 @@ impl WindowMarker {
             .map(|()| path)
             .map_err(|err| tracing::debug!(%err, "hivey window marker"))
             .ok();
+        // The hivey menu's quiet mode label
+        crate::swarm::quiet::is_on();
         if PETS_SUPPORTED {
             run_in_background(&["pet", "show"]);
         }

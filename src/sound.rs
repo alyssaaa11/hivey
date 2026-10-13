@@ -42,6 +42,10 @@ pub fn play(sound: Sound, config: &crate::config::SoundConfig) {
     if sound_playback_disabled_by_env() {
         return;
     }
+    // hivey: quiet mode plays no sounds
+    if crate::swarm::quiet::is_on() {
+        return;
+    }
 
     let custom_path = config.path_for(sound);
     std::thread::spawn(move || {

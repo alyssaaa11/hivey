@@ -6,6 +6,8 @@ pub(super) enum ClientGlobalMenuAction {
     WhatsNew,
     /// hivey: settings, opened on the pets tab
     Pets,
+    /// hivey: quiet mode on/off (no voice, no sounds, Slack posts held)
+    Quiet,
 }
 
 pub(super) fn global_menu_attention(snapshot: &ClientShellSnapshot) -> bool {
@@ -53,6 +55,14 @@ pub(super) fn global_menu_items(
         ClientGlobalMenuAction::Binding(crate::input::KeybindAction::Detach),
     ));
     // hivey: last, so herdr's items keep their places
+    items.push((
+        if crate::swarm::quiet::cached() {
+            "quiet mode on"
+        } else {
+            "quiet mode off"
+        },
+        ClientGlobalMenuAction::Quiet,
+    ));
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));
     }
@@ -64,6 +74,8 @@ impl ClientShellState {
         if matches!(self.overlay, Some(ClientShellOverlay::GlobalMenu(_))) {
             self.overlay = None;
         } else {
+            // hivey: the quiet mode label shows the file's state, read once per opening
+            crate::swarm::quiet::is_on();
             self.overlay = Some(ClientShellOverlay::GlobalMenu(ClientGlobalMenuOverlay {
                 highlighted: 0,
             }));
@@ -104,6 +116,15 @@ impl ClientShellState {
         {
             return;
         }
+        // hivey: the menu stays open, so its label shows the new state
+        if action == ClientGlobalMenuAction::Quiet {
+            let on = !crate::swarm::quiet::is_on();
+            if let Err(err) = crate::swarm::quiet::set(on) {
+                tracing::warn!(%err, on, "hivey quiet mode");
+            }
+            outcome.repaint = true;
+            return;
+        }
         self.overlay = None;
         match action {
             ClientGlobalMenuAction::Binding(binding) => {
@@ -114,6 +135,7 @@ impl ClientShellState {
                 self.open_settings_overlay();
                 self.select_settings_section(ClientSettingsSection::Pets, outcome);
             }
+            ClientGlobalMenuAction::Quiet => {}
         }
         outcome.repaint = true;
     }

@@ -314,8 +314,11 @@ fn in_quiet_hours(hours: Option<(u8, u8)>, hour: u8) -> bool {
     }
 }
 
-/// Whether it is quiet hours now.
+/// Whether it is quiet hours now, or quiet mode is on.
 pub(crate) fn quiet_now() -> bool {
+    if crate::swarm::quiet::is_on() {
+        return true;
+    }
     let hour = (crate::swarm::schedule::local_now().minute / 60) as u8;
     in_quiet_hours(quiet_hours(), hour)
 }

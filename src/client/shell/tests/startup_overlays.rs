@@ -1468,3 +1468,34 @@ fn global_menu_opens_settings_on_the_pets_tab() {
         }))
     ));
 }
+
+/// hivey: the menu's quiet mode item toggles `~/.hivey/quiet` and stays open to show it.
+#[test]
+fn global_menu_toggles_quiet_mode() {
+    use super::super::global_menu::{global_menu_items, ClientGlobalMenuAction};
+    let dir = std::env::temp_dir().join(format!("hivey-menu-quiet-{}", std::process::id()));
+    let file = dir.join("quiet");
+    crate::swarm::quiet::use_path_for_test(file.clone());
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.toggle_global_menu();
+    let items = global_menu_items(state.snapshot.as_deref().expect("snapshot"));
+    let index = items
+        .iter()
+        .position(|(_, action)| *action == ClientGlobalMenuAction::Quiet)
+        .expect("quiet mode item");
+    assert_eq!(items[index].0, "quiet mode off");
+    let mut outcome = ClientShellInput::default();
+    state.activate_global_menu_item(index, &mut outcome);
+    assert!(file.exists());
+    assert!(matches!(
+        state.overlay,
+        Some(ClientShellOverlay::GlobalMenu(_))
+    ));
+    let items = global_menu_items(state.snapshot.as_deref().expect("snapshot"));
+    assert_eq!(items[index].0, "quiet mode on");
+    state.activate_global_menu_item(index, &mut outcome);
+    assert!(!file.exists());
+    let _ = std::fs::remove_dir_all(dir);
+}

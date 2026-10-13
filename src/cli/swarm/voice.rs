@@ -14,8 +14,9 @@ usage: hivey voice                        the provider, its voice and quiet hour
        hivey voice quiet START-END|off    local hours when nothing is spoken, e.g. 22-8
        hivey voice volume [N|reset]       how loud: 1 is normal, 1.5 or 150% is louder (up to
                                           4; high values may distort), 0.5 quieter
-       hivey voice say [text…]            speak it now, or stdin without text (silent when off
-                                          or in quiet hours; lines queue, never overlap)
+       hivey voice say [text…]            speak it now, or stdin without text (silent when off,
+                                          in quiet hours or quiet mode; lines queue, never
+                                          overlap)
        hivey voice test                   speak a sample, even in quiet hours
   provider, use and volume take --test to speak a sample after saving (hivey settings does).
   Also in hivey settings → voice. Settings live in ~/.hivey/voice.json.";
@@ -43,6 +44,9 @@ fn status() -> i32 {
     match voice::quiet_hours() {
         Some((start, end)) => println!("quiet:    {start}:00 to {end}:00"),
         None => println!("quiet:    never"),
+    }
+    if crate::swarm::quiet::is_on() {
+        println!("          quiet mode is on: silent until `hivey quiet off`");
     }
     println!("volume:   {}", volume_label(voice::volume()));
     0

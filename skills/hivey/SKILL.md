@@ -178,6 +178,17 @@ says the important ones aloud; right-click it for Switch pet / Turn off pet / Sp
 Sources: `pets/<id>/` + `pets/shared/HiveyWatch.swift` in the hivey repo. Only switch or turn
 it off when the user asks.
 
+## Quiet mode
+
+```bash
+hivey quiet on|off                # also hivey menu → quiet mode on/off; `hivey quiet`: status
+hivey voice quiet 22-8            # or: no voice every night at those hours (voice only)
+```
+While on (`~/.hivey/quiet` exists): nothing is spoken (pet, agents' summaries), hivey plays no
+notification sounds, and Slack posts are held: the relay and `swarm_slack.py post` hold them and
+send one catch-up message when it ends. Agents keep working, and Slack → agents still works.
+Only turn it on or off when the user asks.
+
 ## The hivey agent (`hivey home`)
 
 An always-on Claude in `~/.hivey/agent` (solo agent `hivey`, ⬢ mauve, first space): the user's

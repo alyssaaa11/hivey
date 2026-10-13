@@ -44,6 +44,25 @@ You do not need to prompt every swarm yourself. When you want more detail, talk 
 | Hivey pet + voice | An optional macOS companion that reacts to agent activity and can speak updates aloud. |
 | herdr runtime | The terminal foundation for panes, sessions, and agent workspaces. |
 
+### Quiet nights: quiet mode and quiet hours
+
+Swarms can keep working while you sleep without waking you up.
+
+**Quiet mode** is one switch for everything. Open the hivey menu (bottom right) and click **quiet mode off** to turn it on, or run `hivey quiet on`. While it is on:
+
+- the pet and agents' spoken summaries stay silent (speech bubbles still show)
+- hivey plays no notification sounds
+- Slack posts are held, and when you turn it off they arrive as one catch-up message
+- agents keep working, and anything you write in Slack still reaches them
+
+Turn it off the same way, or with `hivey quiet off`.
+
+**Quiet hours** silence only the voice at the same hours every night, for example from 22:00 to 08:00:
+
+```bash
+hivey voice quiet 22-8     # turn off with: hivey voice quiet off
+```
+
 ### Memory that outlives a chat
 
 Swarms can maintain a wiki you can open in Obsidian: original sources, linked knowledge, decisions, and lessons that inform the next task. The approach is inspired by [Karpathy's LLM Wiki as agent memory](https://aaif.io/blog/karpathys-llm-wiki-as-agent-memory). Memory lives in files you and your agents can inspect and maintain.

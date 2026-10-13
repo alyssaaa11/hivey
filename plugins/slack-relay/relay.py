@@ -9,6 +9,10 @@ Slack → bus   Human messages in the channel become bus messages from `human`:
 bus → Slack   Bus messages are mirrored into the channel. Scope (config "mirror"):
               "masters" (default: only messages to/from a master or the human),
               "all", or "off". Messages that came from Slack are never echoed.
+Quiet mode    While ~/.hivey/quiet exists (hivey menu → quiet mode, `hivey quiet on`), bus →
+              Slack posts are held; when it ends they go out as one catch-up message, with
+              posts agents held through swarm_slack.py (~/.hivey/quiet-held/<channel>.jsonl).
+              Slack → bus keeps working.
 
 Environment (set by `hivey swarm launch --addon hivey.slack-relay`):
   HIVEY_SWARM_ROOT     swarm folder (required)   HIVEY_SWARM_SLUG   swarm slug
@@ -38,6 +42,8 @@ ROLE_EMOJI = {"master": "🧭", "critic": "🧐", "script": "⚙️"}
 FIXED_EMOJI = {"human": "👤", "hivey": "⚙️"}
 PALETTE = ["🦊", "🐙", "🦉", "🐝", "🦄", "🐬", "🦖", "🐢", "🦜", "🐳", "🦋", "🐧"]
 KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
+KEEP_HELD = 500  # posts held in quiet mode
+CATCH_UP_LINES = 40  # lines in the catch-up message; the rest are counted
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +128,15 @@ def format_mirror(message, roles, slug):
     kind = {"fyi": " _(fyi)_", "urgent": " *(urgent)*"}.get(message.get("kind"), "")
     return (f"{emoji(message.get('from', '?'), roles)} *{short(message.get('from', '?'))} → "
             f"{short(target)}*{kind}: {message.get('text', '')}")
+
+
+def format_catch_up(lines):
+    """The one message that replaces the posts held while quiet mode was on."""
+    shown = [line if len(line) <= 600 else line[:600] + "…" for line in lines[-CATCH_UP_LINES:]]
+    head = f"🌙 *Quiet mode ended: {len(lines)} update{'s' if len(lines) != 1 else ''} while it was on*"
+    if len(lines) > len(shown):
+        head += f" _(last {len(shown)}; all of them: `hivey msg log`)_"
+    return "\n".join([head] + shown)
 
 
 def new_bus_messages(path, offset):
@@ -211,14 +226,43 @@ def resolve_token(config):
     return out.stdout.strip() or None
 
 
+def hivey_dir():
+    return Path(os.environ.get("HIVEY_HOME") or Path.home() / ".hivey")
+
+
+def quiet_mode_on():
+    return (hivey_dir() / "quiet").exists()
+
+
+def take_held_posts(channel):
+    """Posts agents held through swarm_slack.py in quiet mode for this channel (claimed by
+    renaming the file, so a concurrent writer starts a new one)."""
+    path = hivey_dir() / "quiet-held" / f"{channel}.jsonl"
+    claimed = path.with_suffix(f".{os.getpid()}.claimed")
+    try:
+        path.replace(claimed)
+    except FileNotFoundError:
+        return []
+    texts = []
+    for line in claimed.read_text().splitlines():
+        try:
+            texts.append(json.loads(line)["text"])
+        except (json.JSONDecodeError, KeyError, TypeError):
+            continue
+    claimed.unlink()
+    return texts
+
+
 def log(line):
     print(f"{time.strftime('%H:%M:%S')} {line}", flush=True)
 
 
 class Relay:
-    def __init__(self, root, slack, hivey, channel, scope):
+    def __init__(self, root, slack, hivey, channel, scope, quiet=quiet_mode_on,
+                 held_posts=take_held_posts):
         self.root, self.slack, self.hivey = Path(root), slack, hivey
         self.channel, self.scope = channel, scope
+        self.quiet, self.held_posts = quiet, held_posts
         self.state_path = self.root / ".swarm" / "slack_relay_state.json"
         self.bus_path = self.root / ".swarm" / "bus.jsonl"
         try:
@@ -228,6 +272,7 @@ class Relay:
             self.state = {"last_ts": f"{time.time():.6f}",
                           "bus_offset": self.bus_path.stat().st_size if self.bus_path.exists() else 0,
                           "injected": [], "posted": []}
+        self.state.setdefault("held", [])
 
     def manifest(self):
         return json.loads((self.root / ".swarm" / "agents.json").read_text())
@@ -235,6 +280,7 @@ class Relay:
     def save(self):
         for key in ("injected", "posted"):
             self.state[key] = self.state[key][-KEEP_GUARDS:]
+        self.state["held"] = self.state["held"][-KEEP_HELD:]
         tmp = self.state_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.state))
         tmp.replace(self.state_path)
@@ -254,14 +300,35 @@ class Relay:
                     log(f"slack → bus  failed for {target}: {err}")
 
     def bus_to_slack(self, manifest):
+        quiet = self.quiet()
+        if not quiet:
+            self.catch_up()  # before reading the bus: if it fails, nothing new is lost
         messages, self.state["bus_offset"] = new_bus_messages(self.bus_path, self.state["bus_offset"])
         roles = roster(manifest)
         for message in messages:
             if not should_mirror(message, self.scope, roles, set(self.state["injected"])):
                 continue
-            ts = self.slack.post(self.channel, format_mirror(message, roles, manifest.get("slug", "")))
+            text = format_mirror(message, roles, manifest.get("slug", ""))
+            if quiet:
+                self.state["held"].append(text)
+                log(f"bus → held   {message.get('from')} → {message.get('to')} (quiet mode)")
+                continue
+            ts = self.slack.post(self.channel, text)
             self.state["posted"].append(ts)
             log(f"bus → slack  {message.get('from')} → {message.get('to')}")
+
+    def catch_up(self):
+        """After quiet mode: everything held goes out as one message."""
+        held = self.state["held"] + self.held_posts(self.channel)
+        if not held:
+            return
+        # Saved until posted, so a failed post (or a restart) retries it
+        self.state["held"] = held
+        self.save()
+        ts = self.slack.post(self.channel, format_catch_up(held))
+        self.state["posted"].append(ts)
+        self.state["held"] = []
+        log(f"bus → slack  catch-up of {len(held)} held post(s)")
 
     def step(self):
         manifest = self.manifest()
