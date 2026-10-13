@@ -1,0 +1,101 @@
+# Hivey — a terminal workspace for AI agent swarms
+
+> Hivey helps you create and coordinate swarms of AI agents from one terminal. Each swarm has its own workspace and coordinator; agents can share findings within and across swarms. Hivey runs locally on macOS and Linux, so the machine must stay awake and connected while agents work.
+
+**Reach for Hivey when you need to start an agent team, check a running swarm, send work to its coordinator, or resume one after a restart.** Check the existing swarms before creating another.
+
+Site: https://hivey.dev/ · Docs: https://hivey.dev/docs/ · This file: https://hivey.dev/llms.txt · Source: https://github.com/alyssaaa11/hivey
+
+## 1. For LLMs: install or connect
+
+Hivey is a local CLI, not a hosted agent API. A hosted assistant can explain the commands, but a local coding agent or the user must run them on the machine that will host the swarms.
+
+Install prerequisites first: Git, Rust/Cargo, Zig 0.16.0, Python 3, and Node.js/npx. Configure access to the agent tools you intend to use, such as Claude Code or Codex. Then, on macOS or Linux:
+
+    git clone https://github.com/alyssaaa11/hivey.git ~/hivey
+    cd ~/hivey
+    ./install.sh
+
+The installer builds Hivey, links its bundled plugins, installs its agent skill, and guides interactive setup. Let the user complete logins, credentials, and optional integrations. For a noninteractive install, `./install.sh --no-setup` skips that setup. The default binary path is `~/.local/bin/hivey`; add that directory to PATH if needed.
+
+## 2. Start and inspect
+
+Run Hivey from the directory where the work belongs. Inspect existing sessions and swarms before creating new ones.
+
+    hivey                         # start or attach to the default session
+    hivey session list            # list sessions
+    hivey swarm list              # list swarms, agents, and states
+    hivey swarm info <swarm>      # inspect one swarm
+    hivey swarm providers         # list available setup providers
+
+Detach with Option-Q, or Ctrl-B then Q. Detaching leaves agents running on the awake, connected machine. Run `hivey` to reattach.
+
+## 3. Create and manage a swarm
+
+Creating a swarm starts agent work. Confirm the user's goal and desired workspace before doing so.
+
+    hivey swarm new "<task>"         # design and launch a swarm for the task
+    hivey swarm pause <swarm>        # hold message delivery
+    hivey swarm resume <swarm>       # release queued messages
+    hivey swarm relaunch <swarm>     # restart stopped agents and continue their conversations
+    hivey swarm master <swarm> --focus  # focus the coordinator
+
+Use `hivey swarm list` and `hivey swarm info <swarm>` to report status. A paused swarm still queues messages.
+
+## 4. Message the team
+
+Send a normal message to the coordinator when the user wants to add work or context. Normal messages wait until the agent is idle; inspect the log to confirm delivery.
+
+    hivey msg send <swarm>/coordinator "<message>"
+    hivey msg log --swarm <swarm>
+
+## 5. Schedule and extend work
+
+Use scheduled check-ins when the user wants a coordinator to revisit a task. List existing schedules first.
+
+    hivey swarm schedule list <swarm>
+    hivey swarm schedule add <swarm> --every 2h "<instruction>"
+    hivey swarm schedule remove <swarm> <id>
+
+Plugins add integrations and swarm panes. Inspect installed plugins and providers before depending on one.
+
+    hivey plugin list
+    hivey swarm providers
+    hivey swarm addon <swarm> <plugin-id>
+
+Slack, Obsidian memory, Skylls sharing, and the macOS pet are optional. They need their own setup; do not assume they are configured.
+
+## 6. Rules for AI agents
+
+1. Start with `hivey session list`, `hivey swarm list`, and `hivey swarm info <swarm>` when a swarm already exists.
+2. Ask before starting or stopping agents, deleting a session, publishing or sharing a setup, or changing credentials and integrations.
+3. Prefer detaching and reattaching over stopping a session. Stopping a session stops its agents.
+4. Do not invent credentials, provider IDs, plugin IDs, or swarm names. Discover them with the CLI.
+5. If a command is unavailable, check `hivey --help` and the current guide; installed versions may differ from this file.
+6. Report what the user can now do, the swarm or session involved, and any action still needed from them.
+
+## 7. Command reference
+
+    hivey session list                  list sessions
+    hivey session attach <name>         attach to a session
+    hivey swarm list                    list swarms and agent states
+    hivey swarm info <swarm>            inspect a swarm
+    hivey swarm new "<task>"             create a task-focused swarm
+    hivey swarm pause|resume <swarm>    control message delivery
+    hivey swarm relaunch <swarm>        continue stopped agents
+    hivey msg send <swarm>/coordinator "<message>"  message a coordinator
+    hivey swarm schedule list <swarm>   inspect check-ins
+    hivey plugin list                   inspect installed plugins
+    hivey update                        update the local installation
+
+## 8. Links
+
+- [Website documentation](https://hivey.dev/docs/): install and everyday use.
+- [README](https://github.com/alyssaaa11/hivey/blob/main/README.md): product overview and prerequisites.
+- [Full user guide](https://github.com/alyssaaa11/hivey/blob/main/docs/hivey-guide.md): setup, commands, and troubleshooting.
+- [Plugin guide](https://github.com/alyssaaa11/hivey/blob/main/plugins/README.md): plugin development and configuration.
+
+## Notes
+
+- The installed `hivey --help`, `hivey swarm providers`, and `hivey plugin list` are the source of truth for the current machine.
+- Re-fetch https://hivey.dev/llms.txt when using a cached copy; commands and integrations may change.
