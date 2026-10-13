@@ -1499,3 +1499,42 @@ fn global_menu_toggles_quiet_mode() {
     assert!(!file.exists());
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// hivey: settings → quiet saves quiet mode's daily hours and shows them.
+#[test]
+fn quiet_tab_saves_the_schedule() {
+    use crate::swarm::quiet;
+    let dir = std::env::temp_dir().join(format!("hivey-settings-quiet-{}", std::process::id()));
+    quiet::use_path_for_test(dir.join("quiet"));
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut outcome = ClientShellInput::default();
+    state.open_settings_overlay();
+    state.select_settings_section(ClientSettingsSection::Quiet, &mut outcome);
+    let index = quiet::SCHEDULE_CHOICES
+        .iter()
+        .position(|hours| *hours == Some((22, 7)))
+        .expect("22-7 offered");
+    state.select_settings_choice(index);
+    state.apply_settings_choice(&mut outcome);
+    assert_eq!(quiet::schedule(), Some((22, 7)));
+    let frame = state.compose(120, 34).expect("settings");
+    let text = frame
+        .cells
+        .chunks(frame.width as usize)
+        .map(|row| {
+            row.iter()
+                .map(|cell| cell.symbol.as_str())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("quiet mode hours"));
+    assert!(text.contains("22:00 → 07:00"));
+    assert!(text.contains("quiet mode turns on at 22:00 and off at 07:00 every day"));
+    state.select_settings_choice(0);
+    state.apply_settings_choice(&mut outcome);
+    assert_eq!(quiet::schedule(), None);
+    let _ = std::fs::remove_dir_all(dir);
+}

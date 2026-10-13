@@ -395,6 +395,8 @@ pub(super) enum ClientSettingsSection {
     Integrations,
     // hivey: who reads agents' spoken summaries, and with which voice
     Voice,
+    // hivey: quiet mode's daily hours
+    Quiet,
     // hivey: the desktop pet
     Pets,
     // hivey: the swarm and agent creators `hivey swarm new` uses, and the skills plugin
@@ -411,6 +413,7 @@ impl ClientSettingsSection {
         Self::Toast,
         Self::Integrations,
         Self::Voice,
+        Self::Quiet,
         Self::Pets,
         Self::Plugins,
         Self::Skills,
@@ -424,6 +427,7 @@ impl ClientSettingsSection {
             Self::Toast => "toasts",
             Self::Integrations => "integrations",
             Self::Voice => "voice",
+            Self::Quiet => "quiet",
             Self::Pets => "pets",
             Self::Plugins => "plugins",
             Self::Skills => "skills",
@@ -465,6 +469,11 @@ pub(super) struct ClientSettingsOverlay {
     /// The playback volume (1.0 normal), saved with `hivey voice volume`.
     pub(super) voice_volume: f64,
     pub(super) voice_message: Option<String>,
+    /// hivey: settings → quiet: quiet mode's daily hours (`~/.hivey/quiet.json`), whether it
+    /// is on now, and what the last choice did.
+    pub(super) quiet_schedule: Option<(u8, u8)>,
+    pub(super) quiet_on: bool,
+    pub(super) quiet_message: Option<String>,
 }
 
 #[derive(Debug)]

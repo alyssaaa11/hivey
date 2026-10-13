@@ -51,13 +51,15 @@ Swarms can keep working while you sleep without waking you up.
 **Quiet mode** is one switch for everything. Open the hivey menu (bottom right) and click **quiet mode off** to turn it on, or run `hivey quiet on`. While it is on:
 
 - the pet and agents' spoken summaries stay silent (speech bubbles still show)
-- hivey plays no notification sounds
+- hivey plays no notification sounds or terminal bell
 - Slack posts are held, and when you turn it off they arrive as one catch-up message
 - agents keep working, and anything you write in Slack still reaches them
 
 Turn it off the same way, or with `hivey quiet off`.
 
-**Quiet hours** silence only the voice at the same hours every night, for example from 22:00 to 08:00:
+**Quiet mode on a schedule:** so you don't have to press it every night, open **settings → quiet** and pick your hours, for example **22:00 → 07:00**. Quiet mode then turns on and off by itself every day, even with every hivey window closed. You can still switch it by hand; your choice lasts until the next start or end. Any other hours: `hivey quiet schedule 20-6` (`hivey quiet schedule off` to stop).
+
+**Voice quiet hours** silence only the voice at the same hours every night, for example from 22:00 to 08:00:
 
 ```bash
 hivey voice quiet 22-8     # turn off with: hivey voice quiet off

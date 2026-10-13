@@ -261,6 +261,34 @@ impl ClientShellState {
         outcome.repaint = true;
     }
 
+    /// Saves quiet mode's daily hours (applied now: quiet mode goes on when it is inside them).
+    fn choose_quiet(&mut self, selected: usize, outcome: &mut ClientShellInput) {
+        use crate::swarm::quiet;
+        let Some(&hours) = quiet::SCHEDULE_CHOICES.get(selected) else {
+            return;
+        };
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        if settings.quiet_schedule == hours {
+            return;
+        }
+        settings.quiet_message = Some(match quiet::set_schedule(hours) {
+            Ok(()) => {
+                settings.quiet_schedule = hours;
+                match hours {
+                    Some((start, end)) => format!(
+                        "quiet mode turns on at {start:02}:00 and off at {end:02}:00 every day"
+                    ),
+                    None => "no schedule: switch quiet mode in the hivey menu".to_string(),
+                }
+            }
+            Err(err) => format!("could not save the schedule: {err}"),
+        });
+        settings.quiet_on = quiet::is_on();
+        outcome.repaint = true;
+    }
+
     pub(super) fn open_settings_overlay(&mut self) {
         self.overlay = Some(ClientShellOverlay::Settings(ClientSettingsOverlay {
             section: ClientSettingsSection::Theme,
@@ -285,6 +313,9 @@ impl ClientShellState {
             voice_current: crate::swarm::voice::voice(crate::swarm::voice::provider()),
             voice_volume: crate::swarm::voice::volume(),
             voice_message: None,
+            quiet_schedule: crate::swarm::quiet::schedule(),
+            quiet_on: crate::swarm::quiet::is_on(),
+            quiet_message: None,
         }));
     }
 
@@ -306,6 +337,13 @@ impl ClientShellState {
                 use crate::swarm::voice;
                 let provider = voice::provider();
                 voice::choice_index(provider, voice::voice(provider).as_deref()).unwrap_or(0)
+            }
+            ClientSettingsSection::Quiet => {
+                let current = crate::swarm::quiet::schedule();
+                crate::swarm::quiet::SCHEDULE_CHOICES
+                    .iter()
+                    .position(|hours| *hours == current)
+                    .unwrap_or(0)
             }
             ClientSettingsSection::Plugins => 0,
             ClientSettingsSection::Skills => 0,
@@ -377,6 +415,7 @@ impl ClientShellState {
                 ClientSettingsSection::Indicators | ClientSettingsSection::Sound => 2,
                 ClientSettingsSection::Toast => 4,
                 ClientSettingsSection::Integrations => settings.integrations.len(),
+                ClientSettingsSection::Quiet => crate::swarm::quiet::SCHEDULE_CHOICES.len(),
                 ClientSettingsSection::Pets if PETS_SUPPORTED => PET_CHOICES.len(),
                 ClientSettingsSection::Pets => 0,
                 ClientSettingsSection::Voice => {
@@ -511,6 +550,7 @@ impl ClientShellState {
             ClientSettingsSection::Integrations => self.install_recommended_integrations(outcome),
             ClientSettingsSection::Voice => self.choose_voice(selected, outcome),
             ClientSettingsSection::Pets => self.choose_pet(selected, outcome),
+            ClientSettingsSection::Quiet => self.choose_quiet(selected, outcome),
             ClientSettingsSection::Plugins => self.choose_creator(selected, outcome),
             ClientSettingsSection::Skills => self.choose_skills_setting(selected, outcome),
         }

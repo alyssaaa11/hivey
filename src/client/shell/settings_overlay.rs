@@ -205,6 +205,9 @@ pub(super) fn render_settings_overlay(
         ClientSettingsSection::Voice => {
             render_voice(buffer, content, settings, palette, &mut choice_hits);
         }
+        ClientSettingsSection::Quiet => {
+            render_quiet(buffer, content, settings, palette, &mut choice_hits);
+        }
         ClientSettingsSection::Pets => {
             render_pets(buffer, content, settings, palette, &mut choice_hits);
         }
@@ -461,6 +464,65 @@ fn render_voice(
             Style::default().fg(color).bg(palette.panel_bg),
         );
         y += 1;
+    }
+}
+
+/// hivey: quiet mode's daily hours (✓ marks the current schedule).
+fn render_quiet(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    use crate::swarm::quiet;
+    let labels: Vec<String> = quiet::SCHEDULE_CHOICES
+        .iter()
+        .map(|hours| match hours {
+            Some(_) => format!("{:<15} every day", quiet::describe(*hours)),
+            None => format!("{:<15} switch it yourself in the hivey menu", "no schedule"),
+        })
+        .collect();
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let current = quiet::SCHEDULE_CHOICES
+        .iter()
+        .position(|hours| *hours == settings.quiet_schedule);
+    render_choice_section(
+        buffer,
+        area,
+        "quiet mode hours",
+        "quiet mode turns on and off by itself: no voice, no sounds, Slack posts held",
+        &labels,
+        settings.selected,
+        current,
+        palette,
+        hits,
+    );
+    let mut lines = Vec::new();
+    if let Some(message) = &settings.quiet_message {
+        lines.push((message.clone(), palette.accent));
+    }
+    let custom = match settings.quiet_schedule {
+        Some(hours) if current.is_none() => format!(" (schedule {})", quiet::describe(Some(hours))),
+        _ => String::new(),
+    };
+    lines.push((
+        format!(
+            "quiet mode is {} now{custom} · other hours: hivey quiet schedule 20-6",
+            if settings.quiet_on { "on" } else { "off" }
+        ),
+        palette.overlay1,
+    ));
+    let top = area.y + 3 + quiet::SCHEDULE_CHOICES.len() as u16 * 2;
+    for (y, (line, color)) in (top..area.bottom()).zip(lines) {
+        put_text(
+            buffer,
+            area.x,
+            y,
+            area.width,
+            &format!(" {line}"),
+            Style::default().fg(color).bg(palette.panel_bg),
+        );
     }
 }
 
@@ -804,6 +866,9 @@ mod tests {
             voice_current: Some("am_michael".into()),
             voice_volume: volume,
             voice_message: None,
+            quiet_schedule: None,
+            quiet_on: false,
+            quiet_message: None,
             pet_current: None,
             pet_message: None,
             creators: Vec::new(),

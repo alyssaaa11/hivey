@@ -305,7 +305,7 @@ pub(crate) fn parse_quiet_hours(text: &str) -> Option<(u8, u8)> {
     Some((start, end))
 }
 
-fn in_quiet_hours(hours: Option<(u8, u8)>, hour: u8) -> bool {
+pub(crate) fn in_quiet_hours(hours: Option<(u8, u8)>, hour: u8) -> bool {
     match hours {
         Some((start, end)) if start == end => false,
         Some((start, end)) if start < end => (start..end).contains(&hour),

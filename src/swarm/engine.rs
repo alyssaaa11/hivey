@@ -394,6 +394,8 @@ fn dispatch(api_tx: &ApiRequestSender, method: Method) -> Result<Value, String> 
 }
 
 fn tick(api_tx: &ApiRequestSender) {
+    // Quiet mode's daily hours, swarms or not
+    super::quiet::tick();
     let Some(engine) = engine() else { return };
     {
         let Ok(mut state) = engine.state.lock() else {
