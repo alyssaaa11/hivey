@@ -467,7 +467,8 @@ fn render_voice(
     }
 }
 
-/// hivey: quiet mode's daily hours (✓ marks the current schedule).
+/// hivey: quiet mode's daily schedule: off / on, then the start and end times with − and +
+/// (✓ marks whether the schedule is on; a selected time row takes a typed time).
 fn render_quiet(
     buffer: &mut Buffer,
     area: Rect,
@@ -476,45 +477,125 @@ fn render_quiet(
     hits: &mut Vec<(Rect, usize)>,
 ) {
     use crate::swarm::quiet;
-    let labels: Vec<String> = quiet::SCHEDULE_CHOICES
-        .iter()
-        .map(|hours| match hours {
-            Some(_) => format!("{:<15} every day", quiet::describe(*hours)),
-            None => format!("{:<15} switch it yourself in the hivey menu", "no schedule"),
-        })
-        .collect();
-    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
-    let current = quiet::SCHEDULE_CHOICES
-        .iter()
-        .position(|hours| *hours == settings.quiet_schedule);
-    render_choice_section(
+    put_text(
         buffer,
-        area,
-        "quiet mode hours",
-        "quiet mode turns on and off by itself: no voice, no sounds, Slack posts held",
-        &labels,
-        settings.selected,
-        current,
-        palette,
-        hits,
+        area.x,
+        area.y,
+        area.width,
+        "quiet mode schedule",
+        Style::default()
+            .fg(palette.text)
+            .bg(palette.panel_bg)
+            .add_modifier(Modifier::BOLD),
     );
+    put_text(
+        buffer,
+        area.x,
+        area.y + 1,
+        area.width,
+        "quiet mode turns on and off by itself every day: no voice, no sounds, Slack posts held",
+        Style::default().fg(palette.overlay1).bg(palette.panel_bg),
+    );
+    let label_style = Style::default().fg(palette.text).bg(palette.panel_bg);
+    let label_width = 12u16;
+    // A button: " ▸ " + label + " ✓", like the other tabs' choices
+    let mut button = |buffer: &mut Buffer, x: u16, y: u16, label: &str, index: usize, current| {
+        let width = label.chars().count() as u16 + 5;
+        if y >= area.bottom() || x + width > area.right() {
+            return x;
+        }
+        let rect = Rect::new(x, y, width, 1);
+        draw_choice(
+            buffer,
+            rect,
+            label,
+            index == settings.selected,
+            current,
+            palette,
+        );
+        hits.push((rect, index));
+        x + width + 1
+    };
+
+    let y = area.y + 3;
+    if y < area.bottom() {
+        put_text(buffer, area.x, y, label_width, " schedule", label_style);
+        let x = button(
+            buffer,
+            area.x + label_width,
+            y,
+            "off",
+            quiet_choice::OFF,
+            !settings.quiet_scheduled,
+        );
+        button(
+            buffer,
+            x,
+            y,
+            "on",
+            quiet_choice::ON,
+            settings.quiet_scheduled,
+        );
+    }
+    let rows = [
+        (
+            " starts at",
+            QuietTime::Start,
+            settings.quiet_times.0,
+            quiet_choice::START_EARLIER,
+        ),
+        (
+            " ends at",
+            QuietTime::End,
+            settings.quiet_times.1,
+            quiet_choice::END_EARLIER,
+        ),
+    ];
+    for (row, (label, time, minute, earlier)) in rows.into_iter().enumerate() {
+        let y = area.y + 5 + row as u16 * 2;
+        if y >= area.bottom() {
+            break;
+        }
+        put_text(buffer, area.x, y, label_width, label, label_style);
+        let x = button(buffer, area.x + label_width, y, "−", earlier, false);
+        // The time, or what is being typed for it while its row is selected
+        let typing = settings
+            .quiet_typing
+            .as_ref()
+            .filter(|(typing, _)| {
+                *typing == time && QuietTime::of_choice(settings.selected) == Some(time)
+            })
+            .map(|(_, text)| format!("{text}_"));
+        let shown = typing.unwrap_or_else(|| quiet::format_time(minute));
+        let time_style = Style::default()
+            .fg(if settings.quiet_scheduled {
+                palette.accent
+            } else {
+                palette.overlay1
+            })
+            .bg(palette.panel_bg)
+            .add_modifier(Modifier::BOLD);
+        put_text(buffer, x, y, 7, &format!(" {shown:<5} "), time_style);
+        button(buffer, x + 8, y, "+", earlier + 1, false);
+    }
+
     let mut lines = Vec::new();
     if let Some(message) = &settings.quiet_message {
         lines.push((message.clone(), palette.accent));
     }
-    let custom = match settings.quiet_schedule {
-        Some(hours) if current.is_none() => format!(" (schedule {})", quiet::describe(Some(hours))),
-        _ => String::new(),
-    };
+    lines.push((
+        "pick a time row and type it (2230, 22:30 or 7), Enter to save · − and + move 30 minutes"
+            .to_string(),
+        palette.overlay1,
+    ));
     lines.push((
         format!(
-            "quiet mode is {} now{custom} · other hours: hivey quiet schedule 20-6",
+            "quiet mode is {} now · switch it yourself any time in the hivey menu",
             if settings.quiet_on { "on" } else { "off" }
         ),
         palette.overlay1,
     ));
-    let top = area.y + 3 + quiet::SCHEDULE_CHOICES.len() as u16 * 2;
-    for (y, (line, color)) in (top..area.bottom()).zip(lines) {
+    for (y, (line, color)) in (area.y + 10..area.bottom()).zip(lines) {
         put_text(
             buffer,
             area.x,
@@ -866,7 +947,9 @@ mod tests {
             voice_current: Some("am_michael".into()),
             voice_volume: volume,
             voice_message: None,
-            quiet_schedule: None,
+            quiet_scheduled: false,
+            quiet_times: crate::swarm::quiet::DEFAULT_TIMES,
+            quiet_typing: None,
             quiet_on: false,
             quiet_message: None,
             pet_current: None,

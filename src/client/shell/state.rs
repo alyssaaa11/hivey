@@ -395,7 +395,7 @@ pub(super) enum ClientSettingsSection {
     Integrations,
     // hivey: who reads agents' spoken summaries, and with which voice
     Voice,
-    // hivey: quiet mode's daily hours
+    // hivey: quiet mode's daily schedule
     Quiet,
     // hivey: the desktop pet
     Pets,
@@ -403,6 +403,35 @@ pub(super) enum ClientSettingsSection {
     Plugins,
     // hivey: online skill search (the skills library is skylls)
     Skills,
+}
+
+/// hivey: settings → quiet's choices, in order (↑ ↓ walk them; the time rows' − and +).
+pub(super) mod quiet_choice {
+    pub(in crate::client::shell) const OFF: usize = 0;
+    pub(in crate::client::shell) const ON: usize = 1;
+    pub(in crate::client::shell) const START_EARLIER: usize = 2;
+    pub(in crate::client::shell) const START_LATER: usize = 3;
+    pub(in crate::client::shell) const END_EARLIER: usize = 4;
+    pub(in crate::client::shell) const END_LATER: usize = 5;
+    pub(in crate::client::shell) const COUNT: usize = 6;
+}
+
+/// hivey: which time of quiet mode's schedule a choice or typed time is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum QuietTime {
+    Start,
+    End,
+}
+
+impl QuietTime {
+    /// The time a settings → quiet choice edits (none for off / on).
+    pub(super) fn of_choice(choice: usize) -> Option<Self> {
+        match choice {
+            quiet_choice::START_EARLIER | quiet_choice::START_LATER => Some(Self::Start),
+            quiet_choice::END_EARLIER | quiet_choice::END_LATER => Some(Self::End),
+            _ => None,
+        }
+    }
 }
 
 impl ClientSettingsSection {
@@ -469,9 +498,12 @@ pub(super) struct ClientSettingsOverlay {
     /// The playback volume (1.0 normal), saved with `hivey voice volume`.
     pub(super) voice_volume: f64,
     pub(super) voice_message: Option<String>,
-    /// hivey: settings → quiet: quiet mode's daily hours (`~/.hivey/quiet.json`), whether it
-    /// is on now, and what the last choice did.
-    pub(super) quiet_schedule: Option<(u8, u8)>,
+    /// hivey: settings → quiet: whether quiet mode's daily schedule is on, its times
+    /// (minutes since midnight; `~/.hivey/quiet.json`), a time being typed (for the start or
+    /// the end), whether quiet mode is on now, and what the last change did.
+    pub(super) quiet_scheduled: bool,
+    pub(super) quiet_times: (u16, u16),
+    pub(super) quiet_typing: Option<(QuietTime, String)>,
     pub(super) quiet_on: bool,
     pub(super) quiet_message: Option<String>,
 }

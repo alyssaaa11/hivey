@@ -261,32 +261,119 @@ impl ClientShellState {
         outcome.repaint = true;
     }
 
-    /// Saves quiet mode's daily hours (applied now: quiet mode goes on when it is inside them).
+    /// settings → quiet: schedule off / on, a time 30 minutes earlier / later, or the time being
+    /// typed. Saved and applied at once (quiet mode goes on when it is inside the times).
     fn choose_quiet(&mut self, selected: usize, outcome: &mut ClientShellInput) {
         use crate::swarm::quiet;
-        let Some(&hours) = quiet::SCHEDULE_CHOICES.get(selected) else {
-            return;
-        };
         let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
             return;
         };
-        if settings.quiet_schedule == hours {
-            return;
+        let (mut scheduled, (mut start, mut end)) =
+            (settings.quiet_scheduled, settings.quiet_times);
+        // A time typed on another row is dropped
+        let typed = settings
+            .quiet_typing
+            .take()
+            .filter(|(time, _)| QuietTime::of_choice(selected) == Some(*time));
+        if let Some((time, text)) = typed {
+            let Some(minute) = quiet::parse_time(&text) else {
+                settings.quiet_message = Some(format!(
+                    "{text:?} is not a time: type it like 2230, 22:30 or 7"
+                ));
+                outcome.repaint = true;
+                return;
+            };
+            match time {
+                QuietTime::Start => start = minute,
+                QuietTime::End => end = minute,
+            }
+        } else {
+            let step = i32::from(quiet::STEP);
+            match selected {
+                quiet_choice::OFF => scheduled = false,
+                quiet_choice::ON => scheduled = true,
+                quiet_choice::START_EARLIER => start = quiet::shift(start, -step),
+                quiet_choice::START_LATER => start = quiet::shift(start, step),
+                quiet_choice::END_EARLIER => end = quiet::shift(end, -step),
+                quiet_choice::END_LATER => end = quiet::shift(end, step),
+                _ => return,
+            }
         }
-        settings.quiet_message = Some(match quiet::set_schedule(hours) {
+        settings.quiet_message = Some(match quiet::save_schedule(scheduled, (start, end)) {
             Ok(()) => {
-                settings.quiet_schedule = hours;
-                match hours {
-                    Some((start, end)) => format!(
-                        "quiet mode turns on at {start:02}:00 and off at {end:02}:00 every day"
-                    ),
-                    None => "no schedule: switch quiet mode in the hivey menu".to_string(),
+                settings.quiet_scheduled = scheduled;
+                settings.quiet_times = (start, end);
+                if !scheduled {
+                    "no schedule: switch quiet mode yourself in the hivey menu".to_string()
+                } else if start == end {
+                    "start and end are the same time: quiet mode never turns on".to_string()
+                } else {
+                    format!(
+                        "quiet mode turns on at {} and off at {} every day",
+                        quiet::format_time(start),
+                        quiet::format_time(end)
+                    )
                 }
             }
             Err(err) => format!("could not save the schedule: {err}"),
         });
         settings.quiet_on = quiet::is_on();
         outcome.repaint = true;
+    }
+
+    /// settings → quiet: typing a time (digits and `:`) on a time row, Backspace, and − / +
+    /// for 30 minutes earlier / later. Enter saves a typed time; 4 digits save it at once.
+    fn route_quiet_key(&mut self, code: KeyCode, outcome: &mut ClientShellInput) -> bool {
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return false;
+        };
+        let Some(time) = QuietTime::of_choice(settings.selected) else {
+            return false;
+        };
+        match code {
+            KeyCode::Char(c) if c.is_ascii_digit() || c == ':' => {
+                let text = match settings.quiet_typing.take() {
+                    Some((typing, text)) if typing == time => text,
+                    _ => String::new(),
+                };
+                let mut text = text;
+                if text.len() < 5 {
+                    text.push(c);
+                }
+                let complete = text.len() == 5 || (text.len() == 4 && !text.contains(':'));
+                settings.quiet_typing = Some((time, text));
+                outcome.repaint = true;
+                if complete {
+                    let selected = settings.selected;
+                    self.choose_quiet(selected, outcome);
+                }
+                true
+            }
+            KeyCode::Backspace => {
+                if let Some((_, text)) = settings.quiet_typing.as_mut() {
+                    text.pop();
+                    if text.is_empty() {
+                        settings.quiet_typing = None;
+                    }
+                    outcome.repaint = true;
+                }
+                true
+            }
+            KeyCode::Char('-' | '+' | '=') => {
+                settings.quiet_typing = None;
+                let later = !matches!(code, KeyCode::Char('-'));
+                let choice = match (time, later) {
+                    (QuietTime::Start, false) => quiet_choice::START_EARLIER,
+                    (QuietTime::Start, true) => quiet_choice::START_LATER,
+                    (QuietTime::End, false) => quiet_choice::END_EARLIER,
+                    (QuietTime::End, true) => quiet_choice::END_LATER,
+                };
+                settings.selected = choice;
+                self.choose_quiet(choice, outcome);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub(super) fn open_settings_overlay(&mut self) {
@@ -313,7 +400,9 @@ impl ClientShellState {
             voice_current: crate::swarm::voice::voice(crate::swarm::voice::provider()),
             voice_volume: crate::swarm::voice::volume(),
             voice_message: None,
-            quiet_schedule: crate::swarm::quiet::schedule(),
+            quiet_scheduled: crate::swarm::quiet::schedule().is_some(),
+            quiet_times: crate::swarm::quiet::schedule_times(),
+            quiet_typing: None,
             quiet_on: crate::swarm::quiet::is_on(),
             quiet_message: None,
         }));
@@ -339,11 +428,11 @@ impl ClientShellState {
                 voice::choice_index(provider, voice::voice(provider).as_deref()).unwrap_or(0)
             }
             ClientSettingsSection::Quiet => {
-                let current = crate::swarm::quiet::schedule();
-                crate::swarm::quiet::SCHEDULE_CHOICES
-                    .iter()
-                    .position(|hours| *hours == current)
-                    .unwrap_or(0)
+                if crate::swarm::quiet::schedule().is_some() {
+                    quiet_choice::ON
+                } else {
+                    quiet_choice::OFF
+                }
             }
             ClientSettingsSection::Plugins => 0,
             ClientSettingsSection::Skills => 0,
@@ -415,7 +504,7 @@ impl ClientShellState {
                 ClientSettingsSection::Indicators | ClientSettingsSection::Sound => 2,
                 ClientSettingsSection::Toast => 4,
                 ClientSettingsSection::Integrations => settings.integrations.len(),
-                ClientSettingsSection::Quiet => crate::swarm::quiet::SCHEDULE_CHOICES.len(),
+                ClientSettingsSection::Quiet => quiet_choice::COUNT,
                 ClientSettingsSection::Pets if PETS_SUPPORTED => PET_CHOICES.len(),
                 ClientSettingsSection::Pets => 0,
                 ClientSettingsSection::Voice => {
@@ -709,6 +798,18 @@ impl ClientShellState {
             && modifiers.difference(KeyModifiers::SHIFT).is_empty()
         {
             self.move_settings_section(-1, outcome);
+            return true;
+        }
+        // hivey: settings → quiet takes typed times and − / +
+        if matches!(
+            self.overlay,
+            Some(ClientShellOverlay::Settings(ClientSettingsOverlay {
+                section: ClientSettingsSection::Quiet,
+                ..
+            }))
+        ) && modifiers.difference(KeyModifiers::SHIFT).is_empty()
+            && self.route_quiet_key(code, outcome)
+        {
             return true;
         }
         if matches!(code, KeyCode::Up | KeyCode::Char('k')) && modifiers.is_empty() {

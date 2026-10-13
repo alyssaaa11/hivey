@@ -57,7 +57,7 @@ Swarms can keep working while you sleep without waking you up.
 
 Turn it off the same way, or with `hivey quiet off`.
 
-**Quiet mode on a schedule:** so you don't have to press it every night, open **settings → quiet** and pick your hours, for example **22:00 → 07:00**. Quiet mode then turns on and off by itself every day, even with every hivey window closed. You can still switch it by hand; your choice lasts until the next start or end. Any other hours: `hivey quiet schedule 20-6` (`hivey quiet schedule off` to stop).
+**Quiet mode on a schedule:** so you don't have to press it every night, open **settings → quiet**, click **on**, and set when it starts and ends: click **−** / **+** to move a time by 30 minutes, or select its row and type it (`2230`, `22:30` or `7`). Quiet mode then turns on and off by itself every day, even with every hivey window closed. You can still switch it by hand; your choice lasts until the next start or end. From a terminal: `hivey quiet schedule 22:30-6:45` (`hivey quiet schedule off` to stop).
 
 **Voice quiet hours** silence only the voice at the same hours every night, for example from 22:00 to 08:00:
 
