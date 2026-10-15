@@ -228,6 +228,25 @@ never interrupts work. A wake-up that's still waiting is never duplicated, and p
 skipped. Each wake-up costs one turn of that agent's model. Schedules live in
 `<root>/.swarm/schedules.json` and show up in the hover card and `hivey swarm info`.
 
+### Quiet mode (nights and focus)
+
+Let swarms keep working without waking you up:
+
+```bash
+hivey quiet on                      # also: hivey menu (bottom right) → quiet mode
+hivey quiet off
+hivey quiet                         # status
+hivey quiet schedule 22:30-6:45     # on and off by itself every day; also settings → quiet
+hivey quiet schedule off
+hivey voice quiet 22-8              # silence only the voice at those hours (off: hivey voice quiet off)
+```
+
+While it's on, nothing is spoken (pet, agents' summaries; bubbles still show), hivey plays no
+notification sounds or terminal bell, and Slack posts are held and sent as one catch-up message
+when it ends. Agents keep working, and Slack messages still reach them. The schedule runs even
+with every hivey window closed; switching by hand lasts until the next start or end. The machine
+must still stay awake.
+
 ## 5. After restarting hivey (or the Mac)
 
 The layout comes back, and agents with a conversation resume **with their original flags**

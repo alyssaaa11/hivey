@@ -63,6 +63,12 @@ Plugins add integrations and swarm panes. Inspect installed plugins and provider
     hivey swarm providers
     hivey swarm addon <swarm> <plugin-id>
 
+Quiet mode lets swarms work at night without noise: voice, sounds and Slack posts are held (one catch-up message at the end) while agents keep working. Only switch it or change its schedule when the user asks.
+
+    hivey quiet                      # status
+    hivey quiet on|off
+    hivey quiet schedule 22:30-6:45  # daily; `hivey quiet schedule off` to stop
+
 Slack, Obsidian memory, Skylls sharing, and the macOS pet are optional. They need their own setup; do not assume they are configured.
 
 ## 6. Rules for AI agents
@@ -86,6 +92,7 @@ Slack, Obsidian memory, Skylls sharing, and the macOS pet are optional. They nee
     hivey msg send <swarm>/coordinator "<message>"  message a coordinator
     hivey swarm schedule list <swarm>   inspect check-ins
     hivey plugin list                   inspect installed plugins
+    hivey quiet on|off|schedule <a-b>   quiet mode (no voice, sounds, Slack posts)
     hivey update                        update the local installation
 
 ## 8. Links

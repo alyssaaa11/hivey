@@ -42,6 +42,7 @@ You do not need to prompt every swarm yourself. When you want more detail, talk 
 | EnvSave | Configure integrations such as the Slack relay to retrieve credentials with an external `envsave` command. |
 | Skylls | With the separate Skylls tool installed and configured, share and import skills, agents, and whole swarm setups. |
 | Hivey pet + voice | An optional macOS companion that reacts to agent activity and can speak updates aloud. |
+| Quiet mode | One switch, or a daily schedule, that silences voice, sounds and Slack posts while agents keep working. See [Quiet nights](#quiet-nights-quiet-mode-and-quiet-hours). |
 | herdr runtime | The terminal foundation for panes, sessions, and agent workspaces. |
 
 ### Quiet nights: quiet mode and quiet hours
