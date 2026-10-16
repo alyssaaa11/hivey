@@ -38,8 +38,28 @@ fail() { printf 'install: %s\n' "$*" >&2; exit 1; }
 
 LOG_DIR="${TMPDIR:-/tmp}"; LOG_DIR="${LOG_DIR%/}"
 
+# Everything this run puts on the computer is listed as it happens and again at the end.
+CHANGES="$LOG_DIR/hivey-install-changes.$$"
+: > "$CHANGES"
+tilde() { sed "s#$HOME#~#g"; }
+changed() {  # <what> <where>: one change, printed now and kept for the summary
+  printf '  %-9s %s\n' "$1" "$2" | tilde | tee -a "$CHANGES"
+}
+# Runs a hivey command, shows its output, and keeps the lines that say what it changed:
+# files new / updated / removed, plugins linked, old copies moved, wikis renamed.
+tracked() {
+  local out="$LOG_DIR/hivey-install-step.$$" status=0
+  "$@" >"$out" 2>&1 || status=$?
+  tilde <"$out"
+  grep -E '^ +(new|updated|removed) +|^old (copy|hook|plugin) |^plugin .*: linked$|^wiki .*→|^hivey agent brief .*added|^ *(installed|registered) .* (to|at) |written to |^wrote ' "$out" \
+    | sed -E 's/^ +//; s/^plugin (.*): linked$/linked    plugin \1/' | tilde | sed 's/^/  /' >>"$CHANGES" || true
+  rm -f "$out"
+  return "$status"
+}
+
 # This machine's own additions to AGENTS.md go here (git ignores it; AGENTS.md points to it).
-[ -e EXTRA_AGENTS.md ] || : > EXTRA_AGENTS.md
+NEW_EXTRA=0
+[ -e EXTRA_AGENTS.md ] || { : > EXTRA_AGENTS.md; NEW_EXTRA=1; }
 
 say "check requirements"
 case "$(uname -s)" in Darwin|Linux) ;; *) fail "hivey installs on macOS or Linux only" ;; esac
@@ -56,10 +76,15 @@ ZIG_VERSION=$("$ZIG_BIN" version)
 ensure_rust_toolchain || fail "Rust is not ready (see above)"
 echo "git, python3, $(cargo --version), zig $ZIG_VERSION: ok"
 
+say "the hivey checkout ($ROOT)"
+[ "$NEW_EXTRA" = 1 ] && changed new "$ROOT/EXTRA_AGENTS.md (this machine's own additions to AGENTS.md; git ignores it)"
 # The upstream remote is only for maintainers (hivey update --check merges herdr); never pushed to.
 if ! git remote get-url upstream >/dev/null 2>&1; then
   git remote add upstream https://github.com/herdrdev/herdr
   git remote set-url --push upstream DISABLED
+  changed added "git remote upstream → https://github.com/herdrdev/herdr (fetch only, push disabled)"
+else
+  echo "  git remotes: as they are"
 fi
 
 say "build (the first build takes a few minutes)"
@@ -71,13 +96,24 @@ fi
 grep -vE "external contributor policy|^warning: hivey@" "$BUILD_LOG" | tail -3
 [ -x target/release/hivey ] || fail "build finished but target/release/hivey is missing"
 
-say "install $BIN"
+say "the hivey program"
 mkdir -p "$BIN_DIR"
+BEFORE=$("$BIN" --version 2>/dev/null || true)
 # Never cp over an existing binary: macOS then kills every new exec of it (code signature).
 cp target/release/hivey "$BIN.new" && mv -f "$BIN.new" "$BIN"
+NOW=$("$BIN" --version)
+if [ -z "$BEFORE" ]; then
+  changed new "$BIN ($NOW)"
+elif [ "$BEFORE" != "$NOW" ]; then
+  changed updated "$BIN ($BEFORE → $NOW)"
+else
+  echo "  $BIN: $NOW (reinstalled)" | tilde
+fi
 mkdir -p "$HOME/.local/state/hivey"
-git rev-parse --short HEAD >"$HOME/.local/state/hivey/installed-commit"
-"$BIN" --version
+STATE="$HOME/.local/state/hivey/installed-commit"
+[ -e "$STATE" ] || NEW_STATE=1
+git rev-parse --short HEAD >"$STATE"
+[ "${NEW_STATE:-0}" = 1 ] && changed new "$STATE (which commit is installed)"
 
 say "coding agents hivey runs (Claude Code, Codex, Antigravity/Gemini, Grok)"
 # Each one found is linked to hivey (`hivey integration install`) so its panes show working /
@@ -106,8 +142,12 @@ for agent in "claude:Claude Code:claude:y" "codex:Codex:codex:n" "agy:Antigravit
   [ -x "$HOME/.grok/bin/grok" ] && [ "$cmd" = grok ] && export PATH="$HOME/.grok/bin:$PATH"
   if ! command -v "$cmd" >/dev/null; then
     if ask_yes "$label is not installed. Install it?" "$default"; then
-      "install_$cmd" || echo "  could not install $label"
-      hash -r
+      if "install_$cmd"; then
+        hash -r
+        command -v "$cmd" >/dev/null && changed installed "$label: $(command -v "$cmd")"
+      else
+        echo "  could not install $label"
+      fi
     else
       echo "  $label: not installed (later: rerun ./install.sh)"
       continue
@@ -115,19 +155,20 @@ for agent in "claude:Claude Code:claude:y" "codex:Codex:codex:n" "agy:Antigravit
   fi
   command -v "$cmd" >/dev/null || { echo "  $label: not found after installing (open a new shell, then rerun ./install.sh)"; continue; }
   echo "  $label: $("$cmd" --version 2>/dev/null | head -1)"
-  "$BIN" integration install "$target" 2>&1 | sed 's/^/    /' || echo "    could not link $label to hivey (later: hivey integration install $target)"
+  tracked "$BIN" integration install "$target" | sed 's/^/    /' \
+    || echo "    could not link $label to hivey (later: hivey integration install $target)"
 done
 
-say "hivey skill (Claude Code / Codex)"
+say "hivey skills and commands (Claude Code ~/.claude, Codex ~/.codex)"
 if [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ]; then
-  "$BIN" skill install
+  tracked "$BIN" skill install || echo "  could not install everything (later: hivey skill install)"
 else
-  echo "no Claude Code or Codex found: skipped (later: hivey skill install)"
+  echo "  no Claude Code or Codex found: skipped (later: hivey skill install)"
 fi
 
-# Reinstalls over an older hivey: bring its leftovers to the current conventions.
-say "migrate (wikis named <name>-wiki, hivey-* commands)"
-"$BIN" migrate || echo "could not migrate everything (later: hivey migrate)"
+# Reinstalls over an older hivey: bring its leftovers to the current conventions too.
+say "hivey hooks, plugins and older leftovers (hivey migrate: safety on, wikis <name>-wiki)"
+tracked "$BIN" migrate || echo "  could not migrate everything (later: hivey migrate)"
 
 # find-skills (skills.sh) is the one skill installed globally: creators use it to find skills an
 # agent needs; those skills then go into the agent's own folder, never the global ones.
@@ -137,7 +178,7 @@ if [ -f "$HOME/.claude/skills/find-skills/SKILL.md" ]; then
 elif ! command -v npx >/dev/null; then
   echo "npx not found (install Node.js): skipped (later: npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y)"
 elif npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y >"$LOG_DIR/hivey-find-skills.log" 2>&1; then
-  echo "installed"
+  changed new "$HOME/.claude/skills/find-skills (from skills.sh)"
 else
   echo "could not install (see $LOG_DIR/hivey-find-skills.log; later: npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y)"
 fi
@@ -160,7 +201,7 @@ for manifest in plugins/*/herdr-plugin.toml; do
   if printf '%s' "$LINKED" | grep -q "^- $id "; then
     echo "  $id: already installed"
   elif "$BIN" plugin link "$dir" >/dev/null 2>&1; then
-    echo "  $id: linked"
+    changed linked "plugin $id"
   else
     echo "  $id: could not link (try later: hivey plugin link $dir)"
   fi
@@ -170,7 +211,7 @@ if [ "$STARTED_SERVER" = 1 ]; then trap '"$BIN" server stop >/dev/null 2>&1 || t
 
 if [ "$SETUP" = 1 ]; then
   say "swarm sidebar and keys"
-  "$BIN" swarm setup
+  tracked "$BIN" swarm setup || true
 
   say "Slack (talk to hivey and your agents from Slack; needed for Slack channels)"
   SLACK=0
@@ -185,7 +226,7 @@ if [ "$SETUP" = 1 ]; then
     read -r answer </dev/tty || answer=n
     case "$answer" in
       [nN]*) echo "skipped (later: hivey slack connect)" ;;
-      *) "$BIN" slack connect </dev/tty && SLACK=1 ;;
+      *) "$BIN" slack connect </dev/tty && SLACK=1 && changed new "$HOME/.hivey/slack.json (the Slack bot token)" ;;
     esac
   else
     echo "skipped: no terminal to type the token in (later: hivey slack connect)"
@@ -202,8 +243,8 @@ if [ "$SETUP" = 1 ]; then
     printf 'Search skills.sh for skills skylls lacks (asks before installing any)? [Y/n] '
     read -r answer </dev/tty || answer=""
     case "$answer" in
-      [nN]*) "$BIN" skills online off ;;
-      *) "$BIN" skills online on ;;
+      [nN]*) "$BIN" skills online off && changed set "$HOME/.hivey/skills.json (online skill search off)" ;;
+      *) "$BIN" skills online on && changed set "$HOME/.hivey/skills.json (online skill search on)" ;;
     esac
   else
     echo "skipped: no terminal (online search stays on; later: hivey settings → skills)"
@@ -223,12 +264,12 @@ if [ "$SETUP" = 1 ]; then
   if command -v claude >/dev/null; then
     # Turned on for the default session; it starts with hivey. With Slack: channel #hivey.
     if [ "$SLACK" = 1 ]; then
-      "$BIN" home setup --no-start --slack || {
+      tracked "$BIN" home setup --no-start --slack || {
         echo "could not set up Slack #hivey (later: hivey home setup --slack)"
-        "$BIN" home setup --no-start
+        tracked "$BIN" home setup --no-start
       }
     else
-      "$BIN" home setup --no-start
+      tracked "$BIN" home setup --no-start
       echo "Slack #hivey later: hivey slack connect, then hivey home setup --slack"
     fi
   else
@@ -236,8 +277,16 @@ if [ "$SETUP" = 1 ]; then
   fi
 fi
 
-say "what hivey installed on this computer"
-"$BIN" installed || true
+say "what this install changed on this computer"
+if [ -s "$CHANGES" ]; then
+  sort -u "$CHANGES"
+else
+  echo "  nothing: everything was already up to date"
+fi
+rm -f "$CHANGES"
+
+say "everything hivey has on this computer (hivey installed)"
+"$BIN" installed | tilde || true
 
 say "done"
 case ":$PATH:" in
