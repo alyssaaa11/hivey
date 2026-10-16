@@ -33,7 +33,8 @@ that tells hivey whether its panes are working, idle or blocked.
 | Antigravity (Gemini) | `agy` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `~/.gemini/config/hooks/herdr-agent-state.sh` |
 | Grok | `grok` | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `~/.grok/hooks/herdr-agent-state.sh` |
 
-The integration hooks are renamed `hivey-agent-state.sh` next.
+These come from herdr's agent integrations and keep herdr's name (`herdr-agent-state.*`), so
+they stay in step with herdr's updates.
 
 ## Skills
 
@@ -73,7 +74,7 @@ Registered in `~/.claude/settings.json` (Codex: `~/.codex/hooks.json`).
 
 | Hook | What it does | Status |
 |---|---|---|
-| `~/.claude/hooks/herdr-agent-state.sh`, `~/.codex/herdr-agent-state.sh` | tell hivey whether each agent is working, idle or blocked (from `hivey integration install` or the first-run prompt) | now; renamed `hivey-agent-state.sh` next |
+| `~/.claude/hooks/herdr-agent-state.sh`, `~/.codex/herdr-agent-state.sh` | tell hivey whether each agent is working, idle or blocked (from `hivey integration install` or the first-run prompt) | now (herdr's name, kept on purpose) |
 | `~/.claude/hooks/hivey-agent-stop.py` (Stop) | speak an agent's `DONE:` line with `hivey voice` (workers stay silent) | now |
 | `~/.claude/hooks/hivey-safety.py` (Bash, Edit, Write, Read) | hivey's own safety check: blocks destructive commands, history rewrites, `curl \| sh`, secret access and hand-edited lockfiles; on by default, settings → safety / `hivey safety on\|off` | now |
 | `~/.claude/hooks/hivey-secret-scan.py` (Bash) | block a `git commit` that contains secrets; same safety switch | now |
