@@ -17,11 +17,45 @@ usage: hivey voice                        the provider, its voice and quiet hour
        hivey voice say [text…]            speak it now, or stdin without text (silent when off,
                                           in quiet hours or quiet mode; lines queue, never
                                           overlap)
+       hivey voice install                the local voices (tts, Kokoro; macOS on Apple Silicon,
+                                          ~3 GB of models): also the hivey.tts plugin
        hivey voice test                   speak a sample, even in quiet hours
   provider, use and volume take --test to speak a sample after saving (hivey settings does).
   Also in hivey settings → voice. Settings live in ~/.hivey/voice.json.";
 
 const SAMPLE: &str = "Done testing the voice, on hivey.";
+
+/// `hivey voice install`: the optional local voices (the `tts` tool with Kokoro voices,
+/// macOS on Apple Silicon): downloads the hivey-tts installer to a file, runs it in this
+/// terminal (it asks where the ~3 GB of models go), then makes tts the provider.
+fn install_tts() -> std::io::Result<i32> {
+    use std::process::Command;
+    let script = std::env::temp_dir().join(format!("hivey-tts-install-{}.sh", std::process::id()));
+    println!(
+        "downloading the hivey-tts installer ({})",
+        voice::TTS_INSTALLER
+    );
+    let fetched = Command::new("curl")
+        .args(["-fsSL", voice::TTS_INSTALLER, "-o"])
+        .arg(&script)
+        .status()?;
+    if !fetched.success() {
+        eprintln!(
+            "hivey voice install: could not download {}",
+            voice::TTS_INSTALLER
+        );
+        return Ok(1);
+    }
+    let ran = Command::new("bash").arg(&script).status()?;
+    let _ = std::fs::remove_file(&script);
+    if !ran.success() || !Provider::Tts.available() {
+        eprintln!("hivey voice install: tts did not install (see above)");
+        return Ok(1);
+    }
+    voice::set_provider(Provider::Tts)?;
+    println!("tts installed: agents' summaries now use the local voices (hivey voice list tts)");
+    Ok(speak(SAMPLE, true))
+}
 
 fn status() -> i32 {
     let provider = voice::provider();
@@ -182,7 +216,8 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
                 let missing = if provider.available() {
                     ""
                 } else {
-                    " (not installed on this computer: nothing will be spoken)"
+                    " (not installed on this computer: nothing will be spoken; \
+                     for tts: hivey voice install)"
                 };
                 println!("provider: {}{missing}", provider.id());
                 0
@@ -197,6 +232,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
             }
         },
         Some("use") => use_voice(&args[1..])?,
+        Some("install") => install_tts()?,
         Some("list") => {
             let provider = match args.get(1) {
                 Some(id) => match Provider::parse(id) {

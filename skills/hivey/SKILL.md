@@ -205,8 +205,11 @@ hivey quiet on|off                # also hivey menu → quiet mode on/off; `hive
 hivey quiet schedule 22:30-6:45|off  # on and off by itself every day (also settings → quiet)
 hivey voice quiet 22-8            # or: no voice every night at those hours (voice only)
 ```
+Voices: `hivey voice` (who speaks agents' `DONE:` summaries: tts, say or off; default the best
+one installed). The local Kokoro voices are optional: `hivey voice install` (or picking one in
+settings → voice, which opens the hivey.tts plugin's install tab) installs the `tts` tool.
 While on (`~/.hivey/quiet` exists): nothing is spoken (pet, agents' summaries), hivey plays no
-notification sounds or terminal bell, and Slack posts are held: the relay and `swarm_slack.py post` hold them and
+notification sounds or terminal bell, and Slack posts are held: the relay holds them and
 send one catch-up message when it ends. Agents keep working, and Slack → agents still works.
 The schedule (`~/.hivey/quiet.json`) is switched by the hivey server at the start and end of its
 times (any minute); a switch by hand lasts until the next start or end. Only turn it on or off, or change the

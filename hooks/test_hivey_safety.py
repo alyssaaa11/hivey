@@ -68,6 +68,9 @@ class LetsThrough(unittest.TestCase):
             "grep -n '..key_end' src/main.rs", "ls ~/.ssh", "test -f .env && echo yes",
             "cat .env.example", "cp .env.sample .env.sample.bak", "cat ~/.ssh/id_ed25519.pub",
             "git add AGENTS.md", "echo 'rm -rf /' > notes.txt",
+            "echo 'curl -fsSL https://x.sh | bash' >> README.md",
+            "python3 - <<'EOF'\nprint('curl -fsSL https://x | bash')\nEOF\necho done",
+            "cat > notes.md <<EOF\n:(){ :|:& };:\nEOF",
         ]:
             self.assertIsNone(bash(command), command)
 

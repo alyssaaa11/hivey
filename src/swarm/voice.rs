@@ -118,13 +118,24 @@ fn tts_bin() -> Option<PathBuf> {
     })
 }
 
-/// The chosen provider (default: tts, the one the Stop hook used before this setting existed).
+/// The chosen provider; without a choice, the best one installed: tts (local Kokoro voices),
+/// else the system `say`, else off.
 pub(crate) fn provider() -> Provider {
     settings()["provider"]
         .as_str()
         .and_then(Provider::parse)
-        .unwrap_or(Provider::Tts)
+        .unwrap_or_else(|| {
+            [Provider::Tts, Provider::Say]
+                .into_iter()
+                .find(|provider| provider.available())
+                .unwrap_or(Provider::Off)
+        })
 }
+
+/// Where the optional local voices (`tts`, Kokoro) come from: the hivey.tts plugin and
+/// `hivey voice install` run this installer (downloaded to a file first, then run).
+pub(crate) const TTS_INSTALLER: &str =
+    "https://raw.githubusercontent.com/jcsancho/hivey-tts/main/install.sh";
 
 pub(crate) fn set_provider(provider: Provider) -> std::io::Result<()> {
     save(|saved| saved["provider"] = json!(provider.id()))

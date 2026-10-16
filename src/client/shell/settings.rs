@@ -208,6 +208,21 @@ impl ClientShellState {
             Some(name) => {
                 settings.voice_message = Some(if provider.available() {
                     format!("{} voice: {name} (playing a sample)", provider.id())
+                } else if provider == Provider::Tts {
+                    // The optional local voices: install them in a tab (hivey.tts plugin).
+                    outcome.actions.push(ClientShellAction::RunHivey(vec![
+                        "plugin".into(),
+                        "pane".into(),
+                        "open".into(),
+                        "--plugin".into(),
+                        "hivey.tts".into(),
+                        "--entrypoint".into(),
+                        "install".into(),
+                        "--placement".into(),
+                        "tab".into(),
+                    ]));
+                    "tts is not installed: installing it in a new tab (hivey.tts, ~3 GB of models)"
+                        .to_string()
                 } else {
                     format!(
                         "{} is not installed on this computer: nothing will be spoken",

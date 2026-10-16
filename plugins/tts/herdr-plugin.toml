@@ -1,0 +1,15 @@
+id = "hivey.tts"
+name = "Local voices (tts)"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Optional: installs the local tts tool (Kokoro voices, macOS on Apple Silicon, ~3 GB of models) so hivey speaks agents' summaries with it; nothing is installed until you open it"
+platforms = ["macos"]
+
+# Opened by settings → voice when a tts voice is picked and tts isn't installed, or by
+# `hivey plugin pane open --plugin hivey.tts --entrypoint install`. It runs
+# `hivey voice install` (https://github.com/jcsancho/hivey-tts) in this tab.
+[[panes]]
+id = "install"
+title = "install local voices"
+placement = "tab"
+command = ["sh", "-c", "hivey voice install; echo; printf 'Press Enter to close this tab. '; read _"]

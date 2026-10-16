@@ -197,10 +197,17 @@ def check_git(words):
     return None
 
 
+def code_only(command):
+    """The command without heredoc bodies and quoted text, which are data, not code."""
+    command = re.sub(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?\n\s*\2\s*(\n|$)", "\n", command, flags=re.S)
+    return re.sub(r"'[^']*'|\"(\\.|[^\"\\])*\"", "''", command)
+
+
 def check_bash(command, cwd):
-    if re.search(r":\(\)\s*\{.*:\s*\|\s*:.*\}", command):
+    code = code_only(command)
+    if re.search(r":\(\)\s*\{.*:\s*\|\s*:.*\}", code):
         return "a fork bomb"
-    if re.search(r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b", command):
+    if re.search(r"\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|da|k)?sh\b", code):
         return "piping a download into a shell (download it, read it, then run it)"
     for words in split_commands(command):
         sudo = bool(words) and words[0] == "sudo"

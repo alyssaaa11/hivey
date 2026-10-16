@@ -97,7 +97,7 @@ Linked from the hivey checkout's `plugins/` (`hivey plugin list`).
 | `hivey.swarm-creator` | the swarm creator: runs the `hivey-swarm-creator` skill | now |
 | `hivey.agent-creator` | the agent creator: runs the `hivey-agent-creator` skill | now |
 | `hivey.swarm-watcher` | tells the master when a worker is blocked, stopped, stalled or gone and when the time budget runs out; Gantt dashboard page | now |
-| `hivey.tts` | local Kokoro voices; optional, never installed by default (settings → voice) | next |
+| `hivey.tts` (macOS) | optional local voices: its pane runs `hivey voice install`, which installs the `tts` tool ([hivey-tts](https://github.com/jcsancho/hivey-tts), Kokoro voices, ~3 GB of models) only when you open it, e.g. by picking a Kokoro voice in settings → voice | now |
 
 Plugins hivey replaced (`swarm.creator`, `agent.creator`, `swarm.watcher`, from the old /swarm and
 /agent-creator skills) are unlinked by `hivey migrate`; a creator chosen in `swarm-setup.json` is
