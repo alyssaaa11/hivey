@@ -15,7 +15,8 @@ use regex::Regex;
 const USAGE: &str = "usage: hivey migrate [--dry-run]
   bring an older hivey install up to date (run by hivey update; safe to run again):
   - the hivey skill and the hivey-* Claude Code commands (/hivey-wiki-ingest, …)
-  - old copies (wiki-ingest, …, agents-create-wiki, agy, grok) that hivey-* ones replaced: moved to
+  - old copies (wiki-ingest, …, agents-create-wiki, agy, grok, swarm, agent-creator) that hivey-* ones
+    replaced: moved to
     ~/.hivey/old/, never deleted
   - wikis: <folder>/obsidian/ → <folder>/<name>-wiki/ (Obsidian tells them apart by folder
     name), with every CLAUDE.md, ~/Obsidian link and Obsidian's vault list pointed at it
@@ -62,6 +63,10 @@ pub(crate) fn run(args: &[String]) -> std::io::Result<i32> {
 /// run by `hivey skill install`, which update scripts of older versions call with the new
 /// binary: so the first update from an older version migrates too.
 pub(super) fn leftovers(home: &Path, dry: bool) -> std::io::Result<()> {
+    // Plugins first: an old plugin is unlinked before the skill folder it lives in moves.
+    for line in update_plugins(&crate::hivey::repo(), dry) {
+        println!("{line}");
+    }
     for line in retire_old_copies(home, dry)? {
         println!("{line}");
     }
@@ -126,6 +131,26 @@ const OLD_COPIES: &[(&str, &str, &str)] = &[
         "agents-create-wiki",
         "the hivey-create-wiki skill",
     ),
+    (
+        ".claude/skills/swarm",
+        "swarm",
+        "the hivey-swarm-creator skill",
+    ),
+    (
+        ".codex/skills/swarm",
+        "swarm",
+        "the hivey-swarm-creator skill",
+    ),
+    (
+        ".claude/skills/agent-creator",
+        "agent-creator",
+        "the hivey-agent-creator skill",
+    ),
+    (
+        ".codex/skills/agent-creator",
+        "agent-creator",
+        "the hivey-agent-creator skill",
+    ),
     (".claude/skills/agy", "agy", "the hivey-agy skill"),
     (".codex/skills/agy", "agy", "the hivey-agy skill"),
     (".claude/skills/grok", "grok", "the hivey-grok skill"),
@@ -170,6 +195,91 @@ fn retire_old_copies(home: &Path, dry: bool) -> std::io::Result<Vec<String>> {
         }
     }
     Ok(report)
+}
+
+/// Plugins older versions (or skills hivey replaced) linked, and the bundled one taking over.
+const REPLACED_PLUGINS: &[(&str, &str)] = &[
+    ("swarm.creator", "hivey.swarm-creator"),
+    ("agent.creator", "hivey.agent-creator"),
+    ("swarm.watcher", "hivey.swarm-watcher"),
+];
+
+/// Plugins: unlinks the ones a bundled plugin replaced (and points a creator chosen in
+/// `swarm-setup.json` at its replacement), then links bundled plugins (the repo's `plugins/`)
+/// that aren't linked yet, so `hivey update` brings new ones too. Linking talks to a hivey
+/// server; without one, that part is reported and skipped (the next update does it).
+fn update_plugins(repo: &Path, dry: bool) -> Vec<String> {
+    let mut report = Vec::new();
+    let Some(config_dir) = crate::config::config_path().parent().map(Path::to_path_buf) else {
+        return report;
+    };
+    let registry = std::fs::read_to_string(config_dir.join("plugins.json")).unwrap_or_default();
+    let linked: Vec<String> = serde_json::from_str::<Vec<serde_json::Value>>(&registry)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|plugin| plugin["plugin_id"].as_str().map(str::to_string))
+        .collect();
+    let hivey = |args: &[&str]| -> bool {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| std::process::Command::new(exe).args(args).output().ok())
+            .is_some_and(|out| out.status.success())
+    };
+    for (old, new) in REPLACED_PLUGINS {
+        if !linked.iter().any(|id| id == old) {
+            continue;
+        }
+        let done = dry || hivey(&["plugin", "unlink", old]);
+        report.push(if done {
+            format!("old plugin {old} unlinked (now {new})")
+        } else {
+            format!("old plugin {old}: could not unlink (start hivey, then hivey migrate)")
+        });
+    }
+    // A creator the user chose that a bundled one replaced: choose the replacement.
+    let setup = config_dir.join("swarm-setup.json");
+    if let Ok(text) = std::fs::read_to_string(&setup) {
+        let mut updated = text.clone();
+        for (old, new) in REPLACED_PLUGINS {
+            updated = updated.replace(&format!("\"{old}\""), &format!("\"{new}\""));
+        }
+        if updated != text {
+            report.push(format!(
+                "{}: chosen creators now hivey's",
+                super::skill::show(&setup)
+            ));
+            if !dry {
+                let _ = std::fs::write(&setup, updated);
+            }
+        }
+    }
+    let manifests = std::fs::read_dir(repo.join("plugins"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path().join("herdr-plugin.toml"))
+        .filter(|manifest| manifest.is_file());
+    for manifest in manifests {
+        let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+        let Some(id) = text
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("id = \""))
+            .and_then(|rest| rest.strip_suffix('"'))
+        else {
+            continue;
+        };
+        if linked.iter().any(|linked| linked == id) {
+            continue;
+        }
+        let dir = manifest.parent().unwrap_or(repo).display().to_string();
+        let done = dry || hivey(&["plugin", "link", &dir]);
+        report.push(if done {
+            format!("plugin {id}: linked")
+        } else {
+            format!("plugin {id}: could not link (start hivey, then: hivey plugin link {dir})")
+        });
+    }
+    report
 }
 
 /// The hivey agent's brief is written once and then belongs to the user, so updates never

@@ -1,18 +1,17 @@
 id = "hivey.swarm-creator"
 name = "Swarm creator"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.9.0"
-description = "Swarm setup provider (built in): a Claude coordinator designs a team for any task with you, writes each agent's CLAUDE.md and launches it"
+description = "Swarm setup provider (built in): a Claude coordinator runs the hivey-swarm-creator skill, designs a team for any task with you (each agent on Claude Code, Codex, Grok or agy), writes the briefs and the wiki, and launches it"
 platforms = ["linux", "macos"]
 
-# `hivey swarm new --provider hivey.swarm-creator "<task>"`, run from the folder the swarm will
-# live in, opens this pane with HIVEY_SETUP_TASK and HIVEY_SETUP_CWD set. The coordinator
-# follows coordinator.md: agrees the team with the user, writes <root>/<agent>/CLAUDE.md, then
+# `hivey swarm new "<task>"` (or `--provider hivey.swarm-creator`), run from the folder the
+# swarm will live in, opens this pane with HIVEY_SETUP_TASK and HIVEY_SETUP_CWD set. The
+# coordinator follows the hivey-swarm-creator skill (shipped with hivey): agrees the team with
+# the user, writes <root>/<agent>/CLAUDE.md, makes the wiki with hivey-create-wiki, then
 # `hivey swarm launch` moves this pane into the swarm's space as its master.
-# The /swarm skill's `swarm.creator` provider does the same with more machinery; this one ships
-# with hivey so creating a swarm always has a procedure.
 [[panes]]
 id = "setup"
 title = "swarm setup"
 placement = "tab"
-command = ["sh", "-c", "exec claude --dangerously-skip-permissions --model opus \"$(cat \"$HERDR_PLUGIN_ROOT/coordinator.md\")\n\nFolder: ${HIVEY_SETUP_CWD}\nTask: ${HIVEY_SETUP_TASK}\""]
+command = ["sh", "-c", "exec claude --chrome --dangerously-skip-permissions --model opus \"/hivey-swarm-creator Folder: ${HIVEY_SETUP_CWD}\nTask: ${HIVEY_SETUP_TASK}\""]

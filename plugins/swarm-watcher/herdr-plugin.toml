@@ -1,0 +1,16 @@
+id = "hivey.swarm-watcher"
+name = "Swarm watcher"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Watches a swarm's workers and tells the master when one is blocked, stopped, stalled or gone, and when the time budget runs out; keeps a Gantt dashboard of the swarm"
+platforms = ["linux", "macos"]
+
+# Opened in a swarm's space by `hivey swarm launch … --addon hivey.swarm-watcher` (or
+# `hivey swarm addon <swarm> hivey.swarm-watcher`) with HIVEY_SWARM_ROOT set. Alerts go to the
+# master with `hivey msg send` (delivered when it is idle); the dashboard is
+# <launch dir>/diagrams/dashboard-swarm-<slug>.html, opened once in the browser.
+[[panes]]
+id = "watcher"
+title = "swarm watcher"
+placement = "split"
+command = ["sh", "-c", "exec python3 \"$HERDR_PLUGIN_ROOT/watcher.py\" \"$HIVEY_SWARM_ROOT\" --open"]

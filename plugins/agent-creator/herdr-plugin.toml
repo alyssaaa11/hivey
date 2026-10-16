@@ -1,18 +1,17 @@
 id = "hivey.agent-creator"
 name = "Agent creator"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.9.0"
-description = "Solo agent setup provider (built in): a Claude designer writes ONE agent's CLAUDE.md in the current folder with you, then launches it"
+description = "Solo agent setup provider (built in): a Claude designer runs the hivey-agent-creator skill, designs ONE agent with you (on Claude Code, Codex, Grok or agy), writes its brief and wiki, then launches it"
 platforms = ["linux", "macos"]
 
-# `hivey swarm new --provider hivey.agent-creator "<task>"`, run from the folder the agent will
-# live in, opens this pane with HIVEY_SETUP_TASK and HIVEY_SETUP_CWD set. The designer follows
-# designer.md: asks the user, writes <folder>/CLAUDE.md, then `hivey swarm launch <folder>
+# `hivey swarm new --agent "<task>"` (or `--provider hivey.agent-creator`), run from the folder
+# the agent will live in, opens this pane with HIVEY_SETUP_TASK and HIVEY_SETUP_CWD set. The
+# designer follows the hivey-agent-creator skill (shipped with hivey): asks the user, writes
+# <folder>/CLAUDE.md, makes its wiki with hivey-create-wiki, then `hivey swarm launch <folder>
 # --solo` starts the agent in its own space. This pane stays a designer: close it afterwards.
-# The /agent-creator skill's `agent.creator` provider does the same with more machinery; this
-# one ships with hivey so creating an agent always has a procedure.
 [[panes]]
 id = "setup"
 title = "agent setup"
 placement = "tab"
-command = ["sh", "-c", "exec claude --dangerously-skip-permissions --model opus \"$(cat \"$HERDR_PLUGIN_ROOT/designer.md\")\n\nAgent folder: ${HIVEY_SETUP_CWD}\nTask: ${HIVEY_SETUP_TASK}\""]
+command = ["sh", "-c", "exec claude --dangerously-skip-permissions --model opus \"/hivey-agent-creator Agent folder: ${HIVEY_SETUP_CWD}\nTask: ${HIVEY_SETUP_TASK}\""]

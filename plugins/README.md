@@ -87,9 +87,10 @@ The swarm manifest `<root>/.swarm/agents.json` is hivey's; a provider may add:
 Step-by-step guide and an example to copy: [`../docs/hivey-providers.md`](../docs/hivey-providers.md)
 (`hivey.team-template`, a fixed builder + critic team).
 
-Included: **`swarm.creator`** (`~/.claude/skills/swarm/hivey-setup`) opens a Claude coordinator
-running the `/swarm` skill. It writes its own kickoff and monitoring texts, and `info` with the
-swarm's Slack channel and Obsidian vault.
+Included: **`hivey.swarm-creator`** and **`hivey.agent-creator`** open a Claude coordinator (or
+designer) running the `hivey-swarm-creator` / `hivey-agent-creator` skill, which ship with hivey.
+**`hivey.swarm-watcher`** (an addon) tells a swarm's master when a worker is blocked, stopped,
+stalled or gone and when the time budget runs out, and keeps a Gantt dashboard page.
 
 ## Included
 

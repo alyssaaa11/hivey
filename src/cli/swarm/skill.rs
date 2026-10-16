@@ -26,6 +26,86 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
             include_str!("../../../skills/hivey-create-wiki/SKILL.md"),
         )],
     ),
+    // The swarm and agent creators: design an agent or a team with the user, write the
+    // briefs, make the wiki (hivey-create-wiki) and launch it.
+    (
+        "hivey-swarm-creator",
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-swarm-creator/SKILL.md"),
+            ),
+            (
+                "references/agent-claude-md.md",
+                include_str!("../../../skills/hivey-swarm-creator/references/agent-claude-md.md"),
+            ),
+            (
+                "references/archify-report.md",
+                include_str!("../../../skills/hivey-swarm-creator/references/archify-report.md"),
+            ),
+            (
+                "references/dashboard.md",
+                include_str!("../../../skills/hivey-swarm-creator/references/dashboard.md"),
+            ),
+            (
+                "references/retrospective.md",
+                include_str!("../../../skills/hivey-swarm-creator/references/retrospective.md"),
+            ),
+            (
+                "references/shared-rules.md",
+                include_str!("../../../skills/hivey-swarm-creator/references/shared-rules.md"),
+            ),
+            (
+                "references/wiki-memory.md",
+                include_str!("../../../skills/hivey-swarm-creator/references/wiki-memory.md"),
+            ),
+            (
+                "scripts/setup_agent.py",
+                include_str!("../../../skills/hivey-swarm-creator/scripts/setup_agent.py"),
+            ),
+            (
+                "scripts/shared_rules.py",
+                include_str!("../../../skills/hivey-swarm-creator/scripts/shared_rules.py"),
+            ),
+            (
+                "scripts/swarm_tasks.py",
+                include_str!("../../../skills/hivey-swarm-creator/scripts/swarm_tasks.py"),
+            ),
+        ],
+    ),
+    (
+        "hivey-agent-creator",
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-agent-creator/SKILL.md"),
+            ),
+            (
+                "references/agent-claude-md.md",
+                include_str!("../../../skills/hivey-agent-creator/references/agent-claude-md.md"),
+            ),
+            (
+                "references/global-guidelines.md",
+                include_str!("../../../skills/hivey-agent-creator/references/global-guidelines.md"),
+            ),
+            (
+                "references/reviewer-agent.md",
+                include_str!("../../../skills/hivey-agent-creator/references/reviewer-agent.md"),
+            ),
+            (
+                "scripts/agent_context.py",
+                include_str!("../../../skills/hivey-agent-creator/scripts/agent_context.py"),
+            ),
+            (
+                "scripts/agent_gate.py",
+                include_str!("../../../skills/hivey-agent-creator/scripts/agent_gate.py"),
+            ),
+            (
+                "scripts/setup_agent.py",
+                include_str!("../../../skills/hivey-agent-creator/scripts/setup_agent.py"),
+            ),
+        ],
+    ),
     // Current library docs in seconds, from any agent (no MCP server needed).
     (
         "hivey-context7",

@@ -129,9 +129,8 @@ hivey swarm addon <slug> <id>[:<pane>]...       # open addons in a running swarm
 hivey swarm launch … --addon <id>               # open them at launch
 ```
 
-Bundled in the repo's `plugins/` (linked by `install.sh`): the seven `hivey.*` ones. The others
-come with the /swarm and /agent-creator skills and are only there when those are installed;
-check `hivey plugin list` / `hivey swarm providers` before relying on them.
+Bundled in the repo's `plugins/` (linked by `install.sh` and `hivey update`): the eight
+`hivey.*` ones. Check `hivey plugin list` / `hivey swarm providers` for others the user added.
 
 | id | what |
 |---|---|
@@ -139,12 +138,10 @@ check `hivey plugin list` / `hivey swarm providers` before relying on them.
 | `hivey.dashboard` | agents, states, tokens per agent, active time vs budget, tasks, messages |
 | `hivey.github` | product + swarm repos, asks before creating anything |
 | `hivey.team-template` | example setup provider (builder + critic); copy it |
-| `hivey.swarm-creator` | built-in Swarm creator: a coordinator designs a team for any task (always there) |
-| `hivey.agent-creator` | built-in Agent creator: one solo agent in the current folder (always there) |
+| `hivey.swarm-creator` | Swarm creator: a coordinator runs the `hivey-swarm-creator` skill and designs a team for any task (always there) |
+| `hivey.agent-creator` | Agent creator: a designer runs the `hivey-agent-creator` skill for one solo agent (always there) |
 | `hivey.skills` | built-in skills plugin: how creators pick, find and install each agent's skills (`hivey skills guide`) |
-| `swarm.watcher` | /swarm skill addon: stalled-agent and budget alerts to the master |
-| `swarm.creator` | Swarm creator from the /swarm skill (setup provider) |
-| `agent.creator` | Agent creator from the /agent-creator skill: one solo agent in the current folder |
+| `hivey.swarm-watcher` | blocked / stopped / stalled / gone workers and time-budget alerts to the master (`hivey msg`), plus a Gantt dashboard page |
 
 **Creating a swarm or agent: always ask the user three things first** (one question each, then
 act on the answers):
@@ -177,12 +174,11 @@ New channels invite the user (relay config `invite`: their Slack member id, set 
 connect` or worked out from shared channels), so they appear in their Slack at once.
 **Before creating a channel, check Slack is connected:** `hivey slack status`. Not connected →
 ask the user to run `hivey slack connect` first (once; the token stays saved, and hivey, its
-relays and the /swarm skill all use it), don't try and fail.
+relays and the creators all use it), don't try and fail.
 **Rule for every agent and swarm:** a Slack channel you create must be visible to the user
 right away. Create channels only through hivey (`--slack`, `hivey slack add`, `hivey home
-setup --slack`), which invites them; if one was made another way (e.g. the /swarm skill's
-`swarm_slack.py create`, which also invites), make sure the user is in it (`hivey slack add
-<slug>`) before saying it's done.
+setup --slack`), which invites them; if one was made another way, make sure the user is in it
+(`hivey slack add <slug>`) before saying it's done.
 When creating a swarm or agent, ask the user whether it should get a Slack channel. Never ask
 for the Slack token in chat: the user types it into `hivey slack connect`.
 

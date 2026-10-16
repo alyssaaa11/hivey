@@ -48,8 +48,8 @@ In `~/.claude/skills/`, and `~/.codex/skills/` when Codex is set up (`hivey skil
 | `hivey-codex` | run a task with Codex headless (`codex exec`): models, sandbox, review, resume | now |
 | `hivey-agy` | run a task with Antigravity / Gemini (`agy`) headless; runner `scripts/agy_run.py` | now |
 | `hivey-grok` | run a task with Grok (`grok`) headless; runner `scripts/grok_run.py` | now |
-| `hivey-swarm-creator` | design and launch a swarm | next |
-| `hivey-agent-creator` | design and launch one agent | next |
+| `hivey-swarm-creator` | design a swarm with the user (each agent on Claude Code, Codex, Grok or agy), write the briefs, make the wiki, launch it; scripts: task board, house rules, agent setup | now |
+| `hivey-agent-creator` | design one long-lived agent with the user (any of the four CLIs), write its brief, make its wiki, launch it; scripts: agent setup, done gate, resume context | now |
 
 Also installed globally: `find-skills` (skills.sh), which creators use to find skills an
 agent needs.
@@ -94,10 +94,14 @@ Linked from the hivey checkout's `plugins/` (`hivey plugin list`).
 | `hivey.github` | product and swarm repos, asks before creating anything | now |
 | `hivey.team-template` | example creator: a builder and a critic | now |
 | `hivey.skills` | how creators pick and install each agent's skills | now |
-| `hivey.swarm-creator` | the swarm creator (next: run by the `hivey-swarm-creator` skill) | now |
-| `hivey.agent-creator` | the agent creator (next: run by the `hivey-agent-creator` skill) | now |
-| `hivey.swarm-watcher` | alerts the master about stalled agents and the time budget | next |
+| `hivey.swarm-creator` | the swarm creator: runs the `hivey-swarm-creator` skill | now |
+| `hivey.agent-creator` | the agent creator: runs the `hivey-agent-creator` skill | now |
+| `hivey.swarm-watcher` | tells the master when a worker is blocked, stopped, stalled or gone and when the time budget runs out; Gantt dashboard page | now |
 | `hivey.tts` | local Kokoro voices; optional, never installed by default (settings → voice) | next |
+
+Plugins hivey replaced (`swarm.creator`, `agent.creator`, `swarm.watcher`, from the old /swarm and
+/agent-creator skills) are unlinked by `hivey migrate`; a creator chosen in `swarm-setup.json` is
+switched to hivey's. `hivey update` also links bundled plugins that are new.
 
 ## MCP servers
 
