@@ -14,7 +14,7 @@ $HERDR_PLUGIN_CONFIG_DIR/config.json:
    "addons": ["hivey.dashboard"], "claude_args": "--dangerously-skip-permissions",
    "slack": "ask", "wiki": "ask"}
   slack: "ask" (when Slack is connected: offer a channel #<slug>), true, or false.
-  wiki: "ask" (offer an Obsidian wiki vault, <root>/obsidian, as the team's memory), true,
+  wiki: "ask" (offer an Obsidian wiki vault, <root>/<slug>-wiki, as the team's memory), true,
   or false.
 """
 import json
@@ -115,12 +115,12 @@ def want_wiki(cfg):
         return False
     if cfg["wiki"] is True:
         return True
-    return input("Give it an Obsidian wiki as memory (in its folder, obsidian/, where the "
+    return input("Give it an Obsidian wiki as memory (a vault in its own folder, where the "
                  "team keeps what it learns)? [Y/n] ").strip().lower() not in ("n", "no")
 
 
 def make_wiki(slug, task, root, agent_dirs):
-    """Creates (or reuses) <root>/obsidian and links every agent's CLAUDE.md to it; its path."""
+    """Creates (or reuses) <root>/<slug>-wiki and links every agent's CLAUDE.md to it; its path."""
     cmd = [sys.executable, str(new_wiki_script()), slug, "--root", str(root), "--about", task[:80]]
     for agent_dir in agent_dirs:
         cmd += ["--agent", str(agent_dir)]

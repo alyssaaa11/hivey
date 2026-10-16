@@ -4,11 +4,12 @@
 usage: new_wiki.py <name> [--root FOLDER] [--look-from VAULT] [--agent FOLDER]... [--about TEXT]
 
 The vault lives inside the swarm's or agent's own folder, so everything travels together:
-creates <FOLDER>/obsidian/ (raw/ for sources, wiki/ for maintained pages, index.md, log.md,
+creates <FOLDER>/<name>-wiki/ (raw/ for sources, wiki/ for maintained pages, index.md, log.md,
 CLAUDE.md with the rules, .obsidian/ so Obsidian opens it as a vault) and adds a "Memory"
-section to each --agent FOLDER's CLAUDE.md pointing at it with a relative path. FOLDER is the
-swarm root or the solo agent's folder (default: the current folder). An existing vault is
-reused, never overwritten.
+section to each --agent FOLDER's CLAUDE.md pointing at it with a relative path. Obsidian lists
+a vault by its folder name, hence <name>-wiki. FOLDER is the swarm root or the solo agent's
+folder (default: the current folder). An existing vault is reused, never overwritten; so is
+an older <FOLDER>/obsidian/ vault (`hivey migrate` renames those to <name>-wiki/).
 Obsidian keeps the look per vault, so a new vault copies the theme, CSS snippets and Style
 Settings of the vault remembered as --look-from (kept in ~/.hivey/wiki.json); without one it
 opens in stock Obsidian.
@@ -17,6 +18,7 @@ Prints JSON: {"ok": true, "path": "...", "existing": false, "look": true, "agent
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -24,7 +26,7 @@ from pathlib import Path
 
 SETTINGS = Path.home() / ".hivey" / "wiki.json"
 MARKER = "<!-- hivey: wiki memory -->"
-VAULT = "obsidian"
+LEGACY_VAULT = "obsidian"  # older vaults; Obsidian listed them all as "obsidian"
 
 RULES = """# {name} wiki: rules for the agents that keep it
 
@@ -95,6 +97,12 @@ def create(path, name, about):
     (path / "log.md").write_text(f"# {name} wiki: log\n\n{time.strftime('%Y-%m-%d')} vault created\n")
 
 
+def vault_name(name):
+    """The vault folder, <name>-wiki as a slug (Obsidian lists vaults by folder name)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "agent"
+    return slug if slug.endswith("-wiki") else f"{slug}-wiki"
+
+
 def link(agent_dir, path):
     """Adds the Memory section to the agent's CLAUDE.md once."""
     brief = Path(agent_dir).expanduser() / "CLAUDE.md"
@@ -110,13 +118,17 @@ def link(agent_dir, path):
 def main():
     parser = argparse.ArgumentParser(description="Obsidian wiki memory for a hivey agent or swarm")
     parser.add_argument("name")
-    parser.add_argument("--root", default=".", help="swarm or agent folder; the vault is <root>/obsidian")
+    parser.add_argument("--root", default=".", help="swarm or agent folder; the vault is <root>/<name>-wiki")
     parser.add_argument("--look-from", help="vault whose theme new vaults copy; remembered")
     parser.add_argument("--agent", action="append", default=[], help="agent folder to link")
     parser.add_argument("--about", default="", help="one line: what the agent or swarm does")
     args = parser.parse_args()
     look_from = setting("look_from", args.look_from)
-    path = Path(args.root).expanduser().resolve() / VAULT
+    root = Path(args.root).expanduser().resolve()
+    path = root / vault_name(args.name)
+    legacy = root / LEGACY_VAULT
+    if not path.exists() and not legacy.is_symlink() and (legacy / "CLAUDE.md").is_file():
+        path = legacy  # an older vault: reused as is; `hivey migrate` renames it
     existing = path.exists()
     look = False
     if not existing:

@@ -48,7 +48,8 @@ install_and_handoff() {
   cp "$NEWBIN" "$BIN.new" && mv -f "$BIN.new" "$BIN"
   mkdir -p "$(dirname "$INSTALLED_FILE")"
   git rev-parse --short HEAD >"$INSTALLED_FILE"
-  "$BIN" skill install >/dev/null 2>&1 || true  # no Claude Code / Codex: nothing to refresh
+  # The skill and hivey-* commands, then what older versions left behind (e.g. obsidian/ wikis).
+  "$BIN" migrate | grep -v "up to date" | grep -v "already" || true
   local sessions
   sessions=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}')
   for session in $sessions; do

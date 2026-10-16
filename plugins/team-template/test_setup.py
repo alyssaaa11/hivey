@@ -55,12 +55,12 @@ class TemplateTests(unittest.TestCase):
             from unittest import mock
             with mock.patch.dict(os.environ, {"HOME": tmp}):
                 path = setup.make_wiki("demo", "a task", root, agents)
-            self.assertEqual(path, str(root / "obsidian"))
+            self.assertEqual(path, str(root / "demo-wiki"))
             self.assertTrue(Path(path, "index.md").is_file())
             self.assertTrue(Path(path, ".obsidian").is_dir())
             for agent in agents:
                 # relative, so the folder can be moved or shared as a whole
-                self.assertIn("`../obsidian`", (agent / "CLAUDE.md").read_text())
+                self.assertIn("`../demo-wiki`", (agent / "CLAUDE.md").read_text())
 
     def test_briefs_name_the_team_and_hivey_messaging(self):
         brief = setup.BRIEF.format(agent="critic", slug="s", task="t", root="/r",

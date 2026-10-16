@@ -116,6 +116,7 @@ Continue with the **[user guide](docs/hivey-guide.md)** for setup and everyday u
 - [Architecture](docs/diagrams/hivey-architecture.html)
 - [New swarm flow](docs/diagrams/hivey-new-swarm.html)
 - [Write a provider](docs/hivey-providers.md)
+- [What hivey installs](docs/hivey-installed.md) — or run `hivey installed`
 - [Agent skill](skills/hivey/SKILL.md) — install with `hivey skill install`
 - [Design](docs/hivey-design.md)
 

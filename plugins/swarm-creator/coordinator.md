@@ -7,7 +7,7 @@ end of this message. The `/hivey` skill knows every hivey command; `hivey swarm 
 Ask the user for the swarm's **name** (suggest one from the task; `[a-z][a-z0-9-]{0,18}`), unless
 the task already says "Name: …". That one name is used for everything: the slug, the Slack
 channel `#<name>` and the folder `<Folder>/<name>` (its Obsidian wiki, if any, is
-`<Folder>/<name>/obsidian`).
+`<Folder>/<name>/<name>-wiki`).
 
 ## 2. Design the team
 Pick the fewest agents that cover the task (usually 2–4), each with one clear job, e.g. a
@@ -27,9 +27,11 @@ plan per agent, and are installed in each agent's own folder after step 4, never
   `#<name>`, invites the user and starts the relay whenever Slack is connected. Check
   `hivey slack status` first; if it's not connected ask the user to run `hivey slack connect` in
   a terminal (never ask for the token in chat), or go on without Slack if they prefer.
-- **Obsidian wiki memory:** ask whether the swarm should get one. If yes, after step 4 run
-  `python3 ~/.claude/skills/hivey/scripts/new_wiki.py <name> --root <root> --agent <root>/<agent>
-  [--agent …] --about "<one line>"`. The vault is `<root>/obsidian`, inside the swarm folder, so
+- **Obsidian wiki memory:** ask whether the swarm should get one. If yes, after step 4 make it
+  with the `hivey-create-wiki` skill: `<name> --in <root> --agent <root>/<agent> [--agent …]`
+  (it reads the briefs, tailors the vault and patches every agent's CLAUDE.md). Without that
+  skill: `python3 ~/.claude/skills/hivey/scripts/new_wiki.py <name> --root <root> --agent
+  <root>/<agent> [--agent …] --about "<one line>"`. The vault is `<root>/<name>-wiki`, inside the swarm folder, so
   the swarm and its knowledge stay together and can be shared as one folder. Never ask where
   the user's Obsidian is and never put the vault anywhere else.
 

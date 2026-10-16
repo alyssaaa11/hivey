@@ -126,6 +126,8 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "notification" => notification::run_notification_command(&args[2..])?,
         "agent" => agent::run_agent_command(&args[2..])?,
         "skill" => swarm::run_skill_command(&args[2..])?, // hivey
+        "migrate" => swarm::run_migrate_command(&args[2..])?, // hivey
+        "installed" => swarm::run_installed_command(&args[2..])?, // hivey
         "swarm" => swarm::run_swarm_command(&args[2..])?, // hivey
         "msg" => swarm::run_msg_command(&args[2..])?,     // hivey
         "home" => swarm::run_home_command(&args[2..])?,   // hivey

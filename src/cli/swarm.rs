@@ -9,7 +9,9 @@ use crate::swarm::SwarmParams;
 
 mod directory;
 mod home;
+mod installed;
 mod launch;
+mod migrate;
 mod pet;
 mod quiet;
 mod skill;
@@ -17,6 +19,8 @@ mod skills;
 mod slack;
 mod voice;
 pub(super) use home::run as run_home_command;
+pub(super) use installed::run as run_installed_command;
+pub(super) use migrate::run as run_migrate_command;
 pub(super) use pet::run as run_pet_command;
 pub(super) use quiet::run as run_quiet_command;
 pub(super) use skill::run_skill_command;
@@ -1179,6 +1183,12 @@ fn install_keys() -> std::io::Result<i32> {
         match skill::install_into(&dir) {
             Ok(status) => println!("  hivey skill for {label}: {status}"),
             Err(err) => eprintln!("  hivey skill for {label}: {err}"),
+        }
+    }
+    if home.join(".claude").is_dir() {
+        match skill::install_commands(&home.join(".claude/commands")) {
+            Ok(status) => println!("  wiki commands for Claude Code: {status}"),
+            Err(err) => eprintln!("  wiki commands for Claude Code: {err}"),
         }
     }
     let response = super::send_request(&Request {

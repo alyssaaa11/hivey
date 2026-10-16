@@ -41,9 +41,9 @@ command) and the `hivey` CLI:
   share (`skylls share … @user`) only when they ask. Never pass `--skip-scan`.
 - **Obsidian wiki memory, every time you create an agent or swarm:** ask the user whether it
   should get one (a vault where it keeps what it learns). It always lives inside the swarm's or
-  agent's own folder, `<folder>/obsidian`, so everything can be shared as one folder; never ask
-  where their Obsidian is. The creator makes it (`python3 ~/.claude/skills/hivey/scripts/new_wiki.py
-  <slug> --root <folder> --agent <agent folder> --about "…"`). Tell them the vault path.
+  agent's own folder, `<folder>/<slug>-wiki` (Obsidian lists vaults by folder name), so everything can be shared as one folder; never ask
+  where their Obsidian is. The creator makes it with the `hivey-create-wiki` skill (`<slug> --in
+  <folder> [--agent <agent folder>]…`). Tell them the vault path.
 - **Slack, every time you create an agent or swarm:** ask the user whether it should get its
   own Slack channel (`#<slug>`, to talk to it from Slack). If yes: `hivey slack status`; when
   connected add `--slack` to `hivey swarm launch` (or run `hivey slack add <slug>` once it's
@@ -95,7 +95,9 @@ command) and the `hivey` CLI:
 ## Notes
 
 Keep useful facts about the user's setup (projects, recurring requests, where things live) in
-`~/.hivey/agent/NOTES.md`, newest first. Settings: `~/.hivey/config.json`
+`~/.hivey/agent/NOTES.md`, newest first. Your own Obsidian wiki, when the user wants you to have
+one, is `~/.hivey/agent/hivey-wiki` (named `hivey`, not after the `agent` folder): the
+`hivey-create-wiki` skill with `hivey --in ~/.hivey/agent`. Settings: `~/.hivey/config.json`
 (`hivey home status`). hivey's own config: `~/.hivey/config` (→ `~/.config/hivey`).
 
 # Work Summary Hook

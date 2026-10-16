@@ -1,5 +1,6 @@
 //! `hivey skill …`: the hivey skill for AI coding agents (Claude Code, Codex), embedded in the
-//! binary so every machine with hivey can install it (`skills/hivey/` in the repo).
+//! binary so every machine with hivey can install it (`skills/hivey/` in the repo), with the
+//! `hivey-*` skills next to it (`skills/hivey-*/`) and the wiki commands.
 
 use std::path::{Path, PathBuf};
 
@@ -15,10 +16,50 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
+/// The other skills hivey ships, installed next to the hivey skill (`skills/<name>`): Claude
+/// Code only finds skills one level deep, so they are `hivey-<name>`, never nested.
+const SKILLS: &[(&str, &[(&str, &str)])] = &[(
+    "hivey-create-wiki",
+    &[(
+        "SKILL.md",
+        include_str!("../../../skills/hivey-create-wiki/SKILL.md"),
+    )],
+)];
+
+/// Commands earlier versions installed that a skill of the same name replaced.
+const RETIRED_COMMANDS: &[&str] = &["hivey-create-wiki.md"];
+
+/// Claude Code slash commands for an agent's or swarm's wiki, installed into ~/.claude/commands.
+/// Everything hivey installs is named `hivey-…` (Claude Code ignores skills in subfolders).
+const COMMANDS: &[(&str, &str)] = &[
+    (
+        "hivey-wiki-ingest.md",
+        include_str!("../../../skills/hivey/commands/hivey-wiki-ingest.md"),
+    ),
+    (
+        "hivey-wiki-lint.md",
+        include_str!("../../../skills/hivey/commands/hivey-wiki-lint.md"),
+    ),
+    (
+        "hivey-wiki-list.md",
+        include_str!("../../../skills/hivey/commands/hivey-wiki-list.md"),
+    ),
+    (
+        "hivey-wiki-log.md",
+        include_str!("../../../skills/hivey/commands/hivey-wiki-log.md"),
+    ),
+    (
+        "hivey-wiki-query.md",
+        include_str!("../../../skills/hivey/commands/hivey-wiki-query.md"),
+    ),
+];
+
 const USAGE: &str = "hivey skill commands:
   hivey skill install [--claude] [--codex] [--dir DIR]
                        install the hivey skill for Claude Code (~/.claude/skills/hivey) and
-                       Codex (~/.codex/skills/hivey); default: each one that is set up
+                       Codex (~/.codex/skills/hivey); default: each one that is set up.
+                       (and the hivey-create-wiki skill next to it); Claude Code also gets
+                       the wiki commands (/hivey-wiki-ingest, …) in ~/.claude/commands
   hivey skill print    print SKILL.md";
 
 pub(crate) fn run_skill_command(args: &[String]) -> std::io::Result<i32> {
@@ -77,8 +118,17 @@ fn install(args: &[String]) -> std::io::Result<i32> {
             return Ok(0);
         }
     }
+    let claude_skill = home.join(".claude/skills/hivey");
+    let mut commands = false;
     for (label, dir) in targets {
         println!("{label}: {}", install_into(&dir)?);
+        commands |= dir == claude_skill;
+    }
+    if commands {
+        println!(
+            "Claude Code commands: {}",
+            install_commands(&home.join(".claude/commands"))?
+        );
     }
     Ok(0)
 }
@@ -102,22 +152,77 @@ pub(super) fn install_into(dir: &Path) -> std::io::Result<String> {
             target.display()
         ));
     }
-    let mut changed = 0;
-    for (rel, content) in FILES {
+    let mut changes = write_files(dir, FILES)?;
+    // Next to the hivey skill in a skills folder (~/.claude/skills/hivey): the hivey-* skills.
+    if let (Some(skills), Some("hivey")) = (dir.parent(), dir.file_name().and_then(|n| n.to_str()))
+    {
+        for (name, files) in SKILLS {
+            changes.extend(write_files(&skills.join(name), files)?);
+        }
+    }
+    Ok(match changes.is_empty() {
+        true => format!("{} is up to date", show(dir)),
+        false => format!("installed {}{}", show(dir), list(&changes)),
+    })
+}
+
+/// Write the wiki slash commands into `dir` (Claude Code's ~/.claude/commands).
+pub(super) fn install_commands(dir: &Path) -> std::io::Result<String> {
+    let mut changes = Vec::new();
+    for name in RETIRED_COMMANDS {
+        let retired = dir.join(name);
+        if retired.is_file() {
+            std::fs::remove_file(&retired)?;
+            changes.push((retired, "removed"));
+        }
+    }
+    let written = write_files(dir, COMMANDS)?;
+    let count = written.len();
+    changes.extend(written);
+    Ok(match (count, changes.is_empty()) {
+        (_, true) => format!("{} is up to date", show(dir)),
+        (n, false) => format!("{n} installed in {}{}", show(dir), list(&changes)),
+    })
+}
+
+/// Write each file that is missing or different; what changed: (path, "new" | "updated").
+fn write_files(
+    dir: &Path,
+    files: &[(&str, &str)],
+) -> std::io::Result<Vec<(PathBuf, &'static str)>> {
+    let mut changes = Vec::new();
+    for (rel, content) in files {
         let path = dir.join(rel);
-        if std::fs::read_to_string(&path).is_ok_and(|current| current == *content) {
+        let current = std::fs::read_to_string(&path);
+        if current.as_ref().is_ok_and(|current| current == content) {
             continue;
         }
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&path, content)?;
-        changed += 1;
+        changes.push((path, if current.is_ok() { "updated" } else { "new" }));
     }
-    Ok(match changed {
-        0 => format!("{} is up to date", dir.display()),
-        _ => format!("installed {}", dir.display()),
-    })
+    Ok(changes)
+}
+
+/// One line per changed file, so an install shows exactly what it put on the computer.
+fn list(changes: &[(PathBuf, &str)]) -> String {
+    changes
+        .iter()
+        .map(|(path, what)| format!("\n    {what:<8} {}", show(path)))
+        .collect()
+}
+
+/// A path with the home folder as `~`.
+pub(super) fn show(path: &Path) -> String {
+    match std::env::var_os("HOME").map(PathBuf::from) {
+        Some(home) if path.starts_with(&home) => match path.strip_prefix(&home) {
+            Ok(rel) => format!("~/{}", rel.display()),
+            Err(_) => path.display().to_string(),
+        },
+        _ => path.display().to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -141,6 +246,7 @@ mod tests {
         assert!(dir.join("SKILL.md").is_file());
         assert!(dir.join("scripts/handoff.py").is_file());
         assert!(dir.join("scripts/new_wiki.py").is_file());
+        assert!(tmp.join("skills/hivey-create-wiki/SKILL.md").is_file());
         assert!(install_into(&dir).expect("again").ends_with("up to date"));
     }
 
@@ -152,6 +258,62 @@ mod tests {
         let targets = default_targets(&tmp);
         assert_eq!(targets.len(), 1);
         assert!(targets[0].1.ends_with(".codex/skills/hivey"));
+    }
+
+    #[test]
+    fn installs_wiki_commands() {
+        let tmp = scratch("commands");
+        let commands = tmp.join(".claude/commands");
+        std::fs::create_dir_all(&commands).expect("mkdir");
+        std::fs::write(commands.join("hivey-create-wiki.md"), "old").expect("retired");
+        assert!(install_commands(&commands)
+            .expect("install")
+            .starts_with("5 installed"));
+        assert!(
+            !commands.join("hivey-create-wiki.md").exists(),
+            "retired: a skill now"
+        );
+        for (name, _) in COMMANDS {
+            assert!(commands.join(name).is_file(), "{name}");
+        }
+        assert!(install_commands(&commands)
+            .expect("again")
+            .ends_with("up to date"));
+    }
+
+    #[test]
+    fn skills_are_named_hivey_dash() {
+        for (name, files) in SKILLS {
+            assert!(name.starts_with("hivey-"), "{name}");
+            let skill = files
+                .iter()
+                .find(|(rel, _)| *rel == "SKILL.md")
+                .expect("SKILL.md");
+            assert!(
+                skill.1.starts_with(&format!("---\nname: {name}\n")),
+                "{name}"
+            );
+            let commands: Vec<&str> = COMMANDS.iter().map(|(file, _)| *file).collect();
+            assert!(
+                !commands.contains(&format!("{name}.md").as_str()),
+                "{name}: also a command"
+            );
+        }
+    }
+
+    #[test]
+    fn commands_have_frontmatter() {
+        for (name, content) in COMMANDS {
+            let slug = name.trim_end_matches(".md");
+            assert!(
+                content.starts_with(&format!("---\nname: {slug}\n")),
+                "{name}"
+            );
+            assert!(
+                slug.starts_with("hivey-"),
+                "{name}: installed names start with hivey-"
+            );
+        }
     }
 
     #[test]

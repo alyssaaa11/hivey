@@ -130,11 +130,12 @@ act on the answers):
    pick a different name for either.
 2. **Slack channel?** (see below)
 3. **Obsidian wiki memory?** A vault where it keeps what it learns, always inside the swarm's
-   or agent's own folder: `<folder>/obsidian`, so the work and its knowledge can be shared as one
-   folder. Never ask where the user's Obsidian is. Create it with `python3 <this
-   skill>/scripts/new_wiki.py <slug> --root <swarm root or agent folder> --agent <agent folder>
-   [--agent …] --about "<one line>"` (a team: one vault, every agent folder linked with a
-   relative path). Do it after the agents' CLAUDE.md files exist, and tell the user the vault
+   or agent's own folder: `<folder>/<slug>-wiki` (Obsidian lists vaults by folder name), so the work and its knowledge can be shared as one
+   folder. Never ask where the user's Obsidian is. Create it with the `hivey-create-wiki` skill
+   (`<slug> --in <swarm root or agent folder> [--agent <agent folder>]…`; it tailors the vault to
+   the agents' briefs), or plainly with `python3 <this skill>/scripts/new_wiki.py <slug> --root
+   <swarm root or agent folder> --agent <agent folder> [--agent …] --about "<one line>"` (a
+   team: one vault, every agent folder linked with a relative path). Do it after the agents' CLAUDE.md files exist, and tell the user the vault
    path.
    New vaults copy the theme and Style Settings of the vault remembered as `look_from` in
    `~/.hivey/wiki.json` (set it once with `--look-from <their main vault>`); on first open
@@ -282,8 +283,14 @@ Workflow for a new plugin:
 - **Agent shows blocked:** it's waiting on a dialog: `hivey pane read <pane> --source visible`.
 - **Messages not delivered:** `hivey swarm list` (✉ queued), is the swarm paused?
   `hivey msg log --swarm <slug>`.
-- **Update this skill:** `hivey skill install` (it ships inside the hivey binary; source
-  `skills/hivey/` in the repo).
+- **Update this skill:** `hivey skill install` (it ships inside the hivey binary, with the
+  `hivey-create-wiki` skill next to it and the wiki commands in `~/.claude/commands/`:
+  /hivey-wiki-ingest, /hivey-wiki-query, /hivey-wiki-lint, /hivey-wiki-log, /hivey-wiki-list;
+  source `skills/hivey*/` in the repo).
+- **Migrate an older install:** `hivey migrate` (`--dry-run` to preview; `hivey update` and
+  `./install.sh` run it): the hivey-* commands; old copies they replaced (wiki-ingest, …,
+  agents-create-wiki) moved to `~/.hivey/old/`; wikis `<folder>/obsidian/` → `<folder>/<name>-wiki/`
+  with every CLAUDE.md, `~/Obsidian` link and Obsidian's vault list repointed (quit Obsidian first).
 - **Install / update hivey:** first install from a clone: `./install.sh`. Update: `hivey update`
   (latest hivey, installed, running sessions handed off live; prints old → new version).
   Maintainer: `hivey update --check` (merges herdr, tests, asks before push + install).

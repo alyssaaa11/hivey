@@ -19,9 +19,11 @@ one at a time, then show a 5-line summary and get a yes before writing anything.
    it's not connected ask the user to run `hivey slack connect` in a terminal (never ask for the
    token in chat), or go on without Slack if they'd rather not.
 2. **Obsidian wiki memory?** (ask) A vault where it keeps what it learns. If the task names an
-   existing vault, use that one. Otherwise create it inside the agent folder:
-   `python3 ~/.claude/skills/hivey/scripts/new_wiki.py <name> --root <agent folder> --agent
-   <agent folder> --about "<one line>"` makes `<agent folder>/obsidian`, so the agent and its
+   existing vault, use that one. Otherwise, once its CLAUDE.md exists, create it with the
+   `hivey-create-wiki` skill: `<name> --in <agent folder>` (it reads the brief, tailors the
+   vault and patches the brief). Without that skill: `python3
+   ~/.claude/skills/hivey/scripts/new_wiki.py <name> --root <agent folder> --agent <agent
+   folder> --about "<one line>"`. Either makes `<agent folder>/<name>-wiki`, so the agent and its
    knowledge stay together and can be shared as one folder. Never ask where the user's Obsidian
    is. It copies the user's Obsidian theme when one is set.
 

@@ -10,7 +10,7 @@
 # sidebar and Option keys, asks for your Slack bot token, checks skylls (the skills library)
 # and a desktop pet (macOS), and sets up the hivey agent in ~/.hivey/agent (needs Claude Code;
 # Slack channel #hivey when connected). Swarms and agents keep their Obsidian wiki in their own
-# folder (<folder>/obsidian), so there is no Obsidian folder to set up.
+# folder (<folder>/<name>-wiki), so there is no Obsidian folder to set up.
 # --no-setup skips the questions and the hivey agent. Run it again any time; later updates are
 # just `hivey update`.
 #
@@ -80,6 +80,10 @@ if [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ]; then
 else
   echo "no Claude Code or Codex found: skipped (later: hivey skill install)"
 fi
+
+# Reinstalls over an older hivey: bring its leftovers to the current conventions.
+say "migrate (wikis named <name>-wiki, hivey-* commands)"
+"$BIN" migrate || echo "could not migrate everything (later: hivey migrate)"
 
 # find-skills (skills.sh) is the one skill installed globally: creators use it to find skills an
 # agent needs; those skills then go into the agent's own folder, never the global ones.
@@ -187,6 +191,9 @@ if [ "$SETUP" = 1 ]; then
     echo "Claude Code not found: skipped (later: hivey home setup)"
   fi
 fi
+
+say "what hivey installed on this computer"
+"$BIN" installed || true
 
 say "done"
 case ":$PATH:" in
