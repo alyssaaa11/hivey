@@ -1411,6 +1411,34 @@ fn plugins_tab_picks_the_creator_per_kind() {
 
 /// hivey: settings → skills toggles online search through `hivey skills` (the library is skylls).
 #[test]
+fn safety_tab_turns_the_safety_hooks_on_and_off() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let mut outcome = ClientShellInput::default();
+    state.open_settings_overlay();
+    assert!(ClientSettingsSection::ALL.contains(&ClientSettingsSection::Safety));
+    state.select_settings_section(ClientSettingsSection::Safety, &mut outcome);
+    if let Some(ClientShellOverlay::Settings(settings)) = state.overlay.as_mut() {
+        settings.safety_on = true;
+    }
+    let run = |state: &mut ClientShellState| {
+        let mut outcome = ClientShellInput::default();
+        state.select_settings_choice(0);
+        state.apply_settings_choice(&mut outcome);
+        outcome.actions
+    };
+    assert!(matches!(
+        &run(&mut state)[..],
+        [ClientShellAction::RunHivey(args)] if args == &["safety", "off"]
+    ));
+    assert!(matches!(
+        &run(&mut state)[..],
+        [ClientShellAction::RunHivey(args)] if args == &["safety", "on"]
+    ));
+}
+
+#[test]
 fn skills_tab_toggles_online_search() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));

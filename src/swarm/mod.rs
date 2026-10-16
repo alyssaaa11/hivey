@@ -11,6 +11,7 @@ pub(crate) mod engine;
 pub(crate) mod home;
 pub(crate) mod model;
 pub(crate) mod quiet;
+pub(crate) mod safety;
 pub(crate) mod schedule;
 pub(crate) mod skills_library;
 pub(crate) mod voice;

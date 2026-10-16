@@ -68,6 +68,10 @@ pub(super) fn leftovers(home: &Path, dry: bool) -> std::io::Result<()> {
     for line in update_home_brief(home, dry)? {
         println!("{line}");
     }
+    // hivey's Claude Code hooks (safety switch, spoken summaries), replacing older ones.
+    for line in super::safety::apply(home, dry)? {
+        println!("{line}");
+    }
     let report = migrate_wikis(&Machine::discover(home), dry)?;
     for line in &report {
         println!("{line}");

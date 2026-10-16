@@ -105,6 +105,25 @@ impl ClientShellState {
         outcome.repaint = true;
     }
 
+    /// hivey: settings → safety: turns the safety hooks on or off (`hivey safety on|off` in the
+    /// background, which also updates ~/.claude/settings.json).
+    fn choose_safety(&mut self, selected: usize, outcome: &mut ClientShellInput) {
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        if selected != 0 {
+            return;
+        }
+        settings.safety_on = !settings.safety_on;
+        let value = if settings.safety_on { "on" } else { "off" };
+        settings.safety_message = Some(format!(
+            "safety hooks {value} (new Claude Code sessions use the change)"
+        ));
+        let args = vec!["safety".into(), value.into()];
+        outcome.actions.push(ClientShellAction::RunHivey(args));
+        outcome.repaint = true;
+    }
+
     /// Makes the selected creator the one `hivey swarm new` uses for its kind, with
     /// `hivey swarm providers --default` in the background.
     fn choose_creator(&mut self, selected: usize, outcome: &mut ClientShellInput) {
@@ -395,6 +414,8 @@ impl ClientShellState {
             skill_provider_current: None,
             skylls_installed: false,
             skills_online: true,
+            safety_on: true,
+            safety_message: None,
             skills_message: None,
             voice_provider: crate::swarm::voice::provider(),
             voice_current: crate::swarm::voice::voice(crate::swarm::voice::provider()),
@@ -436,6 +457,7 @@ impl ClientShellState {
             }
             ClientSettingsSection::Plugins => 0,
             ClientSettingsSection::Skills => 0,
+            ClientSettingsSection::Safety => 0,
         }
     }
 
@@ -470,6 +492,10 @@ impl ClientShellState {
                 settings.voice_current = voice::voice(settings.voice_provider);
                 settings.voice_volume = voice::volume();
                 settings.voice_message = None;
+            }
+            if section == ClientSettingsSection::Safety {
+                settings.safety_on = crate::swarm::safety::enabled();
+                settings.safety_message = None;
             }
             if section == ClientSettingsSection::Skills {
                 use crate::swarm::skills_library as library;
@@ -514,6 +540,7 @@ impl ClientShellState {
                     settings.creators.len() + settings.skill_providers.len()
                 }
                 ClientSettingsSection::Skills => 1,
+                ClientSettingsSection::Safety => 1,
             },
             _ => 0,
         }
@@ -642,6 +669,7 @@ impl ClientShellState {
             ClientSettingsSection::Quiet => self.choose_quiet(selected, outcome),
             ClientSettingsSection::Plugins => self.choose_creator(selected, outcome),
             ClientSettingsSection::Skills => self.choose_skills_setting(selected, outcome),
+            ClientSettingsSection::Safety => self.choose_safety(selected, outcome),
         }
     }
 

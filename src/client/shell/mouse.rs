@@ -1579,7 +1579,8 @@ impl ClientShellState {
                                 | ClientSettingsSection::Toast
                                 | ClientSettingsSection::Voice
                                 | ClientSettingsSection::Quiet
-                                | ClientSettingsSection::Pets,
+                                | ClientSettingsSection::Pets
+                                | ClientSettingsSection::Safety,
                             ..
                         }))
                     );

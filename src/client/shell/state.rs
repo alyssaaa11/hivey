@@ -403,6 +403,8 @@ pub(super) enum ClientSettingsSection {
     Plugins,
     // hivey: online skill search (the skills library is skylls)
     Skills,
+    // hivey: the safety hooks (on/off)
+    Safety,
 }
 
 /// hivey: settings → quiet's choices, in order (↑ ↓ walk them; the time rows' − and +).
@@ -446,6 +448,7 @@ impl ClientSettingsSection {
         Self::Pets,
         Self::Plugins,
         Self::Skills,
+        Self::Safety,
     ];
 
     pub(super) fn label(self) -> &'static str {
@@ -460,6 +463,7 @@ impl ClientSettingsSection {
             Self::Pets => "pets",
             Self::Plugins => "plugins",
             Self::Skills => "skills",
+            Self::Safety => "safety",
         }
     }
 }
@@ -490,6 +494,9 @@ pub(super) struct ClientSettingsOverlay {
     /// search is on, and what the last choice did.
     pub(super) skylls_installed: bool,
     pub(super) skills_online: bool,
+    /// hivey: settings → safety: whether the safety hooks are on, and the last change.
+    pub(super) safety_on: bool,
+    pub(super) safety_message: Option<String>,
     pub(super) skills_message: Option<String>,
     /// hivey: settings → voice: who reads agents' spoken summaries (`~/.hivey/voice.json`),
     /// its voice, and what the last choice did (saved with `hivey voice` in the background).

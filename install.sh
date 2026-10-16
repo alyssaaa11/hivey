@@ -6,7 +6,8 @@
 #
 # Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), offers the coding
 # agents it runs (Claude Code, Codex, Antigravity/Gemini, Grok) and links each one found to hivey,
-# installs the hivey skills and commands and the global find-skills skill for Claude Code, links the bundled plugins (dashboard,
+# installs the hivey skills, commands and hooks (safety on; hivey safety off) and the global
+# find-skills skill for Claude Code, links the bundled plugins (dashboard,
 # Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the swarm
 # sidebar and Option keys, asks for your Slack bot token, checks skylls (the skills library)
 # and a desktop pet (macOS), and sets up the hivey agent in ~/.hivey/agent (needs Claude Code;
@@ -27,7 +28,7 @@ SETUP=1
 for arg in "$@"; do
   case "$arg" in
     --no-setup) SETUP=0 ;;
-    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option $arg (./install.sh [--no-setup])"; exit 2 ;;
   esac
 done

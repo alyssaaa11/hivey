@@ -214,6 +214,9 @@ pub(super) fn render_settings_overlay(
         ClientSettingsSection::Plugins => {
             render_plugins(buffer, content, settings, palette, &mut choice_hits);
         }
+        ClientSettingsSection::Safety => {
+            render_safety(buffer, content, settings, palette, &mut choice_hits);
+        }
         ClientSettingsSection::Skills => {
             render_skills(buffer, content, settings, palette, &mut choice_hits);
         }
@@ -753,6 +756,58 @@ fn render_plugins(
 }
 
 /// hivey: online skill search; the library is skylls.
+/// hivey: settings → safety: the safety hooks' switch and what they do.
+fn render_safety(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    let labels = [format!(
+        "{} on   block destructive commands and secret access, scan commits for secrets",
+        if settings.safety_on { "✓" } else { " " }
+    )];
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    render_choice_section(
+        buffer,
+        area,
+        "safety hooks",
+        "Claude Code agents, even with every permission pre-approved · hivey safety on|off",
+        &labels,
+        settings.selected,
+        None,
+        palette,
+        hits,
+    );
+    let mut y = area.y + 5;
+    let mut lines = Vec::new();
+    if let Some(message) = &settings.safety_message {
+        lines.push((message.clone(), palette.accent));
+    }
+    for text in [
+        "blocks rm -rf of whole folders, wiping disks, force-push, reset --hard, curl | sh,",
+        "reading or writing ~/.ssh, .env and credentials, and editing lockfiles by hand;",
+        "an agent that hits one is told to ask you. Off keeps the hooks installed, unregistered.",
+    ] {
+        lines.push((text.to_string(), palette.overlay1));
+    }
+    for (text, color) in lines {
+        if y >= area.bottom() {
+            break;
+        }
+        put_text(
+            buffer,
+            area.x,
+            y,
+            area.width,
+            &format!(" {text}"),
+            Style::default().fg(color).bg(palette.panel_bg),
+        );
+        y += 1;
+    }
+}
+
 fn render_skills(
     buffer: &mut Buffer,
     area: Rect,
@@ -961,6 +1016,8 @@ mod tests {
             skill_provider_current: None,
             skylls_installed: false,
             skills_online: true,
+            safety_on: true,
+            safety_message: None,
             skills_message: None,
         }
     }

@@ -337,6 +337,8 @@ fn every_dialog_and_menu_occludes_its_panel_not_the_whole_screen() {
             skill_provider_current: None,
             skylls_installed: false,
             skills_online: true,
+            safety_on: true,
+            safety_message: None,
             skills_message: None,
         }),
     ];

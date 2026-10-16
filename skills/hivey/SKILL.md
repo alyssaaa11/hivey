@@ -35,6 +35,10 @@ and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hi
   `EXTRA_SKILL.md` in a hivey skill's folder; both are read automatically and never touched by
   updates. When the user wants to change how hivey or a hivey skill behaves on their machine,
   write it there.
+- **Safety hooks** (`hivey safety on|off`, settings → safety; on by default): block destructive
+  commands, history rewrites, `curl | sh`, secret access and hand-edited lockfiles for Claude
+  Code agents. When one blocks you, ask the user; never work around it, and never turn safety
+  off yourself.
 - **Docs: Context7 first.** For any library, framework, SDK, API, CLI or cloud service, look the
   docs up with the `hivey-context7` skill (current docs in seconds, no MCP needed) before a web
   search or your memory, and write the same rule into every agent brief you create.

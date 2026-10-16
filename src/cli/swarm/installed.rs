@@ -104,7 +104,18 @@ fn inventory(home: &Path, config_dir: &Path) -> String {
         };
         hooks.push(format!("{:<34} Codex        {on}", show(&codex)));
     }
-    section("Hooks (agent state)", hooks, "none");
+    hooks.insert(
+        0,
+        format!(
+            "safety: {} (hivey safety on|off, settings → safety)",
+            if crate::swarm::safety::enabled_in(home) {
+                "on"
+            } else {
+                "off"
+            }
+        ),
+    );
+    section("Hooks (Claude Code / Codex)", hooks, "none");
 
     let agents = hivey_entries(&home.join(".claude/agents"), ".md")
         .into_iter()
