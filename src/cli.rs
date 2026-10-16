@@ -34,6 +34,7 @@ mod protocol_guard;
 mod runtime;
 mod server;
 mod server_not_running;
+mod session_picker; // hivey
 mod spec;
 mod status;
 mod swarm; // hivey
@@ -468,9 +469,15 @@ fn session_attach_help(args: &[String]) -> std::io::Result<i32> {
 }
 
 fn session_list(args: &[String]) -> std::io::Result<i32> {
-    let json = match parse_session_json_only(args, "usage: hivey session list [--json]") {
-        Ok(json) => json,
-        Err(code) => return Ok(code),
+    const USAGE: &str = "usage: hivey session list [--json | --plain]";
+    let (json, plain) = match args {
+        [] => (false, false),
+        [flag] if flag == "--json" => (true, false),
+        [flag] if flag == "--plain" => (false, true),
+        _ => {
+            eprintln!("{USAGE}");
+            return Ok(2);
+        }
     };
 
     let sessions = crate::session::list_sessions()?;
@@ -478,10 +485,29 @@ fn session_list(args: &[String]) -> std::io::Result<i32> {
         _print_json(&serde_json::json!({
             "sessions": sessions,
         }));
-    } else {
-        print_session_table(&sessions);
+        return Ok(0);
     }
-    Ok(0)
+
+    // hivey: in a terminal, the list is a picker that opens the chosen session.
+    use std::io::IsTerminal as _;
+    let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    if plain || !interactive || sessions.is_empty() {
+        print_session_table(&sessions);
+        return Ok(0);
+    }
+    match session_picker::pick(&sessions)? {
+        Some(name) => open_session(&name),
+        None => Ok(0),
+    }
+}
+
+/// hivey: runs `hivey --session <name>` in this terminal, as if typed.
+fn open_session(name: &str) -> std::io::Result<i32> {
+    let status = std::process::Command::new(std::env::current_exe()?)
+        .arg("--session")
+        .arg(name)
+        .status()?;
+    Ok(status.code().unwrap_or(1))
 }
 
 fn session_stop(args: &[String]) -> std::io::Result<i32> {
@@ -968,17 +994,6 @@ pub(super) fn expand_equals_args(args: &[String], value_options: &[&str]) -> Vec
     expanded
 }
 
-fn parse_session_json_only(args: &[String], usage: &str) -> Result<bool, i32> {
-    match args {
-        [] => Ok(false),
-        [flag] if flag == "--json" => Ok(true),
-        _ => {
-            eprintln!("{usage}");
-            Err(2)
-        }
-    }
-}
-
 fn parse_session_name_and_json(args: &[String], usage: &str) -> Result<(String, bool), i32> {
     let mut name = None;
     let mut json = false;
@@ -1056,7 +1071,8 @@ fn print_terminal_help() {
 
 fn print_session_help() {
     eprintln!("hivey session commands:");
-    eprintln!("  hivey session list [--json]");
+    eprintln!("  hivey session list [--json | --plain]");
+    eprintln!("  in a terminal, list opens a picker: click a session to open it");
     eprintln!("  hivey session attach <name>");
     eprintln!("  hivey session stop <name> [--json]");
     eprintln!("  hivey session delete <name> [--json]");

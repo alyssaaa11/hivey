@@ -752,7 +752,12 @@ fn terminal_command() -> Command {
 fn session_command() -> Command {
     Command::new("session")
         .about("Manage named persistent sessions")
-        .subcommand(Command::new("list").about("List sessions").arg(json_flag()))
+        .subcommand(
+            Command::new("list")
+                .about("List sessions; in a terminal, click one to open it")
+                .arg(json_flag())
+                .arg(flag("plain")),
+        )
         .subcommand(
             Command::new("attach")
                 .about("Attach to a session")
