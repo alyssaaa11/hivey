@@ -36,13 +36,16 @@ Sections, in this order:
   sources in `raw/`, keep `wiki/` pages, `index.md` and `log.md` current. For an existing vault,
   write this section yourself; `new_wiki.py --agent` adds it for a new one.
 - **Rules**: ask before anything destructive or outward-facing; secrets never in files or
-  chat; talk to other agents only via `hivey msg send <slug>/master "…"` after checking
+  chat; look up library / API / CLI docs with the `hivey-context7` skill first (current docs in
+  seconds) before a web search or memory; talk to other agents only via `hivey msg send <slug>/master "…"` after checking
   `hivey swarm directory`.
 - **Status**: a dated checklist it updates as it goes, so a fresh session can resume.
 Give it the skills its task needs: run `hivey skills guide` and follow it (it picks them from
 skylls (the user's and friends' published skills), may search skills.sh with the user's OK, and installs them in
 `<agent folder>/.claude/skills/` only, never globally). Show the skills in the summary you ask
-the user to confirm. Put project MCP servers in `<agent folder>/.mcp.json`.
+the user to confirm. Put project MCP servers in `<agent folder>/.mcp.json`, only the ones its
+task needs and with the user's OK (hivey installs none; docs need none, `hivey-context7` covers
+them).
 
 ## 4. Launch
 `hivey swarm launch <agent folder> --slug <name> --solo --description "<one line>"

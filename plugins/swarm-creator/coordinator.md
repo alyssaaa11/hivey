@@ -40,8 +40,9 @@ Root: `<Folder>/<name>`. For each agent write `<root>/<agent>/CLAUDE.md` with: *
 **Team** (every agent's key and job, and that the coordinator is `coordinator`),
 **Deliverables** (path, done-when, check), **Method**, **Messaging** (`hivey msg send <agent>
 "…"` to a teammate, `hivey msg send coordinator "…"` to you; reply when asked; say DONE to the
-coordinator with the deliverable paths), **Memory** (if a wiki) and **Status** (a dated checklist
-it keeps current so a fresh session can resume). Shared outputs go in `<root>/shared/`.
+coordinator with the deliverable paths), **Memory** (if a wiki), **Docs** (look up library / API /
+CLI docs with the `hivey-context7` skill first, before a web search or memory) and **Status** (a
+dated checklist it keeps current so a fresh session can resume). Shared outputs go in `<root>/shared/`.
 
 ## 5. Launch and coordinate
 `hivey swarm launch <root> --slug <name> <agent>... --models a=opus,b=sonnet

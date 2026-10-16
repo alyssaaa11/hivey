@@ -1,6 +1,37 @@
 //! hivey-specific process setup. Everything hivey adds on top of herdr lives in
 //! `src/hivey.rs` and `src/swarm/`; core files only call in through small `// hivey:` hooks.
 
+/// `hivey --agent [claude args…]`: Claude Code in the hivey agent's folder (`~/.hivey/agent`),
+/// to talk to the hivey agent directly. Returns its exit code; `None` when not asked for.
+pub(crate) fn maybe_run_agent(args: &[String]) -> Option<i32> {
+    if args.get(1).map(String::as_str) != Some("--agent") {
+        return None;
+    }
+    let Some(dir) = std::env::var_os("HOME").map(|h| std::path::Path::new(&h).join(".hivey/agent"))
+    else {
+        eprintln!("hivey --agent: HOME is not set");
+        return Some(1);
+    };
+    if !dir.join("CLAUDE.md").is_file() {
+        eprintln!(
+            "the hivey agent isn't set up yet ({} has no CLAUDE.md): run hivey home setup",
+            dir.display()
+        );
+        return Some(1);
+    }
+    match std::process::Command::new("claude")
+        .args(&args[2..])
+        .current_dir(&dir)
+        .status()
+    {
+        Ok(status) => Some(status.code().unwrap_or(1)),
+        Err(err) => {
+            eprintln!("hivey --agent: cannot start claude (is Claude Code installed?): {err}");
+            Some(1)
+        }
+    }
+}
+
 /// Set to `1` in every pane hivey starts, next to herdr's `HERDR_ENV=1`.
 pub(crate) const HIVEY_ENV_VAR: &str = "HIVEY_ENV";
 

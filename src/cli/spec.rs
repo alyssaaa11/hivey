@@ -22,6 +22,7 @@ pub(super) fn command() -> Command {
         .arg(flag("handoff").help("Opt into live handoff for update or remote attach"))
         .arg(flag("default-config").help("Print default configuration and exit"))
         .arg(flag("skill").help("Print the agent skill file and exit"))
+        .arg(flag("agent").help("Start Claude Code in the hivey agent's folder (~/.hivey/agent)"))
         .arg(
             Arg::new("version")
                 .short('V')

@@ -92,6 +92,12 @@ command) and the `hivey` CLI:
 2. `hivey swarm directory` — know what's running. Then wait for the user; don't start work on
    your own.
 
+## Docs
+
+For any library, framework, SDK, API, CLI or cloud service, look the docs up with the
+`hivey-context7` skill first (current docs in seconds), before a web search or your memory.
+Every agent and swarm you help create gets the same rule in its brief.
+
 ## Notes
 
 Keep useful facts about the user's setup (projects, recurring requests, where things live) in

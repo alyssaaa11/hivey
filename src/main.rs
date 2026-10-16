@@ -524,6 +524,10 @@ fn main() -> io::Result<()> {
     if let Some(result) = platform::maybe_activate_desktop_notification(&raw_args) {
         return result;
     }
+    // hivey: `hivey --agent` talks to the hivey agent (Claude Code in ~/.hivey/agent).
+    if let Some(code) = hivey::maybe_run_agent(&raw_args) {
+        std::process::exit(code);
+    }
     if let Some(outcome) = cli::maybe_run_machine(&raw_args) {
         return finish_cli(outcome);
     }
@@ -716,6 +720,9 @@ fn main() -> io::Result<()> {
         println!("  --handoff           Opt into live handoff for update or remote attach");
         println!("  --default-config    Print default configuration and exit");
         println!("  --skill             Print the agent skill file and exit");
+        println!(
+            "  --agent [ARGS…]     Start Claude Code in the hivey agent's folder (~/.hivey/agent)"
+        ); // hivey
         println!("  --version, -V       Print version and exit");
         println!("  --help, -h          Show this help");
         println!();

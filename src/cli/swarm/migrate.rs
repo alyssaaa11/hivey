@@ -15,7 +15,7 @@ use regex::Regex;
 const USAGE: &str = "usage: hivey migrate [--dry-run]
   bring an older hivey install up to date (run by hivey update; safe to run again):
   - the hivey skill and the hivey-* Claude Code commands (/hivey-wiki-ingest, …)
-  - old copies (wiki-ingest, …, agents-create-wiki) that hivey-* ones replaced: moved to
+  - old copies (wiki-ingest, …, agents-create-wiki, agy, grok) that hivey-* ones replaced: moved to
     ~/.hivey/old/, never deleted
   - wikis: <folder>/obsidian/ → <folder>/<name>-wiki/ (Obsidian tells them apart by folder
     name), with every CLAUDE.md, ~/Obsidian link and Obsidian's vault list pointed at it
@@ -113,6 +113,10 @@ const OLD_COPIES: &[(&str, &str, &str)] = &[
         "agents-create-wiki",
         "the hivey-create-wiki skill",
     ),
+    (".claude/skills/agy", "agy", "the hivey-agy skill"),
+    (".codex/skills/agy", "agy", "the hivey-agy skill"),
+    (".claude/skills/grok", "grok", "the hivey-grok skill"),
+    (".codex/skills/grok", "grok", "the hivey-grok skill"),
 ];
 
 /// Where retired copies go: moved, never deleted, so nothing is lost.

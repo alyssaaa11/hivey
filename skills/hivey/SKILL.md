@@ -25,6 +25,9 @@ and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hi
   (builds from the user's hivey clone, hands sessions off live); `--check` pushes, so ask first.
 - Secrets: never write tokens into files or prompts; plugins read them via `token_command`
   (e.g. envsave). Key *names* are fine.
+- **Docs: Context7 first.** For any library, framework, SDK, API, CLI or cloud service, look the
+  docs up with the `hivey-context7` skill (current docs in seconds, no MCP needed) before a web
+  search or your memory, and write the same rule into every agent brief you create.
 - **Skills, agents and swarms you create are saved with skylls** (if `skylls --version` works):
   look for existing ones first (`skylls --json find <words> --limit 5`, also `agents find`,
   `swarms find`); after creating one, offer `skylls push <skill folder>`, `skylls agents push

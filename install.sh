@@ -4,8 +4,9 @@
 #   git clone git@github.com:alyssaaa11/hivey.git ~/hivey
 #   cd ~/hivey && ./install.sh
 #
-# Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), installs the hivey
-# skill and the global find-skills skill for Claude Code, links the bundled plugins (dashboard,
+# Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), offers the coding
+# agents it runs (Claude Code, Codex, Antigravity/Gemini, Grok) and links each one found to hivey,
+# installs the hivey skills and commands and the global find-skills skill for Claude Code, links the bundled plugins (dashboard,
 # Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the swarm
 # sidebar and Option keys, asks for your Slack bot token, checks skylls (the skills library)
 # and a desktop pet (macOS), and sets up the hivey agent in ~/.hivey/agent (needs Claude Code;
@@ -26,7 +27,7 @@ SETUP=1
 for arg in "$@"; do
   case "$arg" in
     --no-setup) SETUP=0 ;;
-    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option $arg (./install.sh [--no-setup])"; exit 2 ;;
   esac
 done
@@ -73,6 +74,45 @@ cp target/release/hivey "$BIN.new" && mv -f "$BIN.new" "$BIN"
 mkdir -p "$HOME/.local/state/hivey"
 git rev-parse --short HEAD >"$HOME/.local/state/hivey/installed-commit"
 "$BIN" --version
+
+say "coding agents hivey runs (Claude Code, Codex, Antigravity/Gemini, Grok)"
+# Each one found is linked to hivey (`hivey integration install`) so its panes show working /
+# idle / blocked. Missing ones are offered (Claude Code by default: the hivey agent and the
+# creators run on it).
+ask_yes() {  # question, default (y|n); no terminal: the default without asking
+  local answer prompt="[y/N]"
+  [ "$2" = y ] && prompt="[Y/n]"
+  if [ "$SETUP" = 1 ] && { [ -t 0 ] || (: </dev/tty) 2>/dev/null; }; then
+    printf '%s %s ' "$1" "$prompt"
+    read -r answer </dev/tty || answer=""
+  fi
+  case "${answer:-$2}" in [yY]*) return 0 ;; *) return 1 ;; esac
+}
+js_global() {  # npm package: installed with bun if present, else npm
+  if command -v bun >/dev/null; then bun install -g "$1@latest"
+  elif command -v npm >/dev/null; then npm install -g "$1@latest"
+  else echo "needs bun or npm (Node.js)"; return 1; fi
+}
+install_claude() { if command -v bun >/dev/null || command -v npm >/dev/null; then js_global @anthropic-ai/claude-code; else curl -fsSL https://claude.ai/install.sh | bash; fi; }
+install_codex() { js_global @openai/codex; }
+install_agy() { curl -fsSL https://antigravity.google/cli/install.sh | bash; }
+install_grok() { curl -fsSL https://x.ai/cli/install.sh | bash; }
+for agent in "claude:Claude Code:claude:y" "codex:Codex:codex:n" "agy:Antigravity (Gemini):antigravity-cli:n" "grok:Grok:grok:n"; do
+  IFS=: read -r cmd label target default <<<"$agent"
+  [ -x "$HOME/.grok/bin/grok" ] && [ "$cmd" = grok ] && export PATH="$HOME/.grok/bin:$PATH"
+  if ! command -v "$cmd" >/dev/null; then
+    if ask_yes "$label is not installed. Install it?" "$default"; then
+      "install_$cmd" || echo "  could not install $label"
+      hash -r
+    else
+      echo "  $label: not installed (later: rerun ./install.sh)"
+      continue
+    fi
+  fi
+  command -v "$cmd" >/dev/null || { echo "  $label: not found after installing (open a new shell, then rerun ./install.sh)"; continue; }
+  echo "  $label: $("$cmd" --version 2>/dev/null | head -1)"
+  "$BIN" integration install "$target" 2>&1 | sed 's/^/    /' || echo "    could not link $label to hivey (later: hivey integration install $target)"
+done
 
 say "hivey skill (Claude Code / Codex)"
 if [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ]; then

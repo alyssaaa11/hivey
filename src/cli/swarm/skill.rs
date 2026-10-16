@@ -18,13 +18,61 @@ const FILES: &[(&str, &str)] = &[
 
 /// The other skills hivey ships, installed next to the hivey skill (`skills/<name>`): Claude
 /// Code only finds skills one level deep, so they are `hivey-<name>`, never nested.
-const SKILLS: &[(&str, &[(&str, &str)])] = &[(
-    "hivey-create-wiki",
-    &[(
-        "SKILL.md",
-        include_str!("../../../skills/hivey-create-wiki/SKILL.md"),
-    )],
-)];
+const SKILLS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "hivey-create-wiki",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-create-wiki/SKILL.md"),
+        )],
+    ),
+    // Current library docs in seconds, from any agent (no MCP server needed).
+    (
+        "hivey-context7",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-context7/SKILL.md"),
+        )],
+    ),
+    // How to run each coding agent hivey supports besides Claude Code, headless.
+    (
+        "hivey-codex",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-codex/SKILL.md"),
+        )],
+    ),
+    (
+        "hivey-agy",
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-agy/SKILL.md"),
+            ),
+            (
+                "references/gemini-prompting.md",
+                include_str!("../../../skills/hivey-agy/references/gemini-prompting.md"),
+            ),
+            (
+                "scripts/agy_run.py",
+                include_str!("../../../skills/hivey-agy/scripts/agy_run.py"),
+            ),
+        ],
+    ),
+    (
+        "hivey-grok",
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-grok/SKILL.md"),
+            ),
+            (
+                "scripts/grok_run.py",
+                include_str!("../../../skills/hivey-grok/scripts/grok_run.py"),
+            ),
+        ],
+    ),
+];
 
 /// Commands earlier versions installed that a skill of the same name replaced.
 const RETIRED_COMMANDS: &[&str] = &["hivey-create-wiki.md"];
