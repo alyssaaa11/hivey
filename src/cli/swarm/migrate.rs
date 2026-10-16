@@ -54,19 +54,25 @@ pub(crate) fn run(args: &[String]) -> std::io::Result<i32> {
             println!("Claude Code commands: {commands}");
         }
     }
-    let retired = retire_old_copies(&home, dry)?;
-    for line in &retired {
+    leftovers(&home, dry)?;
+    Ok(0)
+}
+
+/// Old copies and old wikis: the part of `hivey migrate` after the skills are installed. Also
+/// run by `hivey skill install`, which update scripts of older versions call with the new
+/// binary: so the first update from an older version migrates too.
+pub(super) fn leftovers(home: &Path, dry: bool) -> std::io::Result<()> {
+    for line in retire_old_copies(home, dry)? {
         println!("{line}");
     }
-    let machine = Machine::discover(&home);
-    let report = migrate_wikis(&machine, dry)?;
+    let report = migrate_wikis(&Machine::discover(home), dry)?;
     for line in &report {
         println!("{line}");
     }
     if report.is_empty() {
         println!("wikis: all use <name>-wiki already");
     }
-    Ok(0)
+    Ok(())
 }
 
 /// Copies older versions installed (or that hivey's skills needed) under names that are now

@@ -2,6 +2,12 @@
 
 Terminal based agent runtime for coding agents.
 
+## Local additions
+
+If `EXTRA_AGENTS.md` exists next to this file, read it too and follow it: it holds this
+machine's own additions to these instructions. Git ignores it, so `hivey update` keeps
+working. Put local changes there, never in this file.
+
 ## Scope and Audience
 
 These instructions are layered.

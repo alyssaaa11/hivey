@@ -30,3 +30,5 @@ __pycache__/
 # hivey: private Claude Code settings, sessions and local skills: never published
 .claude/
 **/.claude/
+# This machine's own additions to AGENTS.md (see "Local additions" there).
+/EXTRA_AGENTS.md

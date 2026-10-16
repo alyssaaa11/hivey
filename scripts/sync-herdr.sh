@@ -69,7 +69,13 @@ install_and_handoff() {
 if [ "$CHECK" = 0 ]; then
   if [ "$(git branch --show-current)" != main ] || [ -n "$(git status --porcelain)" ]; then
     echo "hivey update: the hivey repo ($ROOT) is not on a clean main branch."
-    echo "Finish your work there (or run hivey update --check), then try again."
+    [ "$(git branch --show-current)" = main ] || echo "  on branch $(git branch --show-current): git switch main"
+    if [ -n "$(git status --porcelain)" ]; then
+      echo "  uncommitted changes:"
+      git status --short | head -20 | sed 's/^/    /'
+      echo "  your work to keep: commit it (git add -A && git commit -m \"…\"), then hivey update"
+      echo "  or set it aside:   git stash -u && hivey update && git stash pop"
+    fi
     exit 1
   fi
   BEFORE=$(installed)

@@ -107,7 +107,8 @@ const USAGE: &str = "hivey skill commands:
                        install the hivey skill for Claude Code (~/.claude/skills/hivey) and
                        Codex (~/.codex/skills/hivey); default: each one that is set up.
                        (and the hivey-create-wiki skill next to it); Claude Code also gets
-                       the wiki commands (/hivey-wiki-ingest, …) in ~/.claude/commands
+                       the wiki commands (/hivey-wiki-ingest, …) in ~/.claude/commands; the default install
+                       also brings an older install up to date (hivey migrate)
   hivey skill print    print SKILL.md";
 
 pub(crate) fn run_skill_command(args: &[String]) -> std::io::Result<i32> {
@@ -177,6 +178,11 @@ fn install(args: &[String]) -> std::io::Result<i32> {
             "Claude Code commands: {}",
             install_commands(&home.join(".claude/commands"))?
         );
+    }
+    // The default install also brings an older install up to date (`hivey migrate`): older
+    // `hivey update` scripts only call `hivey skill install` with the new binary.
+    if !explicit {
+        super::migrate::leftovers(&home, false)?;
     }
     Ok(0)
 }

@@ -37,6 +37,9 @@ fail() { printf 'install: %s\n' "$*" >&2; exit 1; }
 
 LOG_DIR="${TMPDIR:-/tmp}"; LOG_DIR="${LOG_DIR%/}"
 
+# This machine's own additions to AGENTS.md go here (git ignores it; AGENTS.md points to it).
+[ -e EXTRA_AGENTS.md ] || : > EXTRA_AGENTS.md
+
 say "check requirements"
 case "$(uname -s)" in Darwin|Linux) ;; *) fail "hivey installs on macOS or Linux only" ;; esac
 command -v git >/dev/null || fail "git not found"
