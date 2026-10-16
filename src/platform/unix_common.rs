@@ -325,6 +325,9 @@ pub(crate) fn local_stream_peer_description(stream: &crate::ipc::LocalStream) ->
 }
 
 pub(crate) fn begin_cli_output() {
+    // Unit tests share one process: once a CLI print re-armed SIGPIPE there, a later test that
+    // writes to a closed socket on purpose killed the whole run (signal 13).
+    #[cfg(not(test))]
     set_sigpipe_disposition(libc::SIG_DFL);
 }
 

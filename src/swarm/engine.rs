@@ -1744,10 +1744,13 @@ mod tests {
     }
 
     fn state_with(roots: &[&Path]) -> State {
+        // One file per call: tests run in parallel, and a shared name let them overwrite each
+        // other's registry ("no swarm named …").
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let registry = std::env::temp_dir().join(format!(
             "hivey-registry-{}-{}.json",
             std::process::id(),
-            roots.len()
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         write_registry(
             &registry,

@@ -743,6 +743,9 @@ mod tests {
             .collect();
         let project = home.join(".claude/projects").join(mangled);
         std::fs::create_dir_all(&project).unwrap();
+        let _env = crate::config::test_config_env_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let previous = std::env::var_os("HOME");
         std::env::set_var("HOME", &home);
         assert!(!has_conversation(&work, AgentKind::Claude));
