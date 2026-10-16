@@ -111,6 +111,20 @@ connectors, their own) are not hivey's and are never touched.
 | `~/.local/state/hivey/` | which version is installed |
 | `<agent or swarm folder>/<name>-wiki/` | each agent's or swarm's wiki, made when it is created |
 
+## Machine-specific additions (never touched by updates)
+
+| File | Read by | For |
+|---|---|---|
+| `EXTRA_AGENTS.md` in the hivey repo (git-ignored, created empty by `install.sh`) | every agent working on hivey, via `AGENTS.md` / `CLAUDE.md` | this machine's own instructions |
+| `EXTRA_SKILL.md` in a hivey skill's folder | that skill, via its `SKILL.md` | this machine's own additions to the skill |
+
+hivey updates rewrite `AGENTS.md`, the skills and the commands; put local changes in these
+files so they survive and never block `hivey update`.
+
+The hivey agent's brief (`~/.hivey/agent/CLAUDE.md`) is written once and then belongs to the
+user: updates only add sections hivey introduced later (marked `<!-- hivey section: … -->`)
+that it doesn't have yet, before `## Notes`, and never change the rest.
+
 ## Never installed
 
 XFlow, the old `agents_*` XFlow hooks, `agents_soul_loader`, archify.

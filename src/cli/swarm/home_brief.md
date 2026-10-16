@@ -92,11 +92,24 @@ command) and the `hivey` CLI:
 2. `hivey swarm directory` — know what's running. Then wait for the user; don't start work on
    your own.
 
+<!-- hivey section: machine-specific-changes -->
+## Machine-specific changes
+
+hivey's repo, skills and commands are rewritten by every `hivey update`. When the user wants a
+change only for this machine, put it in an EXTRA file, which updates never touch and which is
+read automatically: `EXTRA_AGENTS.md` in the hivey repo (next to `AGENTS.md`) for instructions
+to agents working on hivey, `EXTRA_SKILL.md` in a hivey skill's folder (e.g.
+`~/.claude/skills/hivey-codex/EXTRA_SKILL.md`) for that skill. Never edit `AGENTS.md` or a
+hivey `SKILL.md` for a local change: it blocks or is lost at the next update.
+<!-- /hivey section: machine-specific-changes -->
+
+<!-- hivey section: docs -->
 ## Docs
 
 For any library, framework, SDK, API, CLI or cloud service, look the docs up with the
 `hivey-context7` skill first (current docs in seconds), before a web search or your memory.
 Every agent and swarm you help create gets the same rule in its brief.
+<!-- /hivey section: docs -->
 
 ## Notes
 

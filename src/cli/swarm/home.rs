@@ -19,7 +19,7 @@ usage: hivey home                     status (same as hivey home status)
        hivey home enable|disable     keep it alive automatically, or not
   While enabled, the server of its session (default: \"default\") restarts it when it's gone.";
 
-const BRIEF: &str = include_str!("home_brief.md");
+pub(super) const BRIEF: &str = include_str!("home_brief.md");
 const KICKOFF: &str = "Read your CLAUDE.md, follow its 'Start of every session' steps, then \
 say hello in one line and wait for the user's requests.";
 const DESCRIPTION: &str = "The hivey agent: launches and checks swarms and agents for the user, \

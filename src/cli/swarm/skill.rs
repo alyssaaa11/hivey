@@ -336,6 +336,26 @@ mod tests {
     }
 
     #[test]
+    fn skills_point_to_local_extras_and_never_touch_them() {
+        let note = "if `EXTRA_SKILL.md` exists in this skill's folder";
+        assert!(FILES[0].1.contains(note), "hivey");
+        for (name, files) in SKILLS {
+            assert!(files[0].1.contains(note), "{name}");
+            assert!(
+                !files.iter().any(|(rel, _)| *rel == "EXTRA_SKILL.md"),
+                "{name}"
+            );
+        }
+        let tmp = scratch("extra");
+        let dir = tmp.join("skills/hivey");
+        std::fs::create_dir_all(&dir).expect("dir");
+        std::fs::write(dir.join("EXTRA_SKILL.md"), "mine").expect("extra");
+        install_into(&dir).expect("install");
+        let extra = std::fs::read_to_string(dir.join("EXTRA_SKILL.md")).expect("extra");
+        assert_eq!(extra, "mine");
+    }
+
+    #[test]
     fn skills_are_named_hivey_dash() {
         for (name, files) in SKILLS {
             assert!(name.starts_with("hivey-"), "{name}");

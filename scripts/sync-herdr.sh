@@ -74,6 +74,9 @@ if [ "$CHECK" = 0 ]; then
       echo "  uncommitted changes:"
       git status --short | head -20 | sed 's/^/    /'
       echo "  your work to keep: commit it (git add -A && git commit -m \"…\"), then hivey update"
+      if git status --porcelain AGENTS.md CLAUDE.md | grep -q .; then
+        echo "  AGENTS.md changed: local additions belong in EXTRA_AGENTS.md (git ignores it)"
+      fi
       echo "  or set it aside:   git stash -u && hivey update && git stash pop"
     fi
     exit 1

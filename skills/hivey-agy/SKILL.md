@@ -3,6 +3,10 @@ name: hivey-agy
 description: Run a task with Google's Antigravity CLI (`agy`, the replacement for Gemini CLI). Picks the right model and effort for the task (Gemini 3.8 Flash low/medium/high, Gemini 3.1 Pro, or Claude / gpt-oss through agy), writes an effective Gemini-style prompt, runs agy headless through a bundled uv Python runner, and checks the result, including any files the task should create. Use it whenever the user wants something done "with agy", "with Antigravity", "with Gemini", "ask Gemini", wants a Gemini second opinion, or wants to hand a coding, research, summarising, extraction or image-generation task to agy. Also use it when they ask which agy model to use or how to prompt Gemini, even if they don't say "agy". Not for driving the Antigravity IDE app, and not for calling the Gemini API from code.
 ---
 
+> Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
+> It holds this machine's own additions; hivey updates never touch it, so put local changes
+> there, never here.
+
 # agy: run a task with the right model and prompt
 
 The user gives a task. Your job is to (1) choose the agy model, (2) write the prompt agy gets,

@@ -12,6 +12,10 @@ allowed-tools:
   - Read
 ---
 
+> Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
+> It holds this machine's own additions; hivey updates never touch it, so put local changes
+> there, never here.
+
 # hivey codex: run Codex headless
 
 `codex exec` runs one Codex task without the interactive UI and exits when it's done: the

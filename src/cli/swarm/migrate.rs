@@ -65,6 +65,9 @@ pub(super) fn leftovers(home: &Path, dry: bool) -> std::io::Result<()> {
     for line in retire_old_copies(home, dry)? {
         println!("{line}");
     }
+    for line in update_home_brief(home, dry)? {
+        println!("{line}");
+    }
     let report = migrate_wikis(&Machine::discover(home), dry)?;
     for line in &report {
         println!("{line}");
@@ -163,6 +166,65 @@ fn retire_old_copies(home: &Path, dry: bool) -> std::io::Result<Vec<String>> {
         }
     }
     Ok(report)
+}
+
+/// The hivey agent's brief is written once and then belongs to the user, so updates never
+/// rewrite it. Sections hivey marks in its template (`<!-- hivey section: <id> -->` …
+/// `<!-- /hivey section: <id> -->`) that an existing brief lacks are added (before `## Notes`
+/// when it has one); nothing already in the brief is changed or removed.
+fn update_home_brief(home: &Path, dry: bool) -> std::io::Result<Vec<String>> {
+    let path = home.join(".hivey/agent/CLAUDE.md");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(Vec::new());
+    };
+    let (updated, added) = add_missing_sections(&text, super::home::BRIEF);
+    if added.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !dry {
+        std::fs::write(&path, updated)?;
+    }
+    Ok(added
+        .iter()
+        .map(|id| format!("hivey agent brief ~/.hivey/agent/CLAUDE.md: added section {id}"))
+        .collect())
+}
+
+/// `brief` with every marked section of `template` it lacks; the section ids added.
+fn add_missing_sections(brief: &str, template: &str) -> (String, Vec<String>) {
+    const START: &str = "<!-- hivey section: ";
+    let mut out = brief.to_string();
+    let mut added = Vec::new();
+    let mut rest = template;
+    while let Some(i) = rest.find(START) {
+        let after = &rest[i + START.len()..];
+        let Some(id_len) = after.find(" -->") else {
+            break;
+        };
+        let id = after[0..id_len].to_string();
+        let end_marker = format!("<!-- /hivey section: {id} -->");
+        let Some(end) = rest[i..].find(&end_marker) else {
+            break;
+        };
+        let stop = i + end + end_marker.len();
+        let section = rest[i..stop].to_string();
+        rest = &rest[stop..];
+        if out.contains(&format!("{START}{id} -->")) {
+            continue;
+        }
+        match out.find("\n## Notes") {
+            Some(at) => out.insert_str(at + 1, &format!("{section}\n\n")),
+            None => {
+                let trimmed = out.trim_end().len();
+                out.truncate(trimmed);
+                out.push_str("\n\n");
+                out.push_str(&section);
+                out.push('\n');
+            }
+        }
+        added.push(id);
+    }
+    (out, added)
 }
 
 /// Where this machine keeps what a wiki migration touches.
@@ -534,6 +596,40 @@ mod tests {
             registries,
             obsidian_running: false,
         }
+    }
+
+    #[test]
+    fn adds_new_brief_sections_and_keeps_the_users_text() {
+        let template = "# t\n\n<!-- hivey section: a -->\n## A\nnew a\n<!-- /hivey section: a -->\n\n\
+                        <!-- hivey section: b -->\n## B\nnew b\n<!-- /hivey section: b -->\n\n## Notes\n";
+        let brief = "# mine\n\nmy edits\n\n## Notes\n\nmy notes\n";
+        let (out, added) = add_missing_sections(brief, template);
+        assert_eq!(added, vec!["a", "b"]);
+        assert!(
+            out.starts_with("# mine\n\nmy edits\n\n<!-- hivey section: a -->"),
+            "{out}"
+        );
+        assert!(
+            out.contains("new b\n<!-- /hivey section: b -->\n\n## Notes\n\nmy notes\n"),
+            "{out}"
+        );
+        // Already there (even if the user edited it): left as is.
+        let (again, none) = add_missing_sections(&out.replace("new a", "edited a"), template);
+        assert!(none.is_empty());
+        assert!(again.contains("edited a"));
+        // No Notes section: appended at the end.
+        let (end, _) = add_missing_sections("# mine\n", template);
+        assert!(end.ends_with("<!-- /hivey section: b -->\n"), "{end}");
+    }
+
+    #[test]
+    fn the_real_template_marks_its_new_sections() {
+        let (_, added) = add_missing_sections("# old brief\n", super::super::home::BRIEF);
+        assert!(
+            added.contains(&"machine-specific-changes".to_string()),
+            "{added:?}"
+        );
+        assert!(added.contains(&"docs".to_string()), "{added:?}");
     }
 
     #[test]

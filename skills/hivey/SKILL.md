@@ -3,6 +3,10 @@ name: hivey
 description: Operate hivey, the terminal workspace for swarms of AI agents (a herdr fork). Use when the user says hivey (or "hyver"/"hybrid" meaning hivey) and wants to start, attach, detach, close or stop hivey sessions; create, launch, inspect, pause, relaunch or message swarms; schedule master check-ins; list, install, link, enable or configure plugins/addons (Slack relay, dashboard, GitHub, watcher); or write a new hivey plugin (an addon pane or a swarm setup provider). Also for hivey troubleshooting (keys, click-to-master, missing features after an upgrade).
 ---
 
+> Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
+> It holds this machine's own additions; hivey updates never touch it, so put local changes
+> there, never here.
+
 # hivey
 
 hivey runs swarms of Claude Code / Codex agents: **one space per swarm, pane 1 = the master
@@ -25,6 +29,12 @@ and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hi
   (builds from the user's hivey clone, hands sessions off live); `--check` pushes, so ask first.
 - Secrets: never write tokens into files or prompts; plugins read them via `token_command`
   (e.g. envsave). Key *names* are fine.
+- **Machine-specific changes go in EXTRA files, never in what hivey updates.** hivey's repo,
+  skills and commands are rewritten by `hivey update`. A user's own additions for this machine
+  go in `EXTRA_AGENTS.md` in the hivey repo (next to `AGENTS.md`, git-ignored) or
+  `EXTRA_SKILL.md` in a hivey skill's folder; both are read automatically and never touched by
+  updates. When the user wants to change how hivey or a hivey skill behaves on their machine,
+  write it there.
 - **Docs: Context7 first.** For any library, framework, SDK, API, CLI or cloud service, look the
   docs up with the `hivey-context7` skill (current docs in seconds, no MCP needed) before a web
   search or your memory, and write the same rule into every agent brief you create.
