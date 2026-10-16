@@ -39,7 +39,7 @@ hivey swarm commands:
   hivey swarm providers [--default ID]
                                      installed swarm and agent creators (* = used by swarm new);
                                      --default ID makes ID the one used for its kind
-  hivey swarm accept-trust [--pane P] [--kind claude|codex] [--timeout 60]
+  hivey swarm accept-trust [--pane P] [--kind claude|codex|grok|agy] [--timeout 60]
                                      answer an agent CLI's folder-trust prompt in a pane (providers)
   hivey swarm launch <root> --slug S <agent>...  start a designed swarm in its own space
   hivey swarm launch <root> --slug S --solo [--model M]  start one agent in <root> (its own master)
@@ -137,8 +137,12 @@ fn accept_trust(args: &[String]) -> std::io::Result<i32> {
             .or_else(|| std::env::var(crate::integration::HERDR_PANE_ID_ENV_VAR).ok())
             .ok_or("no pane: pass --pane or run inside hivey")?;
         let kind = match take_value(&mut rest, "--kind")? {
-            Some(kind) => crate::swarm::adapter::AgentKind::parse(&kind)
-                .ok_or_else(|| format!("--kind must be claude or codex, not {kind:?}"))?,
+            Some(kind) => crate::swarm::adapter::AgentKind::parse(&kind).ok_or_else(|| {
+                format!(
+                    "--kind must be {}, not {kind:?}",
+                    crate::swarm::adapter::AgentKind::names()
+                )
+            })?,
             None => crate::swarm::adapter::AgentKind::Claude,
         };
         let timeout = match take_value(&mut rest, "--timeout")? {
@@ -161,7 +165,7 @@ fn accept_trust(args: &[String]) -> std::io::Result<i32> {
             .ok()
             .and_then(|read| read["read"]["text"].as_str().map(str::to_lowercase))
             .unwrap_or_default();
-        if screen.contains("trust this folder") {
+        if kind.asks_for_trust(&screen) {
             let keys: Vec<&str> = kind.trust_keys().to_vec();
             let _ = api("pane.send_keys", json!({ "pane_id": pane, "keys": keys }));
             println!("accepted the folder-trust prompt in {pane}");

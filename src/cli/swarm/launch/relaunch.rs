@@ -87,7 +87,48 @@ fn has_conversation(dir: &Path, kind: AgentKind) -> bool {
     match kind {
         AgentKind::Claude => has_claude_conversation(dir),
         AgentKind::Codex => has_codex_conversation(dir),
+        AgentKind::Grok => has_grok_conversation(dir),
+        AgentKind::Agy => has_agy_conversation(dir),
     }
+}
+
+/// Grok keeps sessions per working directory in ~/.grok/sessions/<url-encoded cwd>/.
+fn has_grok_conversation(dir: &Path) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let encoded: String = dir
+        .to_string_lossy()
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    std::fs::read_dir(PathBuf::from(home).join(".grok/sessions").join(encoded))
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false)
+}
+
+/// agy logs every prompt in ~/.gemini/antigravity-cli/history.jsonl with its `workspace`.
+fn has_agy_conversation(dir: &Path) -> bool {
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+    let dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let history = PathBuf::from(home).join(".gemini/antigravity-cli/history.jsonl");
+    let Ok(text) = std::fs::read_to_string(history) else {
+        return false;
+    };
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|entry| entry["workspace"].as_str().map(PathBuf::from))
+        .any(|workspace| {
+            workspace == dir || std::fs::canonicalize(&workspace).is_ok_and(|w| w == dir)
+        })
 }
 
 /// Codex logs sessions as ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl; the first line
@@ -322,8 +363,12 @@ fn relaunch(request: &Request) -> Result<usize, String> {
                 .collect()
         })
     };
-    let codex_args = manifest_args("codex_args")
-        .unwrap_or_else(|| super::split_args(AgentKind::Codex.default_args()));
+    let kind_args = |kind: AgentKind| {
+        manifest_args(kind.args_field()).unwrap_or_else(|| super::split_args(kind.default_args()))
+    };
+    let codex_args = kind_args(AgentKind::Codex);
+    let grok_args = kind_args(AgentKind::Grok);
+    let agy_args = kind_args(AgentKind::Agy);
     let kinds: BTreeMap<String, AgentKind> = agents
         .iter()
         .filter_map(|agent| {
@@ -341,6 +386,8 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         models,
         claude_args,
         codex_args,
+        grok_args,
+        agy_args,
         kinds,
         kickoff: String::new(),
         budget_min: None,
@@ -606,6 +653,23 @@ mod tests {
         );
         std::fs::write(day.join("rollout-x.jsonl"), meta).unwrap();
         assert!(has_conversation(&work, AgentKind::Codex));
+        assert!(!has_conversation(&work, AgentKind::Grok));
+        let encoded = canonical.to_string_lossy().replace('/', "%2F");
+        let grok = home.join(".grok/sessions").join(encoded).join("s1");
+        std::fs::create_dir_all(&grok).unwrap();
+        assert!(has_conversation(&work, AgentKind::Grok));
+        assert!(!has_conversation(&work, AgentKind::Agy));
+        let agy = home.join(".gemini/antigravity-cli");
+        std::fs::create_dir_all(&agy).unwrap();
+        std::fs::write(
+            agy.join("history.jsonl"),
+            format!(
+                "{{\"workspace\":{:?},\"conversationId\":\"c\"}}\n",
+                canonical.to_string_lossy()
+            ),
+        )
+        .unwrap();
+        assert!(has_conversation(&work, AgentKind::Agy));
         match previous {
             Some(value) => std::env::set_var("HOME", value),
             None => std::env::remove_var("HOME"),

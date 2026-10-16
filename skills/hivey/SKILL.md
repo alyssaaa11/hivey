@@ -9,7 +9,7 @@ description: Operate hivey, the terminal workspace for swarms of AI agents (a he
 
 # hivey
 
-hivey runs swarms of Claude Code / Codex agents: **one space per swarm, pane 1 = the master
+hivey runs swarms of coding agents (Claude Code, Codex, Grok, Antigravity/Gemini `agy`): **one space per swarm, pane 1 = the master
 (coordinator)**, a message bus between agents (`hivey msg`), addons (plugins) in the swarm's space,
 and a "swarms" sidebar. It's a fork of herdr; every `herdr` command works as `hivey`.
 
@@ -87,8 +87,14 @@ hivey swarm profile <slug> --description "…" --skills a,b --tools x,y   # set 
 ```
 
 Lower level (what providers call): `hivey swarm launch <root> --slug S <agent>... [--models a=sonnet]
-[--kinds b=codex] [--addon ID]... [--channel C0…] [--heartbeat 15m --heartbeat-task "…"]
+[--kinds b=codex,c=grok,d=agy] [--addon ID]... [--channel C0…] [--heartbeat 15m --heartbeat-task "…"]
 [--budget-min N] [--kickoff "…"]`. Run it from the pane that should become the master.
+Each agent runs on Claude Code unless `--kinds` (or `--kind` for `--solo`) says `codex`, `grok`
+or `agy` (Antigravity, Gemini). They all read the CLAUDE.md you write: launch links `AGENTS.md`
+(and `GEMINI.md` for agy) to it. Per-CLI flags: `--claude-args`, `--codex-args`, `--grok-args`,
+`--agy-args` (defaults run them unattended). Pick the CLI per agent with the user: Claude Code
+for most work, Codex for code review and a second opinion, Grok for X/web research, agy for
+fast cheap tasks and image generation.
 
 Scheduled check-ins (wake the master, or `--to AGENT`, with a task):
 ```bash
@@ -227,7 +233,7 @@ sidebar, messages, schedules and heartbeats like a master. Create one from the f
 live in: `mkdir -p <folder> && cd <folder> && hivey swarm new --agent "<task>"` (the agent
 creator chosen in settings → plugins, else the built-in `hivey.agent-creator`). The designer
 pane stays; close it once the agent runs. Lower level: `hivey swarm launch <folder> --slug S --solo
-[--model M] [--kind codex] [--description … --skills … --tools …]`. Relaunch with
+[--model M] [--kind codex|grok|agy] [--description … --skills … --tools …]`. Relaunch with
 `hivey swarm relaunch <slug>` (new space if its pane is gone).
 
 **Talking across swarms/agents:** only masters (and solo agents) may message another swarm,

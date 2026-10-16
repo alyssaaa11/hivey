@@ -19,12 +19,14 @@ pub(super) mod relaunch;
 
 const DEFAULT_CLAUDE_ARGS: &str = "--chrome --dangerously-skip-permissions --model opus";
 /// Neutral kickoff; a setup provider passes its own with `--kickoff`.
-const DEFAULT_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in your \
+const DEFAULT_KICKOFF: &str =
+    "Read your brief (CLAUDE.md, or AGENTS.md for Codex, Grok and agy, in your \
 folder) and start your mission. Talk to teammates with `hivey msg send <agent> \"…\"` (the master \
 is `coordinator`) and read waiting messages with `hivey msg inbox`. Other swarms and agents are \
 listed in `hivey swarm directory`: never send them work without asking the user first.";
 /// Kickoff of a solo agent (`--solo`): no teammates to talk to.
-const SOLO_KICKOFF: &str = "Read your brief (CLAUDE.md, or AGENTS.md for Codex, in this \
+const SOLO_KICKOFF: &str =
+    "Read your brief (CLAUDE.md, or AGENTS.md for Codex, Grok and agy, in this \
 folder) and start your mission. If it has a Status section, resume from it. Read waiting \
 messages with `hivey msg inbox`. Other swarms and agents are listed in `hivey swarm directory`: \
 never send them work without asking the user first, and don't disturb one that is working.";
@@ -35,12 +37,14 @@ const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
 
 pub(super) const HELP: &str = "\
 usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
-         [--claude-args \"...\"] [--kinds a=codex,b=claude] [--codex-args \"...\"]
+         [--kinds a=codex,b=grok,c=agy] [--claude-args|--codex-args|--grok-args|--agy-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
          [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack|--no-slack]
-       hivey swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex] [options]
+       hivey swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex|grok|agy] [options]
          [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hivey swarm directory)
-  Starts one Claude per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>.
+  Starts one coding agent per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>:
+  Claude Code by default, or Codex, Grok or Antigravity (agy, Gemini) with --kinds; the others
+  read CLAUDE.md through an AGENTS.md (and, for agy, GEMINI.md) link.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
   (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
   --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
@@ -65,6 +69,10 @@ struct Options {
     claude_args: Vec<String>,
     /// Arguments for Codex agents (`--kinds a=codex`).
     codex_args: Vec<String>,
+    /// Arguments for Grok agents (`--kinds a=grok`).
+    grok_args: Vec<String>,
+    /// Arguments for Antigravity agents (`--kinds a=agy`).
+    agy_args: Vec<String>,
     /// Which CLI runs each agent; default Claude Code.
     kinds: BTreeMap<String, AgentKind>,
     kickoff: String,
@@ -194,6 +202,8 @@ fn parse(args: &[String]) -> Result<Options, String> {
         models: BTreeMap::new(),
         claude_args: split_args(DEFAULT_CLAUDE_ARGS),
         codex_args: split_args(AgentKind::Codex.default_args()),
+        grok_args: split_args(AgentKind::Grok.default_args()),
+        agy_args: split_args(AgentKind::Agy.default_args()),
         kinds: BTreeMap::new(),
         kickoff: DEFAULT_KICKOFF.to_string(),
         budget_min: None,
@@ -224,13 +234,16 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--kickoff" => opts.kickoff = value("--kickoff")?,
             "--claude-args" => opts.claude_args = split_args(&value("--claude-args")?),
             "--codex-args" => opts.codex_args = split_args(&value("--codex-args")?),
+            "--grok-args" => opts.grok_args = split_args(&value("--grok-args")?),
+            "--agy-args" => opts.agy_args = split_args(&value("--agy-args")?),
             "--kinds" => {
                 for pair in value("--kinds")?.split(',').filter(|p| !p.is_empty()) {
                     let (agent, kind) = pair
                         .split_once('=')
                         .ok_or_else(|| format!("--kinds entry {pair:?} is not agent=kind"))?;
-                    let kind = AgentKind::parse(kind)
-                        .ok_or_else(|| format!("--kinds {pair:?}: kind must be claude or codex"))?;
+                    let kind = AgentKind::parse(kind).ok_or_else(|| {
+                        format!("--kinds {pair:?}: kind must be {}", AgentKind::names())
+                    })?;
                     opts.kinds.insert(agent.to_string(), kind);
                 }
             }
@@ -251,7 +264,10 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--model" => solo_model = Some(value("--model")?),
             "--kind" => {
                 let kind = value("--kind")?;
-                solo_kind = Some(AgentKind::parse(&kind).ok_or("--kind must be claude or codex")?);
+                solo_kind = Some(
+                    AgentKind::parse(&kind)
+                        .ok_or_else(|| format!("--kind must be {}", AgentKind::names()))?,
+                );
             }
             "--heartbeat-task" => opts.heartbeat_task = Some(value("--heartbeat-task")?),
             "--heartbeat" => {
@@ -308,15 +324,23 @@ fn parse(args: &[String]) -> Result<Options, String> {
     Ok(opts)
 }
 
-/// Every agent needs its CLI's brief. Providers usually write CLAUDE.md; a Codex agent reads
-/// AGENTS.md, so link AGENTS.md -> CLAUDE.md when only the latter exists.
+/// Every agent needs its CLI's brief. Providers usually write CLAUDE.md; Codex, Grok and agy
+/// read AGENTS.md (agy GEMINI.md too), so link those to CLAUDE.md when only it exists.
 fn ensure_brief(home: &Path, kind: AgentKind) -> Result<(), String> {
+    for extra in kind.extra_brief_files() {
+        let path = home.join(extra);
+        if kind != AgentKind::Claude && !path.exists() && home.join("CLAUDE.md").is_file() {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink("CLAUDE.md", &path)
+                .map_err(|err| format!("cannot link {} to CLAUDE.md: {err}", path.display()))?;
+        }
+    }
     let brief = home.join(kind.brief_file());
     if brief.is_file() {
         return Ok(());
     }
     let claude_md = home.join("CLAUDE.md");
-    if kind == AgentKind::Codex && claude_md.is_file() {
+    if kind != AgentKind::Claude && claude_md.is_file() {
         #[cfg(unix)]
         return std::os::unix::fs::symlink("CLAUDE.md", &brief)
             .map_err(|err| format!("cannot link {} to CLAUDE.md: {err}", brief.display()));
@@ -535,6 +559,8 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
     let mut args = match opts.kind(agent) {
         AgentKind::Claude => opts.claude_args.clone(),
         AgentKind::Codex => opts.codex_args.clone(),
+        AgentKind::Grok => opts.grok_args.clone(),
+        AgentKind::Agy => opts.agy_args.clone(),
     };
     if let Some(model) = opts.models.get(agent) {
         match args.iter().position(|arg| arg == "--model") {
@@ -543,6 +569,10 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
         }
     }
     // --add-dir too: settings.json additionalDirectories is ignored until the folder is trusted.
+    // Grok has no such flag (it works in its folder and asks for anything outside).
+    if !opts.kind(agent).takes_add_dir() {
+        return args;
+    }
     let settings = opts.home(root, agent).join(".claude").join("settings.json");
     let dirs: Vec<String> = std::fs::read_to_string(&settings)
         .ok()
@@ -627,8 +657,11 @@ fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> Stri
         Ok(response) => response,
         Err(err) => return format!("error: {err}"),
     };
+    // Started (some CLIs, e.g. Grok, count as ready while their trust question is still
+    // up) or not ready yet: either way answer the trust question before the kickoff, which
+    // would otherwise be typed into it.
     match response["error"]["code"].as_str() {
-        None if response.get("result").is_some() => return "ready".into(),
+        None if response.get("result").is_some() => {}
         Some("agent_not_ready") => {}
         Some(code) => {
             return format!(
@@ -643,8 +676,7 @@ fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> Stri
             .ok()
             .and_then(|read| read["read"]["text"].as_str().map(str::to_string))
             .unwrap_or_default();
-        // Claude Code: "…trust this folder"; Codex: "Trust this folder?".
-        if !screen.to_lowercase().contains("trust this folder") {
+        if !kind.asks_for_trust(&screen) {
             break;
         }
         let _ = api(
@@ -853,10 +885,7 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     manifest["coordinator"] = json!(slug);
     manifest["launch_dir"] = json!(root);
     // Relaunch reads the master's CLI flags from here.
-    manifest[match kind {
-        AgentKind::Claude => "claude_args",
-        AgentKind::Codex => "codex_args",
-    }] = json!(strip_model(&args));
+    manifest[kind.args_field()] = json!(strip_model(&args));
     save_manifest(root, &manifest)?;
     import(root)?;
 
@@ -985,6 +1014,8 @@ fn new_manifest(
         ("launch_dir", json!(std::env::current_dir().ok())),
         ("claude_args", json!(opts.claude_args)),
         ("codex_args", json!(opts.codex_args)),
+        ("grok_args", json!(opts.grok_args)),
+        ("agy_args", json!(opts.agy_args)),
     ] {
         manifest[key] = value;
     }
