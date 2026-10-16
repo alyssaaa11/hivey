@@ -323,9 +323,13 @@ fn relaunch(request: &Request) -> Result<usize, String> {
 
     // Where new panes go: beside any live pane of the swarm, else its recorded master pane,
     // else any restored pane working inside the swarm's folder (after a restart).
+    // Pane ids are reassigned after a server restart, so a recorded id can now belong to another
+    // swarm's pane (e.g. the hivey agent's). Only trust one that works inside this swarm's folder.
     let workspace = manifest["workspace_id"].as_str().map(str::to_string);
+    let ours = |pane: &&str| manifest["home"] == true || pane_inside(pane, &root);
     let mut beside = live_agent_pane(&agents)
-        .or(manifest["coordinator_pane_id"].as_str())
+        .filter(ours)
+        .or(manifest["coordinator_pane_id"].as_str().filter(ours))
         .map(str::to_string)
         .filter(|pane| api("pane.get", json!({ "pane_id": pane })).is_ok())
         .or_else(|| pane_in_folder(&root));
@@ -530,6 +534,55 @@ fn runs_a_program(pane: &str) -> bool {
         })
 }
 
+/// True when `pane` exists and works inside `root`.
+fn pane_inside(pane: &str, root: &Path) -> bool {
+    let Ok(root) = std::fs::canonicalize(root) else {
+        return false;
+    };
+    api("pane.get", json!({ "pane_id": pane }))
+        .ok()
+        .and_then(|got| got["pane"]["cwd"].as_str().map(PathBuf::from))
+        .is_some_and(|cwd| std::fs::canonicalize(&cwd).unwrap_or(cwd).starts_with(&root))
+}
+
+/// The foreground processes of a pane (empty when the pane is gone).
+fn foreground(pane: &str) -> Vec<Value> {
+    api("pane.process_info", json!({ "pane_id": pane }))
+        .ok()
+        .and_then(|info| info["process_info"]["foreground_processes"].as_array().cloned())
+        .unwrap_or_default()
+}
+
+/// Whether a process runs this swarm's copy of an addon: it works in the swarm's folder and its
+/// command line names the plugin's folder (`…/slack-relay/…` for `hivey.slack-relay`) and,
+/// when known, the entrypoint (`relay`). Pure, so it is unit-tested.
+fn runs_addon(process: &Value, root: &Path, plugin: &str, entrypoint: Option<&str>) -> bool {
+    let short = plugin.rsplit('.').next().unwrap_or(plugin);
+    let cmdline = process["cmdline"].as_str().unwrap_or("");
+    let in_root = process["cwd"].as_str().is_some_and(|cwd| {
+        let cwd = PathBuf::from(cwd);
+        let cwd = std::fs::canonicalize(&cwd).unwrap_or(cwd);
+        let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        cwd == root
+    });
+    in_root
+        && cmdline.contains(&format!("/{short}/"))
+        && entrypoint.is_none_or(|entry| cmdline.contains(entry))
+}
+
+/// A pane already running this addon for this swarm, other than `taken`. After a restart the
+/// recorded pane id can go stale while the addon keeps running elsewhere; opening another copy
+/// would double every Slack post and poll (HTTP 429).
+fn running_addon_pane(root: &Path, plugin: &str, entrypoint: Option<&str>, taken: &[String]) -> Option<String> {
+    let panes = api("pane.list", json!({})).ok()?;
+    panes["panes"].as_array()?.iter().find_map(|pane| {
+        let id = pane["pane_id"].as_str()?;
+        (!taken.iter().any(|t| t == id)
+            && foreground(id).iter().any(|p| runs_addon(p, root, plugin, entrypoint)))
+        .then(|| id.to_string())
+    })
+}
+
 /// Any pane whose working folder is inside `root` (a restored shell after a restart).
 /// A new space for a solo agent whose panes are all gone; returns its pane.
 fn new_space(slug: &str, root: &Path) -> Option<String> {
@@ -563,16 +616,48 @@ fn live_agent_pane(agents: &[Value]) -> Option<&str> {
 /// Reopens recorded addons whose pane no longer runs them (gone after a restart).
 fn reopen_addons(manifest: &mut Value, slug: &str, root: &Path, beside: &str) -> usize {
     let recorded: Vec<Value> = manifest["addons"].as_array().cloned().unwrap_or_default();
-    let (alive, dead): (Vec<Value>, Vec<Value>) = recorded
+    let alive_in = |addon: &Value, pane: &str| {
+        let plugin = addon["plugin"].as_str().unwrap_or("");
+        let entry = addon["entrypoint"].as_str();
+        foreground(pane).iter().any(|p| runs_addon(p, root, plugin, entry))
+            // A plugin kept outside a folder named after it: fall back to "runs something here".
+            || (runs_a_program(pane) && pane_inside(pane, root))
+    };
+    let (mut alive, dead): (Vec<Value>, Vec<Value>) = recorded
         .into_iter()
-        .partition(|addon| addon["pane_id"].as_str().is_some_and(runs_a_program));
+        .partition(|addon| addon["pane_id"].as_str().is_some_and(|pane| alive_in(addon, pane)));
     if dead.is_empty() {
         return 0;
     }
-    // A pane that survived a restart as a plain shell is closed and replaced.
+    // The addon may still run in a pane whose id changed: adopt it instead of opening a copy.
+    let mut taken: Vec<String> = alive
+        .iter()
+        .filter_map(|addon| addon["pane_id"].as_str().map(str::to_string))
+        .collect();
+    let mut missing = Vec::new();
+    for addon in dead {
+        let plugin = addon["plugin"].as_str().unwrap_or("");
+        match running_addon_pane(root, plugin, addon["entrypoint"].as_str(), &taken) {
+            Some(pane) => {
+                eprintln!("  addon {plugin}: already running in {pane}");
+                taken.push(pane.clone());
+                alive.push(json!({ "plugin": addon["plugin"], "entrypoint": addon["entrypoint"], "pane_id": pane }));
+            }
+            None => missing.push(addon),
+        }
+    }
+    let dead = missing;
+    if dead.is_empty() {
+        manifest["addons"] = json!(alive);
+        return 0;
+    }
+    // A pane that survived a restart as a plain shell in our folder is closed and replaced.
+    // Never close a pane that runs something or works elsewhere: its id may now be another's.
     for addon in &dead {
         if let Some(pane) = addon["pane_id"].as_str() {
-            let _ = api("pane.close", json!({ "pane_id": pane }));
+            if pane_inside(pane, root) && !runs_a_program(pane) {
+                let _ = api("pane.close", json!({ "pane_id": pane }));
+            }
         }
     }
     let specs: Vec<Addon> = dead
@@ -608,6 +693,25 @@ fn reopen_addons(manifest: &mut Value, slug: &str, root: &Path, beside: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognizes_this_swarms_running_addon() {
+        let root = std::env::temp_dir();
+        let other = root.join("hivey-relaunch-test-not-root");
+        let process = |cwd: &Path, script: &str| {
+            json!({ "cwd": cwd, "cmdline": format!("/usr/bin/python3 /x/plugins/{script}") })
+        };
+        let relay = process(&root, "slack-relay/relay.py");
+        assert!(runs_addon(&relay, &root, "hivey.slack-relay", Some("relay")));
+        assert!(runs_addon(&relay, &root, "hivey.slack-relay", None));
+        // Another plugin, another entrypoint, or another swarm's copy is not ours.
+        assert!(!runs_addon(&relay, &root, "hivey.dashboard", None));
+        assert!(!runs_addon(&relay, &root, "hivey.slack-relay", Some("dashboard")));
+        assert!(!runs_addon(&process(&other, "slack-relay/relay.py"), &root, "hivey.slack-relay", None));
+        // An agent (or the hivey agent) that took over a recorded pane id is not an addon.
+        let claude = json!({ "cwd": root, "cmdline": "claude --dangerously-skip-permissions" });
+        assert!(!runs_addon(&claude, &root, "hivey.slack-relay", None));
+    }
 
     #[test]
     fn parses_relaunch_arguments() {
