@@ -36,6 +36,10 @@ from pathlib import Path
 
 SENDER_RE = re.compile(r"^(?:(?::[a-z0-9_+-]+:|[^\x00-\x7F]+)\s+)?\*\[([^\]]+)\]\*\s*")
 MENTION_RE = re.compile(r"@([a-z][a-z0-9_-]*)")
+# The relay's own posts: a mirror ("👤 *human → coordinator*: …") or a quiet-mode catch-up.
+# Slack returns emoji as :shortcodes:. Agent posts ("*[scout]* …") don't match.
+RELAY_POST_RE = re.compile(
+    r"^(?::[a-z0-9_+-]+:|[^\x00-\x7F]+)\s+\*(?:[^*\n]+ → [^*\n]+|Quiet mode ended[^*\n]*)\*")
 BROADCAST = {"all", "everyone", "here", "channel"}
 MASTER_ALIASES = {"coordinator", "master"}
 ROLE_EMOJI = {"master": "🧭", "critic": "🧐", "script": "⚙️"}
@@ -91,6 +95,12 @@ def parse_slack(text, manifest):
     if not targets and sender == "human":
         targets.append(master_key(roles))
     return sender, body.strip(), targets
+
+
+def is_relay_post(text):
+    """True for text this relay posted. Its ts guard can miss one (a second relay on the
+    channel, a restart between post and save); injecting it again starts an echo loop."""
+    return bool(RELAY_POST_RE.match(text or ""))
 
 
 def involves_master(message, roles):
@@ -290,6 +300,8 @@ class Relay:
             self.state["last_ts"] = msg["ts"]
             if msg["ts"] in self.state["posted"] or msg.get("subtype") in ("channel_join", "bot_add"):
                 continue
+            if is_relay_post(msg.get("text", "")):
+                continue
             sender, body, targets = parse_slack(msg.get("text", ""), manifest)
             for target in targets:
                 try:
@@ -337,6 +349,20 @@ class Relay:
         self.save()
 
 
+def claim(pid_path):
+    """Make this process the swarm's relay. Returns a check that is False once a newer relay
+    has claimed it: closing a pane doesn't always stop the relay in it, and two relays on one
+    channel double every post and poll (HTTP 429) and can echo each other's posts."""
+    pid_path.write_text(str(os.getpid()))
+
+    def still_ours():
+        try:
+            return pid_path.read_text().strip() == str(os.getpid())
+        except OSError:
+            return True  # unreadable for a moment: keep going, the next check decides
+    return still_ours
+
+
 def main():
     root = os.environ.get("HIVEY_SWARM_ROOT") or (sys.argv[1] if len(sys.argv) > 1 else "")
     if not root:
@@ -359,7 +385,11 @@ def main():
                 f"{os.environ.get('HERDR_PLUGIN_CONFIG_DIR', '?')}/config.json; retrying in 60s")
         time.sleep(60 if not (channel and token) else 0)
     relay = Relay(root, Slack(token), Hivey(binary, slug), channel, scope)
+    still_ours = claim(Path(root) / ".swarm" / "slack_relay.pid")
     while True:
+        if not still_ours():
+            log("a newer relay took over this swarm; exiting")
+            return
         try:
             relay.step()
         except Exception as err:  # network blips, a bad manifest read: keep relaying

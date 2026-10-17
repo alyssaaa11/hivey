@@ -19,6 +19,48 @@ MANIFEST = {
 }
 
 
+class EchoGuards(unittest.TestCase):
+    def test_recognizes_the_relays_own_posts(self):
+        roles = relay.roster(MANIFEST)
+        mirror = relay.format_mirror({"from": "human", "to": "coordinator", "text": "hi"}, roles, "ideas")
+        self.assertTrue(relay.is_relay_post(mirror))
+        self.assertTrue(relay.is_relay_post(":bust_in_silhouette: *human → coordinator*: hi"))
+        self.assertTrue(relay.is_relay_post(relay.format_catch_up(["a", "b"])))
+        self.assertTrue(relay.is_relay_post(":crescent_moon: *Quiet mode ended: 13 updates while it was on*"))
+        # Agent posts and people's messages still reach the bus.
+        self.assertFalse(relay.is_relay_post(":fox_face: *[scout]* found 3"))
+        self.assertFalse(relay.is_relay_post("@scout find 3 competitors"))
+        self.assertFalse(relay.is_relay_post("*important* → read this"))
+
+    def test_own_post_is_not_reinjected_when_its_ts_guard_is_lost(self):
+        # The 2026-10-17 loop: the catch-up came back from Slack as a "human" message, was
+        # mirrored, came back again, and nested ("human → coordinator: human → …").
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".swarm").mkdir()
+            (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
+            bus = root / ".swarm" / "bus.jsonl"
+            bus.write_text("")
+            slack, hivey = FakeSlack(), FakeHivey(bus)
+            r = relay.Relay(root, slack, hivey, "C1", "masters")
+            r.state["last_ts"] = "0"
+            slack.inbox.append({"ts": "1.000000", "bot_id": "B1",
+                                "text": ":crescent_moon: *Quiet mode ended: 3 updates while it was on*"})
+            slack.inbox.append({"ts": "2.000000", "bot_id": "B1",
+                                "text": ":bust_in_silhouette: *human → coordinator*: back"})
+            r.step()
+            self.assertEqual(hivey.sent, [])
+            self.assertEqual(slack.posted, [])
+
+    def test_a_newer_relay_takes_over(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_path = Path(tmp) / "slack_relay.pid"
+            still_ours = relay.claim(pid_path)
+            self.assertTrue(still_ours())
+            pid_path.write_text("999999")  # another relay started for this swarm
+            self.assertFalse(still_ours())
+
+
 class ParseSlack(unittest.TestCase):
     def test_unaddressed_human_message_goes_to_the_master(self):
         self.assertEqual(relay.parse_slack("how is it going?", MANIFEST),
