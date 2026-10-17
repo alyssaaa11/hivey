@@ -542,14 +542,22 @@ fn pane_inside(pane: &str, root: &Path) -> bool {
     api("pane.get", json!({ "pane_id": pane }))
         .ok()
         .and_then(|got| got["pane"]["cwd"].as_str().map(PathBuf::from))
-        .is_some_and(|cwd| std::fs::canonicalize(&cwd).unwrap_or(cwd).starts_with(&root))
+        .is_some_and(|cwd| {
+            std::fs::canonicalize(&cwd)
+                .unwrap_or(cwd)
+                .starts_with(&root)
+        })
 }
 
 /// The foreground processes of a pane (empty when the pane is gone).
 fn foreground(pane: &str) -> Vec<Value> {
     api("pane.process_info", json!({ "pane_id": pane }))
         .ok()
-        .and_then(|info| info["process_info"]["foreground_processes"].as_array().cloned())
+        .and_then(|info| {
+            info["process_info"]["foreground_processes"]
+                .as_array()
+                .cloned()
+        })
         .unwrap_or_default()
 }
 
@@ -573,12 +581,19 @@ fn runs_addon(process: &Value, root: &Path, plugin: &str, entrypoint: Option<&st
 /// A pane already running this addon for this swarm, other than `taken`. After a restart the
 /// recorded pane id can go stale while the addon keeps running elsewhere; opening another copy
 /// would double every Slack post and poll (HTTP 429).
-fn running_addon_pane(root: &Path, plugin: &str, entrypoint: Option<&str>, taken: &[String]) -> Option<String> {
+fn running_addon_pane(
+    root: &Path,
+    plugin: &str,
+    entrypoint: Option<&str>,
+    taken: &[String],
+) -> Option<String> {
     let panes = api("pane.list", json!({})).ok()?;
     panes["panes"].as_array()?.iter().find_map(|pane| {
         let id = pane["pane_id"].as_str()?;
         (!taken.iter().any(|t| t == id)
-            && foreground(id).iter().any(|p| runs_addon(p, root, plugin, entrypoint)))
+            && foreground(id)
+                .iter()
+                .any(|p| runs_addon(p, root, plugin, entrypoint)))
         .then(|| id.to_string())
     })
 }
@@ -623,9 +638,11 @@ fn reopen_addons(manifest: &mut Value, slug: &str, root: &Path, beside: &str) ->
             // A plugin kept outside a folder named after it: fall back to "runs something here".
             || (runs_a_program(pane) && pane_inside(pane, root))
     };
-    let (mut alive, dead): (Vec<Value>, Vec<Value>) = recorded
-        .into_iter()
-        .partition(|addon| addon["pane_id"].as_str().is_some_and(|pane| alive_in(addon, pane)));
+    let (mut alive, dead): (Vec<Value>, Vec<Value>) = recorded.into_iter().partition(|addon| {
+        addon["pane_id"]
+            .as_str()
+            .is_some_and(|pane| alive_in(addon, pane))
+    });
     if dead.is_empty() {
         return 0;
     }
@@ -698,16 +715,29 @@ mod tests {
     fn recognizes_this_swarms_running_addon() {
         let root = std::env::temp_dir();
         let other = root.join("hivey-relaunch-test-not-root");
-        let process = |cwd: &Path, script: &str| {
-            json!({ "cwd": cwd, "cmdline": format!("/usr/bin/python3 /x/plugins/{script}") })
-        };
+        let process = |cwd: &Path, script: &str| json!({ "cwd": cwd, "cmdline": format!("/usr/bin/python3 /x/plugins/{script}") });
         let relay = process(&root, "slack-relay/relay.py");
-        assert!(runs_addon(&relay, &root, "hivey.slack-relay", Some("relay")));
+        assert!(runs_addon(
+            &relay,
+            &root,
+            "hivey.slack-relay",
+            Some("relay")
+        ));
         assert!(runs_addon(&relay, &root, "hivey.slack-relay", None));
         // Another plugin, another entrypoint, or another swarm's copy is not ours.
         assert!(!runs_addon(&relay, &root, "hivey.dashboard", None));
-        assert!(!runs_addon(&relay, &root, "hivey.slack-relay", Some("dashboard")));
-        assert!(!runs_addon(&process(&other, "slack-relay/relay.py"), &root, "hivey.slack-relay", None));
+        assert!(!runs_addon(
+            &relay,
+            &root,
+            "hivey.slack-relay",
+            Some("dashboard")
+        ));
+        assert!(!runs_addon(
+            &process(&other, "slack-relay/relay.py"),
+            &root,
+            "hivey.slack-relay",
+            None
+        ));
         // An agent (or the hivey agent) that took over a recorded pane id is not an addon.
         let claude = json!({ "cwd": root, "cmdline": "claude --dangerously-skip-permissions" });
         assert!(!runs_addon(&claude, &root, "hivey.slack-relay", None));

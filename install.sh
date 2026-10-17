@@ -7,17 +7,17 @@
 # Builds hivey, installs it as ~/.local/bin/hivey (HIVEY_BIN_DIR to change), offers the coding
 # agents it runs (Claude Code, Codex, Antigravity/Gemini, Grok) and links each one found to hivey,
 # installs the hivey skills, commands and hooks (safety on; hivey safety off) and the global
-# find-skills skill for Claude Code, links the bundled plugins (dashboard,
+# find-skills skill for Claude Code, installs skylls (the skills library) and envsave (secrets)
+# with their skills, links the bundled plugins (dashboard,
 # Slack relay, GitHub, team template, swarm creator, agent creator, skills), turns on the swarm
-# sidebar and Option keys, asks for your Slack bot token, checks skylls (the skills library)
-# and a desktop pet (macOS), and sets up the hivey agent in ~/.hivey/agent (needs Claude Code;
-# Slack channel #hivey when connected). Swarms and agents keep their Obsidian wiki in their own
+# sidebar and Option keys, asks for your Slack bot token and a desktop pet (macOS), and sets up
+# the hivey agent in ~/.hivey/agent (needs Claude Code; Slack channel #hivey when connected). Swarms and agents keep their Obsidian wiki in their own
 # folder (<folder>/<name>-wiki), so there is no Obsidian folder to set up.
 # --no-setup skips the questions and the hivey agent. Run it again any time; later updates are
 # just `hivey update`.
 #
 # Needs: git, Rust (cargo, via https://rustup.rs), Zig 0.16.0 (https://ziglang.org/download,
-# or set ZIG=/path/to/zig), python3, Node.js (npx, for skills.sh). macOS or Linux.
+# or set ZIG=/path/to/zig), python3, Node.js (npx for skills.sh, npm for envsave). macOS or Linux.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -183,6 +183,55 @@ else
   echo "could not install (see $LOG_DIR/hivey-find-skills.log; later: npx -y skills add vercel-labs/skills --skill find-skills -g -a claude-code -y)"
 fi
 
+# skylls (the skills library creators find, save and share skills, agents and swarms in) and
+# envsave (secrets by opaque id, never in code), each with its global skill. An existing skill
+# is left as it is.
+SKYLLS_URL=https://raw.githubusercontent.com/jcsancho/skylls/main/install.sh
+say "skylls and envsave (tools and their skills)"
+if ! command -v skylls >/dev/null 2>&1; then
+  # Its installer asks its own questions on the terminal (uv, gh, gitleaks, your account);
+  # --no-setup leaves its account setup for later.
+  SKYLLS_OPT=""; [ "$SETUP" = 1 ] || SKYLLS_OPT=--no-setup
+  if bash -c "$(curl -fsSL "$SKYLLS_URL")" skylls-install $SKYLLS_OPT; then
+    export PATH="$HOME/.local/bin:$PATH"
+    hash -r
+  fi
+  command -v skylls >/dev/null 2>&1 && changed installed "skylls: $(command -v skylls)"
+fi
+if command -v skylls >/dev/null 2>&1; then
+  echo "  skylls $(skylls --version 2>/dev/null | awk '{print $NF}')"
+  if [ -f "$HOME/.claude/skills/skylls/SKILL.md" ]; then
+    echo "  skylls skill: already installed"
+  elif skylls agent-skill -g -a all >"$LOG_DIR/hivey-skylls-skill.log" 2>&1 \
+      && [ -f "$HOME/.claude/skills/skylls/SKILL.md" ]; then
+    changed new "$HOME/.claude/skills/skylls (skylls agent-skill -g)"
+  else
+    echo "  could not install the skylls skill (see $LOG_DIR/hivey-skylls-skill.log; needs gh auth login and skylls setup; later: skylls agent-skill -g -a all)"
+  fi
+else
+  echo "  skylls: not installed (later: bash -c \"\$(curl -fsSL $SKYLLS_URL)\")"
+fi
+if ! command -v envsave >/dev/null 2>&1; then
+  if js_global @envsave/cli; then
+    hash -r
+    command -v envsave >/dev/null 2>&1 && changed installed "envsave: $(command -v envsave)"
+  fi
+fi
+if command -v envsave >/dev/null 2>&1; then
+  echo "  envsave: $(command -v envsave | tilde)"
+  if [ -f "$HOME/.claude/skills/envsave/SKILL.md" ]; then
+    echo "  envsave skill: already installed"
+  elif envsave install-skill --agent claude --global </dev/null >"$LOG_DIR/hivey-envsave-skill.log" 2>&1 \
+      && [ -f "$HOME/.claude/skills/envsave/SKILL.md" ]; then
+    changed new "$HOME/.claude/skills/envsave (envsave install-skill --global)"
+  else
+    echo "  could not install the envsave skill (see $LOG_DIR/hivey-envsave-skill.log; later: envsave install-skill --global)"
+  fi
+  [ -f "$HOME/.envsave/vault.enc" ] || echo "  no vault yet: envsave activate <license>, then envsave init"
+else
+  echo "  envsave: not installed (later: npm install -g @envsave/cli; needs Node.js)"
+fi
+
 say "bundled plugins"
 STARTED_SERVER=0
 if ! "$BIN" plugin list >/dev/null 2>&1; then
@@ -232,13 +281,7 @@ if [ "$SETUP" = 1 ]; then
     echo "skipped: no terminal to type the token in (later: hivey slack connect)"
   fi
 
-  say "skills library: skylls (where creators find, save and share skills, agents and swarms)"
-  if command -v skylls >/dev/null 2>&1; then
-    echo "skylls $(skylls --version 2>/dev/null | awk '{print $NF}') found"
-  else
-    echo "skylls is not installed; install it with:"
-    echo "  bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/jcsancho/skylls/main/install.sh)\""
-  fi
+  say "online skill search (skills.sh, for skills skylls lacks)"
   if [ -t 0 ] || (: </dev/tty) 2>/dev/null; then
     printf 'Search skills.sh for skills skylls lacks (asks before installing any)? [Y/n] '
     read -r answer </dev/tty || answer=""

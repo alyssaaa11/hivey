@@ -54,6 +54,16 @@ In `~/.claude/skills/`, and `~/.codex/skills/` when Codex is set up (`hivey skil
 Also installed globally: `find-skills` (skills.sh), which creators use to find skills an
 agent needs.
 
+## Tools and their skills
+
+`install.sh` installs each tool when it is missing, then its global Claude Code skill (an
+existing skill is left as it is). `hivey installed` shows whether each is there.
+
+| Tool | Installed with | Skill | What for |
+|---|---|---|---|
+| `skylls` | its installer, `bash -c "$(curl -fsSL https://raw.githubusercontent.com/jcsancho/skylls/main/install.sh)"` (asks its own questions; needs `gh auth login`) | `~/.claude/skills/skylls` (`skylls agent-skill -g -a all`, also Codex and Gemini) | the skills library: creators find, save and share skills, agents and swarms |
+| `envsave` | `bun`/`npm install -g @envsave/cli` | `~/.claude/skills/envsave` (`envsave install-skill --global`) | secrets by opaque id, never in code; the vault needs `envsave activate` and `envsave init` |
+
 ## Commands (Claude Code)
 
 In `~/.claude/commands/`.

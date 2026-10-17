@@ -71,6 +71,55 @@ fn inventory(home: &Path, config_dir: &Path) -> String {
     }
     section("Skills", skills, "none");
 
+    // Not named hivey: install.sh installs these for the creators and agents to use.
+    let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect())
+        .unwrap_or_default();
+    let tools = [
+        (
+            Some("skylls"),
+            "skylls",
+            "skills library: find, save and share skills, agents, swarms",
+        ),
+        (
+            Some("envsave"),
+            "envsave",
+            "secrets by opaque id, never in code",
+        ),
+        (None, "find-skills", "find skills on skills.sh"),
+    ]
+    .into_iter()
+    .map(|(program, skill, what)| {
+        let program = program.map(|name| {
+            if path_dirs.iter().any(|dir| dir.join(name).is_file()) {
+                format!("{name} found")
+            } else {
+                format!("{name} MISSING")
+            }
+        });
+        let skill_state = if home
+            .join(".claude/skills")
+            .join(skill)
+            .join("SKILL.md")
+            .is_file()
+        {
+            "skill on"
+        } else {
+            "skill MISSING"
+        };
+        let state = match program {
+            Some(program) => format!("{program}, {skill_state}"),
+            None => skill_state.to_string(),
+        };
+        format!("{skill:<22} {state:<30} {what}")
+    })
+    .collect();
+    section(
+        "Tools and their skills (Claude Code; rerun ./install.sh if missing)",
+        tools,
+        "",
+    );
+
     let commands = hivey_entries(&home.join(".claude/commands"), ".md")
         .into_iter()
         .map(|path| {
@@ -270,6 +319,11 @@ mod tests {
         );
         assert!(!text.contains("/mine"), "{text}");
         assert!(text.contains("hivey.dashboard"), "{text}");
+        assert!(
+            text.contains("find-skills            skill MISSING"),
+            "{text}"
+        );
+        assert!(text.contains("envsave "), "{text}");
         assert!(
             text.contains("Agents (Claude Code subagents)\n  (none)"),
             "{text}"
