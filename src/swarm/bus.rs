@@ -133,7 +133,11 @@ pub(crate) fn pending_from_log(records: &[Record]) -> (Vec<Message>, Vec<String>
     let mut held = Vec::new();
     for record in records {
         match record {
-            Record::Delivered { id, .. } => {
+            // A message the agent read through `hivey msg inbox` is received, even when no
+            // Delivered receipt was written (the inbox writes one only for messages still in
+            // the in-memory queue). Without this a read message became pending again on the
+            // next reload, was never shown by the inbox (already read) and was pushed later.
+            Record::Delivered { id, .. } | Record::Read { id, .. } => {
                 delivered.insert(id.as_str());
             }
             Record::Held { id, .. } => held.push(id.clone()),
@@ -573,6 +577,26 @@ mod tests {
     }
 
     // --- record / queue ---------------------------------------------------
+
+    #[test]
+    fn a_read_message_is_never_pending_again() {
+        // Pulled through the inbox while not in the in-memory queue: Read without Delivered.
+        // It must not come back after a reload (the inbox would never show it: already read).
+        let records = [
+            Record::Msg(msg("m1", Kind::Normal)),
+            Record::Read {
+                id: "m1".into(),
+                to: "analyst".into(),
+                ts: 2,
+            },
+            Record::Msg(msg("m2", Kind::Normal)),
+        ];
+        let (pending, _) = pending_from_log(&records);
+        assert_eq!(
+            pending.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["m2"]
+        );
+    }
 
     #[test]
     fn log_roundtrip_rebuilds_the_queue_after_restart() {
