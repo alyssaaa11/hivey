@@ -36,27 +36,40 @@ class Transcripts(unittest.TestCase):
             # Claude Code logs one line per streamed block, all with the same usage.
             path.write_text(line("a", 5) + line("a", 5) + '{"type": "user"}\n')
             state = {}
-            self.assertEqual(dashboard.scan_transcript(str(path), state), 115)
+            # Cache reads are kept apart from the new tokens.
+            self.assertEqual(dashboard.scan_transcript(str(path), state), 15)
+            self.assertEqual(state["cache_read"], 100)
             with open(path, "a") as f:
                 f.write(line("b", 20))
                 f.write('{"message": {"id": "c", "usa')  # still being written
-            self.assertEqual(dashboard.scan_transcript(str(path), state), 115 + 130)
+            self.assertEqual(dashboard.scan_transcript(str(path), state), 15 + 30)
+            self.assertEqual(state["cache_read"], 200)
             self.assertEqual(dashboard.scan_transcript(str(path) + ".missing", {}), 0)
 
     def test_codex_rollout_keeps_the_latest_running_total(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "rollout-x.jsonl"
 
-            def event(total):
-                info = {"total_token_usage": {"total_tokens": total}}
+            def event(total, cached=0):
+                info = {"total_token_usage": {"total_tokens": total, "cached_input_tokens": cached}}
                 return json.dumps({"type": "event_msg", "payload": {"type": "token_count", "info": info}}) + "\n"
 
             path.write_text('{"type": "session_meta", "payload": {}}\n' + event(100) + event(250))
             state = {}
             self.assertEqual(dashboard.scan_codex_rollout(str(path), state), 250)
             with open(path, "a") as f:
-                f.write(event(400))
-            self.assertEqual(dashboard.scan_codex_rollout(str(path), state), 400)
+                f.write(event(400, cached=300))
+            self.assertEqual(dashboard.scan_codex_rollout(str(path), state), 100)
+            self.assertEqual(state["cache_read"], 300)
+
+    def test_old_usage_cache_is_rescanned(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            swarm = Path(tmp) / ".swarm"
+            swarm.mkdir()
+            old = {"sessions": {"scout": ["s1"]}, "files": {"/x.jsonl": {"offset": 9, "total": 999}}}
+            (swarm / "dashboard_usage.json").write_text(json.dumps(old))
+            cache = dashboard.Collector(tmp, "hivey").cache
+            self.assertEqual((cache["sessions"], cache["files"]), ({"scout": ["s1"]}, {}))
 
     def test_recent_messages_skip_receipts_and_copies(self):
         with tempfile.TemporaryDirectory() as tmp:

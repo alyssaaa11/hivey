@@ -11,6 +11,8 @@ Shows, refreshed every few seconds:
 Tokens are summed from each agent's Claude Code transcripts
 (~/.claude/projects/*/<session>.jsonl and its subagents), deduplicated by message id,
 read incrementally and cached in <root>/.swarm/dashboard_usage.json. Tokens only, no $.
+"Tokens" are new tokens (input + output + cache writes). Cache reads are counted apart: every
+turn re-reads the whole context, so they grow without bound and would drown the real work.
 
 Keys: q quit · r refresh now. Environment: HIVEY_SWARM_ROOT (required), HERDR_BIN_PATH.
 """
@@ -25,7 +27,9 @@ from pathlib import Path
 
 PROJECTS = Path.home() / ".claude" / "projects"
 CODEX_SESSIONS = Path.home() / ".codex" / "sessions"
-FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+FIELDS = ("input_tokens", "output_tokens", "cache_creation_input_tokens")
+CACHE_READ = "cache_read_input_tokens"
+CACHE_VERSION = 2  # v1 totals included cache reads; rescan them
 REFRESH_S = 3
 TOKENS_EVERY_S = 10
 SPARK = "▁▂▃▄▅▆▇█"
@@ -74,7 +78,9 @@ def task_counts(tasks):
 
 
 def scan_transcript(path, state):
-    """Add usage from lines appended to `path` since the last scan; returns total tokens."""
+    """Add usage from lines appended to `path` since the last scan; returns new tokens.
+
+    Cache reads go to state["cache_read"]."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             f.seek(state.get("offset", 0))
@@ -93,13 +99,16 @@ def scan_transcript(path, state):
                     continue
                 state["last_id"] = msg.get("id")
                 state["total"] = state.get("total", 0) + sum(int(msg["usage"].get(k) or 0) for k in FIELDS)
+                state["cache_read"] = state.get("cache_read", 0) + int(msg["usage"].get(CACHE_READ) or 0)
     except FileNotFoundError:
         pass
     return state.get("total", 0)
 
 
 def scan_codex_rollout(path, state):
-    """Codex rollouts carry a running total in `token_count` events; keep the latest."""
+    """Codex rollouts carry a running total in `token_count` events; keep the latest.
+
+    Codex counts cached input inside input_tokens, so it is moved to state["cache_read"]."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             f.seek(state.get("offset", 0))
@@ -116,7 +125,9 @@ def scan_codex_rollout(path, state):
                     continue
                 usage = ((payload.get("info") or {}).get("total_token_usage") or {})
                 if usage.get("total_tokens") is not None:
-                    state["total"] = int(usage["total_tokens"])
+                    cached = int(usage.get("cached_input_tokens") or 0)
+                    state["total"] = int(usage["total_tokens"]) - cached
+                    state["cache_read"] = cached
     except FileNotFoundError:
         pass
     return state.get("total", 0)
@@ -163,11 +174,14 @@ class Collector:
             self.cache = json.loads(self.cache_path.read_text())
         except (OSError, json.JSONDecodeError):
             self.cache = {"sessions": {}, "files": {}}
+        if self.cache.get("version") != CACHE_VERSION:
+            self.cache = {**self.cache, "version": CACHE_VERSION, "files": {}}
         self.since = {}  # agent key → (status, first seen at)
         self.rate = []  # swarm tokens gained per token refresh
         self.last_total = None
         self.last_tokens_at = 0
         self.tokens = {}
+        self.cache_read = 0
 
     def hivey(self, *args):
         out = subprocess.run([self.binary, *args], capture_output=True, text=True)
@@ -194,12 +208,14 @@ class Collector:
             known = self.cache["sessions"].setdefault(agent["key"], [])
             if sid and sid not in known:
                 known.append(sid)
-        tokens = {}
+        tokens, cache_read = {}, 0
         for key, sessions in self.cache["sessions"].items():
             total = 0
             for sid in sessions:
                 for path, scan in session_files(sid):
-                    total += scan(path, self.cache["files"].setdefault(path, {}))
+                    state = self.cache["files"].setdefault(path, {})
+                    total += scan(path, state)
+                    cache_read += state.get("cache_read", 0)
             tokens[key] = total
         tmp = self.cache_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self.cache))
@@ -210,6 +226,7 @@ class Collector:
             self.rate = self.rate[-120:]
         self.last_total = swarm_total
         self.tokens = tokens
+        self.cache_read = cache_read
 
     def track_active(self, launched_at, messages, working, now):
         """Seconds the swarm has actually worked: the clock runs only while an agent is working.
@@ -263,6 +280,7 @@ class Collector:
             "working": working,
             "done": bool(tasks) and all(t.get("status") == "approved" for t in tasks),
             "tokens": dict(self.tokens),
+            "cache_read": self.cache_read,
             "rate": list(self.rate),
             "since": dict(self.since),
             "now": now,
@@ -333,7 +351,8 @@ def draw(win, snap, slug):
             x = put(win, y, x, f"  {label}/{budget}m ", color(7))
             x = put(win, y, x, bar(active, budget * 60, 12), color(budget_pair(pct)))
             x = put(win, y, x, f" {int(pct * 100)}%", color(7))
-    put(win, y, max(x + 2, width - 18), f"tokens {human(total):>7}", color(3, True))
+    put(win, y, max(x + 2, width - 32), f"tokens {human(total):>7}", color(3, True))
+    put(win, y, max(x + 18, width - 17), f"cache read {human(snap.get('cache_read', 0)):>5}", color(8))
     y += 2
 
     # Agents table with token bars.
