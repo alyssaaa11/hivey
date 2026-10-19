@@ -167,7 +167,7 @@ else
 fi
 
 # Reinstalls over an older hivey: bring its leftovers to the current conventions too.
-say "hivey hooks, plugins and older leftovers (hivey migrate: safety on, wikis <name>-wiki)"
+say "hivey hooks, plugins and older leftovers (hivey migrate: safety on)"
 tracked "$BIN" migrate || echo "  could not migrate everything (later: hivey migrate)"
 
 # find-skills (skills.sh) is the one skill installed globally: creators use it to find skills an

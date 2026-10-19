@@ -9,7 +9,7 @@ CLAUDE.md with the rules, .obsidian/ so Obsidian opens it as a vault) and adds a
 section to each --agent FOLDER's CLAUDE.md pointing at it with a relative path. Obsidian lists
 a vault by its folder name, hence <name>-wiki. FOLDER is the swarm root or the solo agent's
 folder (default: the current folder). An existing vault is reused, never overwritten; so is
-an older <FOLDER>/obsidian/ vault (`hivey migrate` renames those to <name>-wiki/).
+an older <FOLDER>/obsidian/ vault.
 Obsidian keeps the look per vault, so a new vault copies the theme, CSS snippets and Style
 Settings of the vault remembered as --look-from (kept in ~/.hivey/wiki.json); without one it
 opens in stock Obsidian.
