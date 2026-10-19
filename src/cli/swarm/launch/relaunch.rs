@@ -336,7 +336,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
     // A solo agent with nothing left gets a new space; its first pane is the agent's.
     let mut fresh_space = None;
     if beside.is_none() && solo && !targets.is_empty() {
-        fresh_space = new_space(&request.slug, &root);
+        fresh_space = new_space(&request.slug, manifest["icon"].as_str(), &root);
         beside = fresh_space.clone();
     }
     let beside = beside.ok_or("no pane of this swarm is left to open agents beside; relaunch it with `hivey swarm launch`")?;
@@ -385,6 +385,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
     let opts = Options {
         root: root.clone(),
         slug: request.slug.clone(),
+        icon: manifest["icon"].as_str().map(str::to_string),
         agents: Vec::new(),
         channel: None,
         models,
@@ -600,10 +601,10 @@ fn running_addon_pane(
 
 /// Any pane whose working folder is inside `root` (a restored shell after a restart).
 /// A new space for a solo agent whose panes are all gone; returns its pane.
-fn new_space(slug: &str, root: &Path) -> Option<String> {
+fn new_space(slug: &str, icon: Option<&str>, root: &Path) -> Option<String> {
     let created = api(
         "workspace.create",
-        json!({ "cwd": root, "label": slug, "focus": false }),
+        json!({ "cwd": root, "label": super::space_label(slug, icon), "focus": false }),
     )
     .ok()?;
     created["root_pane"]["pane_id"].as_str().map(str::to_string)

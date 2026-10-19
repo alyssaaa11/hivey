@@ -29,6 +29,9 @@ Scripts live in `~/.claude/skills/hivey-agent-creator/scripts/` (`$A` below). Re
 normalized to `[a-z][a-z0-9-]{0,31}`; skip the question if the task already says "Name: …".
 That one name is used everywhere: the slug (`--slug`), the Slack channel `#<name>` and the
 wiki `<agent folder>/<name>-wiki`. Never prefix it (`agent-` or anything else).
+In the same question suggest an **emoji** for it (e.g. 📺 for a YouTube agent, 📝 for a
+writer) unless the task already says "Icon: …"; the sidebar shows its space as
+`<emoji> <name>` (`--icon`, step 8). The user can pick another or none.
 
 **The agent folder** (`$DIR` below):
 - `$HIVEY_SETUP_CWD` when you're a setup pane, or your current folder, if it is empty or holds
@@ -111,7 +114,7 @@ whether to ask this agent for help.
 Show the plan and wait for a yes before creating anything:
 
 ```
-Agent: <name> — <one-line role>            folder: <DIR>
+Agent: <emoji> <name> — <one-line role>    folder: <DIR>
 Kind: one-shot | ongoing (<cadence>)       runs on: Claude Code | Codex | Grok | agy, model <m> (<why>)
 | # | Deliverable | Path | Done when / check |
 Skills: <a> (why), <b> (why)               gaps: <gap> → suggestion
@@ -228,13 +231,13 @@ section and the patched section agree (keep one). Tell the user the vault path.
 ## 8. Launch
 
 ```bash
-hivey swarm launch "$DIR" --slug <name> --solo --kind <claude|codex|grok|agy> [--model <m>] \
+hivey swarm launch "$DIR" --slug <name> --icon <emoji> --solo --kind <claude|codex|grok|agy> [--model <m>] \
     --description "<one line>" --skills a,b --tools "gh, mcp:x" \
     [--heartbeat 6h --heartbeat-task "Start a run (Run protocol): <run prompt>"] \
     [--kickoff "<first concrete task>"]
 ```
 
-The agent opens in a **new space `<name>`** with a ★ row in the sidebar, as its own master.
+The agent opens in a **new space `<emoji> <name>`** with a ★ row in the sidebar, as its own master.
 Your pane stays where it is. With Slack connected, launch creates `#<name>` and its relay; add
 `--slack` to make a missing connection an error, `--no-slack` to skip it.
 
@@ -263,7 +266,7 @@ Memory:   <DIR>/<name>-wiki | none
 Slack:    #<name> | none
 Schedule: on demand | heartbeat <6h> | at <times>
 Harness:  check `<cmd>` · done gate · resume context · reviewer | none
-Space:    <name> (★ in the sidebar)
+Space:    <emoji> <name> (★ in the sidebar)
 Talk to it:  hivey msg send <name>/master "…"   (or in #<name>)
 Relaunch:    hivey swarm relaunch <name>
 Profile:     hivey swarm profile <name> --description … --skills … --tools …

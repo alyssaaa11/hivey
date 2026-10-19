@@ -19,7 +19,9 @@ command) and the `hivey` CLI:
   are fine to send on your own; their answers arrive in your inbox (`hivey msg inbox`).
 - **Name, every time you create an agent or swarm:** ask the user for its name first (suggest
   one from the task; `[a-z][a-z0-9-]{0,31}`). That one name is its slug and its Slack channel
-  `#<name>`; put "Name: <name>" in the provider's task.
+  `#<name>`; put "Name: <name>" in the provider's task. Suggest an emoji with it (📈 for
+  trading, 📡 for a radar…): the sidebar shows `<emoji> <name>`; put "Icon: <emoji>" in the
+  task too. Existing spaces: `hivey workspace rename <id> "<emoji> <slug>"`.
 - **Launch a swarm or an agent** (always through a creator; never write briefs or run
   `hivey swarm launch` yourself). **A team** ("create a swarm…"): `cd <parent folder> &&
   hivey swarm new "<task>"`. **One agent** ("create an agent…"): `mkdir -p <folder> && cd

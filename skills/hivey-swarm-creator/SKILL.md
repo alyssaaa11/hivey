@@ -44,6 +44,9 @@ Ask the user for the swarm's **name** (suggest one from the task; `[a-z][a-z0-9-
 unless the task already says "Name: …". That one name is used everywhere: the slug
 (`--slug`), the Slack channel `#<name>`, the root `<Folder>/<name>` and the wiki
 `<root>/<name>-wiki`. No `swarm-` prefix anywhere. Below, `<name>` and `<slug>` are the same.
+In the same question suggest an **emoji** for it (e.g. 📈 for trading, 📡 for a news radar)
+unless the task already says "Icon: …"; the sidebar shows the space as `<emoji> <name>`
+(`--icon`, step 7). The user can pick another or none.
 
 ## 2. Design the team
 
@@ -113,7 +116,7 @@ user's EAS or App Store account stays with the user.
 Show the plan and wait for approval before creating anything:
 
 ```
-Swarm: <name>   root: <Folder>/<name>   channel: #<name>   budget: <N> min
+Swarm: <emoji> <name>   root: <Folder>/<name>   channel: #<name>   budget: <N> min
 | Agent | CLI | Model | Role / mission | Deliverables (path) | Skills | Depends on |
 Tasks:
 | ID | Task | Owner | Deps | Check |
@@ -227,7 +230,7 @@ user's tweaks), linked from `index.md`, with a `bootstrap` entry in `log.md`.
 ## 7. Launch
 
 ```bash
-hivey swarm launch <root> --slug <name> <agent>... critic \
+hivey swarm launch <root> --slug <name> --icon <emoji> <agent>... critic \
     --models builder=opus,critic=opus,writer=sonnet --kinds reviewer=codex,scout=grok \
     --budget-min 120 --heartbeat 15m \
     --heartbeat-task "Monitoring pass: follow the hivey-swarm-creator skill's monitoring pass" \

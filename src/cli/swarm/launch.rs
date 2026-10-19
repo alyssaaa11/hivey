@@ -38,7 +38,7 @@ const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
 pub(super) const HELP: &str = "\
 usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
          [--kinds a=codex,b=grok,c=agy] [--claude-args|--codex-args|--grok-args|--agy-args \"...\"]
-         [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move]
+         [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move] [--icon EMOJI]
          [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack|--no-slack]
        hivey swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex|grok|agy] [options]
          [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hivey swarm directory)
@@ -47,6 +47,8 @@ usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
   read CLAUDE.md through an AGENTS.md (and, for agy, GEMINI.md) link.
   The calling pane becomes the master <slug>-coordinator and moves into a new space <slug>
   (--no-move keeps it where it is). Writes <root>/.swarm/agents.json and registers the swarm.
+  --icon 📈 shows the space as \"📈 <slug>\" in the sidebar (kept in the manifest, so relaunches
+  and later launches keep it); the slug, channel and folders stay plain.
   --addon (alias --relay) opens a plugin pane (default entrypoint \"relay\") in the swarm's space
   before the agents start, with HIVEY_SWARM_ROOT, HIVEY_SWARM_SLUG and HIVEY_SWARM_CHANNEL set:
   e.g. --addon hivey.slack-relay. Any plugin can be a relay; see plugins/README.md.
@@ -63,6 +65,8 @@ usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
 struct Options {
     root: PathBuf,
     slug: String,
+    /// `--icon`: an emoji shown before the slug in the space's label.
+    icon: Option<String>,
     agents: Vec<String>,
     channel: Option<String>,
     models: BTreeMap<String, String>,
@@ -100,6 +104,11 @@ struct Options {
 }
 
 impl Options {
+    /// The space's label: the slug, after the icon when there is one.
+    fn label(&self) -> String {
+        space_label(&self.slug, self.icon.as_deref())
+    }
+
     fn kind(&self, agent: &str) -> AgentKind {
         self.kinds.get(agent).copied().unwrap_or_default()
     }
@@ -112,6 +121,24 @@ impl Options {
             root.join(agent)
         }
     }
+}
+
+/// `"<icon> <slug>"`, or the plain slug without an icon.
+pub(super) fn space_label(slug: &str, icon: Option<&str>) -> String {
+    match icon.map(str::trim).filter(|icon| !icon.is_empty()) {
+        Some(icon) => format!("{icon} {slug}"),
+        None => slug.to_string(),
+    }
+}
+
+/// An icon is a short symbol (an emoji, possibly with modifiers), never words.
+fn valid_icon(icon: &str) -> bool {
+    let icon = icon.trim();
+    !icon.is_empty()
+        && icon.chars().count() <= 8
+        && !icon
+            .chars()
+            .any(|c| c.is_ascii_alphanumeric() || c.is_whitespace())
 }
 
 fn valid_name(name: &str) -> bool {
@@ -197,6 +224,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
     let mut opts = Options {
         root: PathBuf::new(),
         slug: String::new(),
+        icon: None,
         agents: Vec::new(),
         channel: None,
         models: BTreeMap::new(),
@@ -230,6 +258,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
         };
         match arg.as_str() {
             "--slug" => opts.slug = value("--slug")?,
+            "--icon" => {
+                let icon = value("--icon")?;
+                if !valid_icon(&icon) {
+                    return Err(format!("--icon {icon:?} must be one emoji (e.g. 📈)"));
+                }
+                opts.icon = Some(icon.trim().to_string());
+            }
             "--channel" => opts.channel = Some(value("--channel")?),
             "--kickoff" => opts.kickoff = value("--kickoff")?,
             "--claude-args" => opts.claude_args = split_args(&value("--claude-args")?),
@@ -428,7 +463,7 @@ fn place_master(opts: &Options, root: &Path) -> Result<String, String> {
         // Launched from outside hivey: an empty master pane in a new space.
         let created = api(
             "workspace.create",
-            json!({ "cwd": root, "label": opts.slug, "focus": true }),
+            json!({ "cwd": root, "label": opts.label(), "focus": true }),
         )?;
         return created["root_pane"]["pane_id"]
             .as_str()
@@ -467,7 +502,7 @@ fn move_to_own_space(opts: &Options, master: &str) -> Result<String, String> {
         // Already alone in its space: just name the space after the swarm.
         api(
             "workspace.rename",
-            json!({ "workspace_id": workspace, "label": opts.slug }),
+            json!({ "workspace_id": workspace, "label": opts.label() }),
         )?;
         return Ok(master.to_string());
     }
@@ -475,7 +510,7 @@ fn move_to_own_space(opts: &Options, master: &str) -> Result<String, String> {
         "pane.move",
         json!({
             "pane_id": master,
-            "destination": { "type": "new_workspace", "label": opts.slug, "tab_label": "team" },
+            "destination": { "type": "new_workspace", "label": opts.label(), "tab_label": "team" },
             "focus": true,
         }),
     )?;
@@ -739,6 +774,18 @@ fn launch(opts: &Options) -> Result<Value, String> {
     let root = std::fs::canonicalize(&opts.root)
         .map_err(|err| format!("{}: {err}", opts.root.display()))?;
     check(opts, &root)?;
+    // No --icon: keep the one an earlier launch recorded.
+    let with_icon;
+    let opts = match (&opts.icon, recorded_icon(&root)) {
+        (None, Some(icon)) => {
+            with_icon = Options {
+                icon: Some(icon),
+                ..opts.clone()
+            };
+            &with_icon
+        }
+        _ => opts,
+    };
     let with_slack;
     let opts = if opts.slack {
         with_slack = add_slack(opts)?;
@@ -860,7 +907,7 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
     let slug = &opts.slug;
     let created = api(
         "workspace.create",
-        json!({ "cwd": root, "label": slug, "focus": !opts.home }),
+        json!({ "cwd": root, "label": opts.label(), "focus": !opts.home }),
     )?;
     let pane = created["root_pane"]["pane_id"]
         .as_str()
@@ -970,6 +1017,16 @@ fn manifest_path(root: &Path) -> PathBuf {
     root.join(".swarm").join("agents.json")
 }
 
+/// The icon recorded in `<root>/.swarm/agents.json`, if any.
+pub(super) fn recorded_icon(root: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(manifest_path(root)).ok()?;
+    let manifest: Value = serde_json::from_str(&text).ok()?;
+    manifest["icon"]
+        .as_str()
+        .filter(|icon| valid_icon(icon))
+        .map(str::to_string)
+}
+
 /// Same manifest as launch_swarm.py (its relay and dashboard read it), plus
 /// workspace_id, coordinator_pane_id and addons. Unknown existing fields are kept.
 fn new_manifest(
@@ -993,6 +1050,7 @@ fn new_manifest(
     // A relaunch restarts the budget clock (launched_at); first_launched_at keeps the original.
     for (key, value) in [
         ("slug", json!(opts.slug)),
+        ("icon", json!(opts.icon)),
         (
             "channel_id",
             json!(opts
@@ -1243,6 +1301,27 @@ mod tests {
                 ""
             ]
         );
+    }
+
+    #[test]
+    fn icon_goes_before_the_slug_in_the_label() {
+        let args = |extra: &[&str]| -> Vec<String> {
+            ["/tmp/s", "--slug", "radar", "--solo"]
+                .iter()
+                .chain(extra)
+                .map(|s| s.to_string())
+                .collect()
+        };
+        assert_eq!(parse(&args(&[])).unwrap().label(), "radar");
+        let opts = parse(&args(&["--icon", "📡"])).unwrap();
+        assert_eq!(opts.label(), "📡 radar");
+        assert_eq!(parse(&args(&["--icon", "✍️"])).unwrap().label(), "✍️ radar");
+        assert!(
+            parse(&args(&["--icon", "radar"])).is_err(),
+            "words are not icons"
+        );
+        assert!(parse(&args(&["--icon", " "])).is_err());
+        assert_eq!(space_label("radar", Some("")), "radar");
     }
 
     #[test]
