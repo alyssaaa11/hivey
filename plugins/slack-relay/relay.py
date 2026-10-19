@@ -43,8 +43,8 @@ RELAY_POST_RE = re.compile(
 BROADCAST = {"all", "everyone", "here", "channel"}
 MASTER_ALIASES = {"coordinator", "master"}
 ROLE_EMOJI = {"master": "🧭", "critic": "🧐", "script": "⚙️"}
-FIXED_EMOJI = {"human": "👤", "hivey": "⚙️"}
-PALETTE = ["🦊", "🐙", "🦉", "🐝", "🦄", "🐬", "🦖", "🐢", "🦜", "🐳", "🦋", "🐧"]
+FIXED_EMOJI = {"human": "👤", "hivey": "🐝"}
+PALETTE = ["🦊", "🐙", "🦉", "🦦", "🦄", "🐬", "🦖", "🐢", "🦜", "🐳", "🦋", "🐧"]
 KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
 KEEP_HELD = 500  # posts held in quiet mode
 CATCH_UP_LINES = 40  # lines in the catch-up message; the rest are counted
@@ -124,6 +124,8 @@ def emoji(label, roles):
     if label in FIXED_EMOJI:
         return FIXED_EMOJI[label]
     key = label.split("/")[-1]
+    if key in FIXED_EMOJI:  # "hivey/hivey" is hivey too
+        return FIXED_EMOJI[key]
     if roles.get(key) in ROLE_EMOJI:
         return ROLE_EMOJI[roles[key]]
     return PALETTE[sum(map(ord, key)) % len(PALETTE)]
