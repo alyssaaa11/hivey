@@ -14,6 +14,13 @@ allowed-tools:
   - Glob
 ---
 
+> Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
+> It holds this machine's own additions; hivey updates never touch it, so put local changes
+> there, never here.
+>
+> Arguments: Claude Code puts what the user wrote after the skill name in the arguments
+> placeholder below; in Codex (or any other agent), take it from the user's request.
+
 # Wiki Ingest
 
 Arguments: `$ARGUMENTS` — a file path to ingest, or a free-form description of what to file.

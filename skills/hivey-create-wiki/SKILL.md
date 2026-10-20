@@ -51,8 +51,8 @@ If no name is given, use the folder's name; the hivey agent's folder `~/.hivey/a
 
 Why `<slug>-wiki`: Obsidian lists vaults by folder name, so each wiki gets its own name in the
 vault switcher. Older hivey vaults are called `obsidian/`; `hivey migrate` renames them. The
-wiki commands (`/hivey-wiki-ingest`, `/hivey-wiki-query`, `/hivey-wiki-lint`,
-`/hivey-wiki-log`, `/hivey-wiki-list`) find the nearest `<slug>-wiki/` with a `CLAUDE.md`,
+wiki skills (`/hivey-wiki-ingest`, `/hivey-wiki-query`, `/hivey-wiki-lint`,
+`/hivey-wiki-log`, `/hivey-wiki-list`; `$hivey-wiki-ingest`, … in Codex) find the nearest `<slug>-wiki/` with a `CLAUDE.md`,
 walking up from the current folder.
 
 ## Solo agent or swarm (detected, never asked)
@@ -96,7 +96,7 @@ asking; the schema says this is an initial structure.
 ## Step 3: Create the vault
 
 Use hivey's script (in the hivey skill: `~/.claude/skills/hivey/scripts/new_wiki.py`, or
-`~/.codex/skills/hivey/scripts/new_wiki.py`). It creates `<folder>/<slug>-wiki/` with `raw/`,
+`~/.agents/skills/hivey/scripts/new_wiki.py` for Codex). It creates `<folder>/<slug>-wiki/` with `raw/`,
 `wiki/`, `index.md`, `log.md`, a starter `CLAUDE.md` and `.obsidian/` (so Obsidian opens it as
 a vault), copies the user's Obsidian look (theme, snippets, Style Settings) from the vault
 remembered in `~/.hivey/wiki.json`, and adds a short "Memory" section to each `--agent`

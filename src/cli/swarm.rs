@@ -1191,12 +1191,6 @@ fn install_keys() -> std::io::Result<i32> {
             Err(err) => eprintln!("  hivey skill for {label}: {err}"),
         }
     }
-    if home.join(".claude").is_dir() {
-        match skill::install_commands(&home.join(".claude/commands")) {
-            Ok(status) => println!("  wiki commands for Claude Code: {status}"),
-            Err(err) => eprintln!("  wiki commands for Claude Code: {err}"),
-        }
-    }
     let response = super::send_request(&Request {
         id: "cli:swarm:setup:reload".into(),
         method: Method::ServerReloadConfig(crate::api::schema::EmptyParams::default()),

@@ -20,7 +20,7 @@ task, `HIVEY_SETUP_CWD` the folder it was started from) or because the user type
 `hivey swarm <command> --help` shows usage without running anything.
 
 Scripts live in `~/.claude/skills/hivey-swarm-creator/scripts/` (or
-`~/.codex/skills/hivey-swarm-creator/scripts/`), called `$S` below. Standard library only.
+`~/.agents/skills/hivey-swarm-creator/scripts/` for Codex), called `$S` below. Standard library only.
 
 **House rules** (`references/shared-rules.md`) apply to you and every agent: end every final
 response with `DONE: <3 words max>` on its own line (hivey's Stop hook speaks it for masters

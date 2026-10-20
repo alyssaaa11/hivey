@@ -62,7 +62,7 @@ fn inventory(home: &Path, config_dir: &Path) -> String {
     let mut skills = Vec::new();
     for (app, dir) in [
         ("Claude Code", ".claude/skills"),
-        ("Codex", ".codex/skills"),
+        ("Codex", super::skill::CODEX_SKILLS),
     ] {
         for path in hivey_entries(&home.join(dir), "") {
             let about = describe(&path.join("SKILL.md"));

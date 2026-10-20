@@ -106,7 +106,7 @@ All work is tracked in `<root>/.swarm/TASKS.md` (a read-only view managed by a s
 the board before starting anything, and **claim** a task before working on it, so two agents
 never do the same work:
 ```bash
-S=~/.claude/skills/hivey-swarm-creator/scripts; [ -d "$S" ] || S=~/.codex/skills/hivey-swarm-creator/scripts
+S=~/.claude/skills/hivey-swarm-creator/scripts; [ -d "$S" ] || S=~/.agents/skills/hivey-swarm-creator/scripts
 python3 $S/swarm_tasks.py list --owner <agent>                         # your tasks
 python3 $S/swarm_tasks.py claim <ID> --as <agent>                      # fails if deps aren't approved
 python3 $S/swarm_tasks.py verify <ID> --as <agent>                     # run the task's check yourself

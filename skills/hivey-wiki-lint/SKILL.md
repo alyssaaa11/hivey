@@ -12,6 +12,10 @@ allowed-tools:
   - Grep
 ---
 
+> Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
+> It holds this machine's own additions; hivey updates never touch it, so put local changes
+> there, never here.
+
 # Wiki Lint
 
 ## Finding the vault (do this first)

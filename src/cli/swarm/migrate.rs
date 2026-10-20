@@ -1,17 +1,17 @@
 //! `hivey migrate`: brings what an older hivey left on this machine up to the current
 //! conventions. Run by `hivey update` and `install.sh`; safe to run any number of times.
 //!
-//! - the hivey skill and the `hivey-*` Claude Code commands (`hivey skill install`);
+//! - the hivey skill and the `hivey-*` skills next to it (`hivey skill install`);
 //! - plugins, old copies the `hivey-*` skills replaced, the hivey agent's brief and hooks.
 
 use std::path::{Path, PathBuf};
 
 const USAGE: &str = "usage: hivey migrate [--dry-run]
   bring an older hivey install up to date (run by hivey update; safe to run again):
-  - the hivey skill and the hivey-* Claude Code commands (/hivey-wiki-ingest, …)
+  - the hivey skill and the hivey-* skills next to it (hivey-wiki-ingest, …)
   - old copies (wiki-ingest, …, agents-create-wiki, agy, grok, swarm, agent-creator) that hivey-* ones
-    replaced: moved to
-    ~/.hivey/old/, never deleted
+    replaced, the hivey-wiki-* commands the wiki skills replaced and hivey skills in Codex's old
+    ~/.codex/skills (now ~/.agents/skills): moved to ~/.hivey/old/, never deleted
   --dry-run   only show what would change";
 
 pub(crate) fn run(args: &[String]) -> std::io::Result<i32> {
@@ -39,10 +39,6 @@ pub(crate) fn run(args: &[String]) -> std::io::Result<i32> {
                 "hivey skill for {label}: {}",
                 super::skill::install_into(&dir)?
             );
-        }
-        if home.join(".claude").is_dir() {
-            let commands = super::skill::install_commands(&home.join(".claude/commands"))?;
-            println!("Claude Code commands: {commands}");
         }
     }
     leftovers(&home, dry)?;
@@ -140,13 +136,50 @@ const OLD_COPIES: &[(&str, &str, &str)] = &[
     (".codex/skills/grok", "grok", "the hivey-grok skill"),
 ];
 
+/// What hivey itself installed where it no longer does: (old path, the `name:` it must have, the
+/// replacement), all under HOME. The `hivey-*` Claude Code commands are skills now (so Codex has
+/// them too) and Codex reads user skills from ~/.agents/skills, no longer ~/.codex/skills.
+fn replaced_installs() -> Vec<(String, String, String)> {
+    let mut list = Vec::new();
+    for name in super::skill::skill_names() {
+        list.push((
+            format!(".claude/commands/{name}.md"),
+            name.to_string(),
+            format!(".claude/skills/{name}"),
+        ));
+        list.push((
+            format!(".codex/skills/{name}"),
+            name.to_string(),
+            format!("{}/{name}", super::skill::CODEX_SKILLS),
+        ));
+    }
+    list
+}
+
 /// Where retired copies go: moved, never deleted, so nothing is lost.
 const OLD_COPIES_DIR: &str = ".hivey/old";
 
-/// Moves the old copies in `OLD_COPIES` into ~/.hivey/old/ (same relative path).
+/// Moves the old copies in `OLD_COPIES` into ~/.hivey/old/ (same relative path), and those in
+/// `replaced_installs` once their replacement is installed (and isn't a link back to them).
 fn retire_old_copies(home: &Path, dry: bool) -> std::io::Result<Vec<String>> {
     let mut report = Vec::new();
-    for (rel, name, replaced_by) in OLD_COPIES {
+    let mut copies: Vec<(String, String, String)> = OLD_COPIES
+        .iter()
+        .map(|(rel, name, by)| (rel.to_string(), name.to_string(), by.to_string()))
+        .collect();
+    for (rel, name, new) in replaced_installs() {
+        let new = home.join(new);
+        let installed = new.join("SKILL.md").is_file();
+        let links_back = match (new.canonicalize(), home.join(&rel).canonicalize()) {
+            (Ok(new), Ok(old)) => new.starts_with(old),
+            _ => false,
+        };
+        if installed && !links_back {
+            let shown = new.strip_prefix(home).unwrap_or(&new).display().to_string();
+            copies.push((rel, name, format!("~/{shown}")));
+        }
+    }
+    for (rel, name, replaced_by) in &copies {
         let path = home.join(rel);
         if std::fs::symlink_metadata(&path).is_err() {
             continue;
@@ -402,5 +435,54 @@ mod tests {
         assert!(home
             .join(".hivey/old/.claude/commands/wiki-ingest.md.2")
             .is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn moves_replaced_commands_and_codex_skills_once_their_skill_is_installed() {
+        let home = scratch("replaced");
+        let commands = home.join(".claude/commands");
+        std::fs::create_dir_all(&commands).expect("commands");
+        for name in ["hivey-wiki-log", "hivey-wiki-lint"] {
+            std::fs::write(
+                commands.join(format!("{name}.md")),
+                format!("---\nname: {name}\n---\n"),
+            )
+            .expect("command");
+        }
+        let skill = |dir: PathBuf, name: &str| {
+            std::fs::create_dir_all(&dir).expect("skill");
+            std::fs::write(dir.join("SKILL.md"), format!("---\nname: {name}\n---\n"))
+                .expect("SKILL.md");
+        };
+        // Only hivey-wiki-log's skill is installed: its command moves, hivey-wiki-lint's stays.
+        skill(home.join(".claude/skills/hivey-wiki-log"), "hivey-wiki-log");
+        // Codex: the old copy moves once ~/.agents/skills has the skill...
+        skill(home.join(".codex/skills/hivey-codex"), "hivey-codex");
+        skill(home.join(".agents/skills/hivey-codex"), "hivey-codex");
+        // ...but not when the new one is only a link to the old one.
+        skill(home.join(".codex/skills/hivey-grok"), "hivey-grok");
+        std::os::unix::fs::symlink(
+            home.join(".codex/skills/hivey-grok"),
+            home.join(".agents/skills/hivey-grok"),
+        )
+        .expect("link");
+
+        let report = retire_old_copies(&home, false).expect("retire");
+        assert_eq!(report.len(), 2, "{report:?}");
+        assert!(!commands.join("hivey-wiki-log.md").exists());
+        assert!(home
+            .join(".hivey/old/.claude/commands/hivey-wiki-log.md")
+            .is_file());
+        assert!(
+            commands.join("hivey-wiki-lint.md").is_file(),
+            "no skill yet"
+        );
+        assert!(!home.join(".codex/skills/hivey-codex").exists());
+        assert!(home
+            .join(".hivey/old/.codex/skills/hivey-codex/SKILL.md")
+            .is_file());
+        assert!(home.join(".codex/skills/hivey-grok/SKILL.md").is_file());
+        assert!(home.join(".agents/skills/hivey-grok/SKILL.md").is_file());
     }
 }

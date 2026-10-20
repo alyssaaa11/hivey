@@ -1,6 +1,7 @@
 //! `hivey skill …`: the hivey skill for AI coding agents (Claude Code, Codex), embedded in the
 //! binary so every machine with hivey can install it (`skills/hivey/` in the repo), with the
-//! `hivey-*` skills next to it (`skills/hivey-*/`) and the wiki commands.
+//! `hivey-*` skills next to it (`skills/hivey-*/`), the wiki ones included. Skills only, no
+//! Claude Code commands: Codex and other agents read skills too.
 
 use std::path::{Path, PathBuf};
 
@@ -24,6 +25,42 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
         &[(
             "SKILL.md",
             include_str!("../../../skills/hivey-create-wiki/SKILL.md"),
+        )],
+    ),
+    // The wiki skills: ingest, query, lint, log and list the nearest `<slug>-wiki/` vault.
+    (
+        "hivey-wiki-ingest",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-wiki-ingest/SKILL.md"),
+        )],
+    ),
+    (
+        "hivey-wiki-lint",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-wiki-lint/SKILL.md"),
+        )],
+    ),
+    (
+        "hivey-wiki-list",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-wiki-list/SKILL.md"),
+        )],
+    ),
+    (
+        "hivey-wiki-log",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-wiki-log/SKILL.md"),
+        )],
+    ),
+    (
+        "hivey-wiki-query",
+        &[(
+            "SKILL.md",
+            include_str!("../../../skills/hivey-wiki-query/SKILL.md"),
         )],
     ),
     // The swarm and agent creators: design an agent or a team with the user, write the
@@ -154,41 +191,13 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
     ),
 ];
 
-/// Commands earlier versions installed that a skill of the same name replaced.
-const RETIRED_COMMANDS: &[&str] = &["hivey-create-wiki.md"];
-
-/// Claude Code slash commands for an agent's or swarm's wiki, installed into ~/.claude/commands.
-/// Everything hivey installs is named `hivey-…` (Claude Code ignores skills in subfolders).
-const COMMANDS: &[(&str, &str)] = &[
-    (
-        "hivey-wiki-ingest.md",
-        include_str!("../../../skills/hivey/commands/hivey-wiki-ingest.md"),
-    ),
-    (
-        "hivey-wiki-lint.md",
-        include_str!("../../../skills/hivey/commands/hivey-wiki-lint.md"),
-    ),
-    (
-        "hivey-wiki-list.md",
-        include_str!("../../../skills/hivey/commands/hivey-wiki-list.md"),
-    ),
-    (
-        "hivey-wiki-log.md",
-        include_str!("../../../skills/hivey/commands/hivey-wiki-log.md"),
-    ),
-    (
-        "hivey-wiki-query.md",
-        include_str!("../../../skills/hivey/commands/hivey-wiki-query.md"),
-    ),
-];
-
 const USAGE: &str = "hivey skill commands:
   hivey skill install [--claude] [--codex] [--dir DIR]
                        install the hivey skill for Claude Code (~/.claude/skills/hivey) and
-                       Codex (~/.codex/skills/hivey); default: each one that is set up.
-                       (and the hivey-create-wiki skill next to it); Claude Code also gets
-                       the wiki commands (/hivey-wiki-ingest, …) in ~/.claude/commands; the default install
-                       also brings an older install up to date (hivey migrate)
+                       Codex (~/.agents/skills/hivey); default: each one that is set up.
+                       The hivey-* skills go next to it (hivey-create-wiki, the wiki skills
+                       hivey-wiki-ingest, …); the default install also brings an older
+                       install up to date (hivey migrate)
   hivey skill print    print SKILL.md";
 
 pub(crate) fn run_skill_command(args: &[String]) -> std::io::Result<i32> {
@@ -224,7 +233,7 @@ fn install(args: &[String]) -> std::io::Result<i32> {
             }
             "--codex" => {
                 explicit = true;
-                targets.push(("Codex".into(), home.join(".codex/skills/hivey")));
+                targets.push(("Codex".into(), home.join(CODEX_SKILLS).join("hivey")));
             }
             "--dir" => {
                 explicit = true;
@@ -247,17 +256,8 @@ fn install(args: &[String]) -> std::io::Result<i32> {
             return Ok(0);
         }
     }
-    let claude_skill = home.join(".claude/skills/hivey");
-    let mut commands = false;
     for (label, dir) in targets {
         println!("{label}: {}", install_into(&dir)?);
-        commands |= dir == claude_skill;
-    }
-    if commands {
-        println!(
-            "Claude Code commands: {}",
-            install_commands(&home.join(".claude/commands"))?
-        );
     }
     // The default install also brings an older install up to date (`hivey migrate`): older
     // `hivey update` scripts only call `hivey skill install` with the new binary.
@@ -267,13 +267,24 @@ fn install(args: &[String]) -> std::io::Result<i32> {
     Ok(0)
 }
 
+/// Where Codex reads user skills (`~/.codex/skills` is its deprecated older location).
+pub(super) const CODEX_SKILLS: &str = ".agents/skills";
+
 /// Claude Code and Codex, when their home folder exists.
 pub(super) fn default_targets(home: &Path) -> Vec<(String, PathBuf)> {
-    [("Claude Code", ".claude"), ("Codex", ".codex")]
-        .into_iter()
-        .filter(|(_, app)| home.join(app).is_dir())
-        .map(|(label, app)| (label.to_string(), home.join(app).join("skills/hivey")))
-        .collect()
+    [
+        ("Claude Code", ".claude", ".claude/skills"),
+        ("Codex", ".codex", CODEX_SKILLS),
+    ]
+    .into_iter()
+    .filter(|(_, app, _)| home.join(app).is_dir())
+    .map(|(label, _, skills)| (label.to_string(), home.join(skills).join("hivey")))
+    .collect()
+}
+
+/// The names of the skills hivey installs: `hivey` and the `hivey-*` ones next to it.
+pub(super) fn skill_names() -> impl Iterator<Item = &'static str> {
+    std::iter::once("hivey").chain(SKILLS.iter().map(|(name, _)| *name))
 }
 
 /// Write the skill into `dir`. A symlinked skill (a dev checkout) is left alone.
@@ -297,25 +308,6 @@ pub(super) fn install_into(dir: &Path) -> std::io::Result<String> {
     Ok(match changes.is_empty() {
         true => format!("{} is up to date", show(dir)),
         false => format!("installed {}{}", show(dir), list(&changes)),
-    })
-}
-
-/// Write the wiki slash commands into `dir` (Claude Code's ~/.claude/commands).
-pub(super) fn install_commands(dir: &Path) -> std::io::Result<String> {
-    let mut changes = Vec::new();
-    for name in RETIRED_COMMANDS {
-        let retired = dir.join(name);
-        if retired.is_file() {
-            std::fs::remove_file(&retired)?;
-            changes.push((retired, "removed"));
-        }
-    }
-    let written = write_files(dir, COMMANDS)?;
-    let count = written.len();
-    changes.extend(written);
-    Ok(match (count, changes.is_empty()) {
-        (_, true) => format!("{} is up to date", show(dir)),
-        (n, false) => format!("{n} installed in {}{}", show(dir), list(&changes)),
     })
 }
 
@@ -381,6 +373,7 @@ mod tests {
         assert!(dir.join("scripts/handoff.py").is_file());
         assert!(dir.join("scripts/new_wiki.py").is_file());
         assert!(tmp.join("skills/hivey-create-wiki/SKILL.md").is_file());
+        assert!(tmp.join("skills/hivey-wiki-ingest/SKILL.md").is_file());
         assert!(install_into(&dir).expect("again").ends_with("up to date"));
     }
 
@@ -391,28 +384,7 @@ mod tests {
         std::fs::create_dir(tmp.join(".codex")).expect("mkdir");
         let targets = default_targets(&tmp);
         assert_eq!(targets.len(), 1);
-        assert!(targets[0].1.ends_with(".codex/skills/hivey"));
-    }
-
-    #[test]
-    fn installs_wiki_commands() {
-        let tmp = scratch("commands");
-        let commands = tmp.join(".claude/commands");
-        std::fs::create_dir_all(&commands).expect("mkdir");
-        std::fs::write(commands.join("hivey-create-wiki.md"), "old").expect("retired");
-        assert!(install_commands(&commands)
-            .expect("install")
-            .starts_with("5 installed"));
-        assert!(
-            !commands.join("hivey-create-wiki.md").exists(),
-            "retired: a skill now"
-        );
-        for (name, _) in COMMANDS {
-            assert!(commands.join(name).is_file(), "{name}");
-        }
-        assert!(install_commands(&commands)
-            .expect("again")
-            .ends_with("up to date"));
+        assert!(targets[0].1.ends_with(".agents/skills/hivey"));
     }
 
     #[test]
@@ -446,26 +418,6 @@ mod tests {
             assert!(
                 skill.1.starts_with(&format!("---\nname: {name}\n")),
                 "{name}"
-            );
-            let commands: Vec<&str> = COMMANDS.iter().map(|(file, _)| *file).collect();
-            assert!(
-                !commands.contains(&format!("{name}.md").as_str()),
-                "{name}: also a command"
-            );
-        }
-    }
-
-    #[test]
-    fn commands_have_frontmatter() {
-        for (name, content) in COMMANDS {
-            let slug = name.trim_end_matches(".md");
-            assert!(
-                content.starts_with(&format!("---\nname: {slug}\n")),
-                "{name}"
-            );
-            assert!(
-                slug.starts_with("hivey-"),
-                "{name}: installed names start with hivey-"
             );
         }
     }
