@@ -1,5 +1,6 @@
 //! `hivey migrate`: brings what an older hivey left on this machine up to the current
-//! conventions. Run by `hivey update` and `install.sh`; safe to run any number of times.
+//! conventions. Run by `install.sh`, and by the user after `hivey update`; safe to run any
+//! number of times.
 //!
 //! - the hivey skill and the `hivey-*` skills next to it (`hivey skill install`);
 //! - plugins, old copies the `hivey-*` skills replaced, the hivey agent's brief and hooks.
@@ -7,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 const USAGE: &str = "usage: hivey migrate [--dry-run]
-  bring an older hivey install up to date (run by hivey update; safe to run again):
+  bring an older hivey install up to date (run it after hivey update; safe to run again):
   - the hivey skill and the hivey-* skills next to it (hivey-wiki-ingest, …)
   - old copies (wiki-ingest, …, agents-create-wiki, agy, grok, swarm, agent-creator) that hivey-* ones
     replaced, the hivey-wiki-* commands the wiki skills replaced and hivey skills in Codex's old

@@ -2,9 +2,11 @@
 # Update hivey from source. `hivey update` runs this script.
 #
 #   hivey update                  get the latest hivey (origin/main), build, install
-#                                 ~/.local/bin/hivey, refresh the hivey skill and live-hand-off
+#                                 ~/.local/bin/hivey, refresh the hivey skills and live-hand-off
 #                                 running sessions (agents keep running). No tests, no questions:
-#                                 it prints "hivey updated: <old> → <new>".
+#                                 it prints "hivey updated: <old> → <new>". It doesn't migrate:
+#                                 run `hivey migrate` after it (`--dry-run` to preview).
+#                                 HIVEY_UPDATE_MIGRATE=1 migrates in the same run.
 #   hivey update --check          maintainer: also merge new herdr commits (on branch sync-herdr),
 #                                 reapply the hivey renames and user-facing rebrand, build,
 #                                 regenerate THIRD_PARTY_LICENSES.md, test, smoke-test in a throwaway
@@ -48,8 +50,14 @@ install_and_handoff() {
   cp "$NEWBIN" "$BIN.new" && mv -f "$BIN.new" "$BIN"
   mkdir -p "$(dirname "$INSTALLED_FILE")"
   git rev-parse --short HEAD >"$INSTALLED_FILE"
-  # The skill and hivey-* commands, then what older versions left behind (e.g. obsidian/ wikis).
-  "$BIN" migrate | grep -v "up to date" | grep -v "already" || true
+  # The hivey skills only. What older versions left behind (old hivey-wiki-* commands,
+  # ~/.codex/skills copies, plugins, hooks, the brief) is `hivey migrate`, run by the user after
+  # the update (or here with HIVEY_UPDATE_MIGRATE=1).
+  if [ "${HIVEY_UPDATE_MIGRATE:-0}" = 1 ]; then
+    "$BIN" migrate | grep -v "up to date" | grep -v "already" || true
+  else
+    "$BIN" skill install --no-migrate | grep -v "up to date" || true
+  fi
   local sessions
   sessions=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}')
   for session in $sessions; do
@@ -61,6 +69,11 @@ install_and_handoff() {
     fi
   done
   [ -z "$sessions" ] || echo "running sessions now use it: $(echo $sessions | tr ' ' ',' | sed 's/,/, /g') (reattach open windows: ⌥Q, then hivey)"
+}
+
+migrate_hint() {
+  [ "${HIVEY_UPDATE_MIGRATE:-0}" = 1 ] && return
+  echo "next: hivey migrate (old copies, plugins, hooks, brief; preview with hivey migrate --dry-run)"
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -112,6 +125,7 @@ if [ "$CHECK" = 0 ]; then
   if [ "$(git rev-parse HEAD)" != "$OLD_HEAD" ]; then
     git log --oneline --no-decorate "$OLD_HEAD..HEAD" | head -15 | sed 's/^/  /'
   fi
+  migrate_hint
   exit 0
 fi
 
@@ -231,3 +245,4 @@ fi
 say "install"
 install_and_handoff 0
 say "hivey updated: $BEFORE → $(installed)"
+migrate_hint

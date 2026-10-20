@@ -192,12 +192,12 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
 ];
 
 const USAGE: &str = "hivey skill commands:
-  hivey skill install [--claude] [--codex] [--dir DIR]
+  hivey skill install [--claude] [--codex] [--dir DIR] [--no-migrate]
                        install the hivey skill for Claude Code (~/.claude/skills/hivey) and
                        Codex (~/.agents/skills/hivey); default: each one that is set up.
                        The hivey-* skills go next to it (hivey-create-wiki, the wiki skills
                        hivey-wiki-ingest, …); the default install also brings an older
-                       install up to date (hivey migrate)
+                       install up to date (hivey migrate), unless --no-migrate
   hivey skill print    print SKILL.md";
 
 pub(crate) fn run_skill_command(args: &[String]) -> std::io::Result<i32> {
@@ -224,6 +224,7 @@ fn install(args: &[String]) -> std::io::Result<i32> {
         .unwrap_or_default();
     let mut targets: Vec<(String, PathBuf)> = Vec::new();
     let mut explicit = false;
+    let mut migrate = true;
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
@@ -235,6 +236,7 @@ fn install(args: &[String]) -> std::io::Result<i32> {
                 explicit = true;
                 targets.push(("Codex".into(), home.join(CODEX_SKILLS).join("hivey")));
             }
+            "--no-migrate" => migrate = false,
             "--dir" => {
                 explicit = true;
                 let Some(dir) = rest.next() else {
@@ -260,8 +262,9 @@ fn install(args: &[String]) -> std::io::Result<i32> {
         println!("{label}: {}", install_into(&dir)?);
     }
     // The default install also brings an older install up to date (`hivey migrate`): older
-    // `hivey update` scripts only call `hivey skill install` with the new binary.
-    if !explicit {
+    // `hivey update` scripts only call `hivey skill install` with the new binary. `hivey update`
+    // passes --no-migrate: the user runs `hivey migrate` after it, when they choose.
+    if !explicit && migrate {
         super::migrate::leftovers(&home, false)?;
     }
     Ok(0)

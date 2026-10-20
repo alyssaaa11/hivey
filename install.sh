@@ -159,7 +159,7 @@ for agent in "claude:Claude Code:claude:y" "codex:Codex:codex:n" "agy:Antigravit
     || echo "    could not link $label to hivey (later: hivey integration install $target)"
 done
 
-say "hivey skills and commands (Claude Code ~/.claude, Codex ~/.codex)"
+say "hivey skills (Claude Code ~/.claude/skills, Codex ~/.agents/skills)"
 if [ -d "$HOME/.claude" ] || [ -d "$HOME/.codex" ]; then
   tracked "$BIN" skill install || echo "  could not install everything (later: hivey skill install)"
 else

@@ -129,7 +129,7 @@ hivey swarm addon <slug> <id>[:<pane>]...       # open addons in a running swarm
 hivey swarm launch … --addon <id>               # open them at launch
 ```
 
-Bundled in the repo's `plugins/` (linked by `install.sh` and `hivey update`): the eight
+Bundled in the repo's `plugins/` (linked by `install.sh` and `hivey migrate`): the eight
 `hivey.*` ones. Check `hivey plugin list` / `hivey swarm providers` for others the user added.
 
 | id | what |
@@ -310,11 +310,12 @@ Workflow for a new plugin:
   for Codex: `hivey-create-wiki` and the wiki skills hivey-wiki-ingest, hivey-wiki-query,
   hivey-wiki-lint, hivey-wiki-log, hivey-wiki-list (`/name` in Claude Code, `$name` in Codex);
   source `skills/hivey*/` in the repo).
-- **Migrate an older install:** `hivey migrate` (`--dry-run` to preview; `hivey update` and
-  `./install.sh` run it): the hivey-* skills; old copies they replaced (wiki-ingest, …,
+- **Migrate an older install:** `hivey migrate` (`--dry-run` to preview; `./install.sh` runs
+  it, `hivey update` doesn't: run it yourself after an update): the hivey-* skills; old copies they replaced (wiki-ingest, …,
   agents-create-wiki, the old hivey-wiki-* commands, hivey skills in `~/.codex/skills`) moved to
   `~/.hivey/old/`; wikis `<folder>/obsidian/` → `<folder>/<name>-wiki/`
   with every CLAUDE.md, `~/Obsidian` link and Obsidian's vault list repointed (quit Obsidian first).
 - **Install / update hivey:** first install from a clone: `./install.sh`. Update: `hivey update`
-  (latest hivey, installed, running sessions handed off live; prints old → new version).
+  (latest hivey and its skills, installed, running sessions handed off live; prints old → new
+  version), then `hivey migrate` when you choose (`HIVEY_UPDATE_MIGRATE=1 hivey update` does both).
   Maintainer: `hivey update --check` (merges herdr, tests, asks before push + install).
