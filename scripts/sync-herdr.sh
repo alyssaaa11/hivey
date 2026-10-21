@@ -53,6 +53,7 @@ install_and_handoff() {
   # The hivey skills only. What older versions left behind (old hivey-wiki-* commands,
   # ~/.codex/skills copies, plugins, hooks, the brief) is `hivey migrate`, run by the user after
   # the update (or here with HIVEY_UPDATE_MIGRATE=1).
+  [ "$quiet" = 1 ] && echo "  refreshing the hivey skills…"
   if [ "${HIVEY_UPDATE_MIGRATE:-0}" = 1 ]; then
     "$BIN" migrate | grep -v "up to date" | grep -v "already" || true
   else
@@ -60,6 +61,7 @@ install_and_handoff() {
   fi
   local sessions
   sessions=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}')
+  [ "$quiet" = 1 ] && [ -n "$sessions" ] && echo "  handing off running sessions (agents keep running)…"
   for session in $sessions; do
     if [ "$quiet" = 1 ]; then
       python3 "$HANDOFF" "$session" >/dev/null 2>&1 || echo "  $session: handoff failed (reattach or restart it)"
@@ -96,6 +98,7 @@ if [ "$CHECK" = 0 ]; then
   fi
   BEFORE=$(installed)
   OLD_HEAD=$(git rev-parse HEAD)
+  echo "checking for a new hivey…"
   git fetch -q origin
   if ! git merge -q --ff-only origin/main 2>/dev/null; then
     echo "hivey update: local main and origin/main have diverged; sort it out in $ROOT (git pull --rebase)"
@@ -106,20 +109,26 @@ if [ "$CHECK" = 0 ]; then
     echo "hivey is up to date: $BEFORE"
     exit 0
   fi
-  echo "updating hivey…"
+  NEW_COMMITS=$(git rev-list --count "$OLD_HEAD..HEAD")
+  if [ "$NEW_COMMITS" = 0 ]; then echo "updating hivey: reinstalling this version"; else echo "updating hivey: $NEW_COMMITS new commit(s)"; fi
+  echo "  checking the Rust toolchain…"
   ensure_rust_toolchain || { echo "hivey update: Rust is not ready (see above)"; exit 1; }
   BUILD_LOG="${TMPDIR:-/tmp}"; BUILD_LOG="${BUILD_LOG%/}/hivey-update-build.log"
+  echo "  building hivey from source (about a minute; several the first time)…"
+  BUILD_START=$SECONDS
   if ! cargo build --release -q >"$BUILD_LOG" 2>&1; then
     grep -E -A5 "^error" "$BUILD_LOG" | head -30
     echo "hivey update: build failed, hivey was not changed (full log: $BUILD_LOG)"
     exit 1
   fi
+  echo "  built in $((SECONDS - BUILD_START))s; installing $BIN…"
   install_and_handoff 1
   # Users who ran `hivey swarm setup` get new Option keys (e.g. ⌥P); the pet is rebuilt when
   # its code changed.
   if grep -q "# hivey: swarm keybindings" "$HOME/.config/hivey/config.toml" 2>/dev/null; then
     "$BIN" swarm setup >/dev/null 2>&1 || true
   fi
+  echo "  refreshing the pet…"
   "$BIN" pet refresh || true
   echo "hivey updated: $BEFORE → $(installed)"
   if [ "$(git rev-parse HEAD)" != "$OLD_HEAD" ]; then
