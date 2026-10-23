@@ -6,10 +6,15 @@ with the prebuilt binary, the way esbuild and biome ship native programs:
 | Package | Contents |
 | --- | --- |
 | `@hivey/cli` | `bin/hivey.js` (picks the platform binary), `platforms.json`, and `repo/`: the checkout files the binary uses at run time (`plugins/`, `pets/`, `skills/`, `install.sh`) |
-| `@hivey/cli-darwin-arm64`, `-darwin-x64`, `-linux-arm64`, `-linux-x64`, `-win32-x64` | `bin/hivey` (`bin/hivey.exe` and `bin/conpty/` on Windows) |
+| `@hivey/cli-darwin-arm64` | `bin/hivey` |
 
 npm installs only the platform package matching the computer (`os`/`cpu` in its
 `package.json`), as an optional dependency of `@hivey/cli`.
+
+Releases are built for **Apple Silicon only** (decided 2026-10-23). Version 0.9.35 also went
+out for `darwin-x64`, `linux-arm64`, `linux-x64` and `win32-x64`, and all five built fine in
+CI. To bring them back, restore their entries in `npm/platforms.json` and in the workflow's
+build matrix from commit 7efa5455, then run `scripts/npm/trust.sh` for any new packages.
 
 The launcher sets `HIVEY_REPO` to `@hivey/cli/repo` (unless it's already set), and the binary
 finds that folder by itself too (`repo()` in `src/hivey.rs`), so plugins, pets and the team
@@ -32,8 +37,8 @@ template work without a checkout. Two commands behave differently in an npm inst
 
 1. Set the version in `Cargo.toml` (and `Cargo.lock`), commit, push `main`.
 2. Tag and push: `git tag v0.9.36 && git push origin v0.9.36`.
-3. **Publish npm** runs: it builds the five binaries, packs the packages, installs the packed
-   `@hivey/cli` on Linux and runs `hivey --version`, then publishes with trusted publishing.
+3. **Publish npm** runs: it builds the binaries, packs the packages, installs the packed
+   `@hivey/cli` on an Apple Silicon runner and runs `hivey --version`, then publishes with trusted publishing.
 
 Running the workflow by hand (Actions → Publish npm → Run workflow) only builds and tests,
 unless "publish" is ticked. The tarballs are kept as the run's `npm-packages` artifact.
@@ -46,7 +51,7 @@ workflow, so the first version is published from a computer:
 1. Run **Publish npm** by hand without publishing, then download its `npm-packages` artifact
    and unzip it, e.g. into `~/Downloads/npm-packages`.
 2. `npm login` (browser, 2FA).
-3. `scripts/npm/publish.sh ~/Downloads/npm-packages` publishes all six packages (2FA each).
+3. `scripts/npm/publish.sh ~/Downloads/npm-packages` publishes the packages (2FA each).
 4. `scripts/npm/trust.sh` connects each package to `alyssaaa11/hivey`'s `publish-npm.yml`
    (2FA each). Check one on npmjs.com → the package → Settings → Trusted Publisher.
 

@@ -12,9 +12,9 @@ hivey setup      # once: skills, hooks, bundled plugins, Slack, pet and the hive
 hivey            # start
 ```
 
-Prebuilt for macOS (Apple Silicon and Intel), Linux (x64 and arm64) and Windows (x64). npm
-picks the right binary (`@hivey/cli-<os>-<cpu>`) as an optional dependency, so don't install
-with `--omit=optional`. `hivey setup` needs python3 and runs on macOS and Linux.
+Prebuilt for Apple Silicon Macs (`@hivey/cli-darwin-arm64`, installed as an optional
+dependency, so don't install with `--omit=optional`). On other computers, build from source
+(below). `hivey setup` needs python3.
 
 ## Update
 

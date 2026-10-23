@@ -1,8 +1,8 @@
 name: Publish npm
 
-# hivey's npm release: builds the binary for every platform in npm/platforms.json, packs
-# @hivey/cli and @hivey/cli-<os>-<cpu>, checks the packages install and run, then publishes them
-# with trusted publishing (no token). A v* tag publishes. Running it by hand builds and tests
+# hivey's npm release: builds the binary for every platform in npm/platforms.json (now only
+# Apple Silicon), packs @hivey/cli and @hivey/cli-<os>-<cpu>, checks the
+# packages install and run, then publishes them with trusted publishing (no token). A v* tag publishes. Running it by hand builds and tests
 # only, unless "publish" is ticked; so does a branch push that changes the packaging.
 # First release and trust setup: docs/hivey-npm.md.
 
@@ -43,26 +43,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Apple Silicon only (user, 2026-10-23). The other four platforms (linux-x64,
+        # linux-arm64, darwin-x64, win32-x64) built fine; to bring them back, restore their
+        # entries here and in npm/platforms.json from commit 7efa5455.
         include:
-          - key: linux-x64
-            target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-            runs_here: true  # built for this runner
-          - key: linux-arm64
-            target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-            runs_here: false  # cross-compiled: not run here
-          - key: darwin-x64
-            target: x86_64-apple-darwin
-            os: macos-latest
-            runs_here: false  # cross-compiled: not run here
           - key: darwin-arm64
             target: aarch64-apple-darwin
             os: macos-latest
-            runs_here: true  # built for this runner
-          - key: win32-x64
-            target: x86_64-pc-windows-msvc
-            os: windows-2022
             runs_here: true  # built for this runner
 
     runs-on: ${{ matrix.os }}
@@ -166,7 +153,7 @@ jobs:
 
   package:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: macos-latest  # Apple Silicon, to test-install the darwin-arm64 package
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -189,12 +176,12 @@ jobs:
           node scripts/npm/build-packages.mjs --binaries binaries --out target/npm --pack
           ls -l target/npm/tarballs
 
-      # Installs the packed @hivey/cli the way users will (the linux-x64 binary from the local
+      # Installs the packed @hivey/cli the way users will (the darwin-arm64 binary from the local
       # tarball), then runs hivey through the launcher.
       - name: Test install
         run: |
           cd target/npm/tarballs
-          npm install -g ./hivey-cli-linux-x64-*.tgz ./hivey-cli-[0-9]*.tgz
+          npm install -g ./hivey-cli-darwin-arm64-*.tgz ./hivey-cli-[0-9]*.tgz
           hivey --version
           hivey setup --help
           test -f "$(npm root -g)/@hivey/cli/repo/plugins/slack-relay/herdr-plugin.toml"

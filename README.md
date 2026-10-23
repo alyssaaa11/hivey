@@ -80,7 +80,7 @@ Hivey integrates with **[Skylls](https://skylls.dev/)**, a separate website and 
 
 ## Install
 
-**With npm** (prebuilt for macOS, Linux and Windows; no Rust or Zig needed):
+**With npm** (prebuilt for Apple Silicon Macs; no Rust or Zig needed):
 
 ```bash
 npm install -g @hivey/cli
