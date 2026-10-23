@@ -18,6 +18,8 @@ for arg in "$@"; do
   esac
 done
 [ -f "$DIR/ORDER" ] || { echo "publish: no $DIR/ORDER (run build-packages.mjs --pack)" >&2; exit 1; }
+# An absolute path: npm reads a relative "dir/file.tgz" as a GitHub repo (user/repo).
+DIR="$(cd "$DIR" && pwd)"
 
 # Read the list first: npm publish needs the terminal as its input to ask for 2FA.
 TARBALLS=()
