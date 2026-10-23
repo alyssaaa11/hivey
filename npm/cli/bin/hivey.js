@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Runs the hivey binary from the platform package npm installed next to this one
-// (@hivey/cli-<os>-<cpu>). Two commands are handled here because an npm install has no
-// checkout to build from: `hivey setup` (the install.sh setup, without the build) and
-// `hivey update` (npm install -g @hivey/cli@latest).
+// Runs the hivey binary shipped in this package (native/<os>-<cpu>/). Two commands are
+// handled here because an npm install has no checkout to build from: `hivey setup` (the
+// install.sh setup, without the build) and `hivey update` (npm install -g @hivey/cli@latest).
 "use strict";
 
 const { spawn, spawnSync } = require("node:child_process");
@@ -26,16 +25,8 @@ function binary() {
   if (!platform) {
     fail(`no prebuilt hivey for ${key} (built for: ${Object.keys(platforms).join(", ")})`);
   }
-  let dir;
-  try {
-    dir = path.dirname(require.resolve(`${PACKAGE}-${key}/package.json`));
-  } catch {
-    fail(
-      `${PACKAGE}-${key} is missing: reinstall with optional dependencies ` +
-        `(npm install -g ${PACKAGE}, without --omit=optional)`,
-    );
-  }
-  const exe = path.join(dir, "bin", platform.exe);
+  const exe = path.join(root, "native", key, platform.exe);
+  if (!fs.existsSync(exe)) fail(`${exe} is missing: reinstall with npm install -g ${PACKAGE}`);
   if (process.platform !== "win32") {
     try {
       fs.accessSync(exe, fs.constants.X_OK);
@@ -91,7 +82,11 @@ function update() {
     const installed = require(path.join(root, "package.json")).version;
     const newest = (latest.stdout || "").trim();
     if (!newest) fail(`could not ask npm for the latest ${PACKAGE}`);
-    console.log(newest === installed ? `hivey ${installed} is up to date` : `hivey ${newest} is available (installed: ${installed})`);
+    console.log(
+      newest === installed
+        ? `hivey ${installed} is up to date`
+        : `hivey ${newest} is the latest on npm (installed: ${installed}); hivey update installs it`,
+    );
     process.exit(0);
   }
   console.log(`hivey was installed with npm: npm install -g ${PACKAGE}@latest`);

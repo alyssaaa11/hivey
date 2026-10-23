@@ -12,9 +12,8 @@ hivey setup      # once: skills, hooks, bundled plugins, Slack, pet and the hive
 hivey            # start
 ```
 
-Prebuilt for Apple Silicon Macs (`@hivey/cli-darwin-arm64`, installed as an optional
-dependency, so don't install with `--omit=optional`). On other computers, build from source
-(below). `hivey setup` needs python3.
+Prebuilt for Apple Silicon Macs. On other computers, build from source (below).
+`hivey setup` needs python3.
 
 ## Update
 

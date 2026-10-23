@@ -1,22 +1,21 @@
 #!/usr/bin/env node
-// Builds the npm packages of a hivey release from prebuilt binaries:
-//   @hivey/cli             the `hivey` command (bin/hivey.js), plus the checkout files the
-//                          binary uses at run time (plugins, pets, skills, install.sh) in repo/
-//   @hivey/cli-<os>-<cpu>  one per platform in npm/platforms.json, with the binary in bin/
+// Builds @hivey/cli, the one npm package of a hivey release, from prebuilt binaries: the
+// `hivey` command (bin/hivey.js), the binary of each platform in npm/platforms.json
+// (native/<os>-<cpu>/), and the checkout files the binary uses at run time (plugins, pets,
+// skills, install.sh) in repo/. Its os/cpu fields limit installs to those platforms.
 //
 //   node scripts/npm/build-packages.mjs --binaries <dir> [--version X.Y.Z] [--out target/npm]
 //                                       [--allow-missing] [--pack]
 //
-// <dir>/<os>-<cpu>/ holds each platform's bin/ contents (hivey or hivey.exe, and conpty/ on
-// Windows). --allow-missing builds only the platforms found (local tests); a release needs all.
-// --pack also writes the .tgz files npm publishes into <out>/tarballs, platforms first.
+// <dir>/<os>-<cpu>/ holds each platform's binary (hivey or hivey.exe, and conpty/ on Windows).
+// --allow-missing builds only the platforms found (local tests); a release needs all.
+// --pack also writes the .tgz npm publishes into <out>/tarballs.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SCOPE = "@hivey";
 // Checkout files the binary reads through HIVEY_REPO (`hivey plugin link`, `hivey pet`, the
 // team template's new_wiki.py) and `hivey setup` runs (install.sh).
 const REPO_PATHS = ["plugins", "pets", "skills", "install.sh", "LICENSE", "NOTICE", "README.md"];
@@ -80,43 +79,25 @@ function main() {
   fs.rmSync(options.out, { recursive: true, force: true });
   fs.mkdirSync(options.out, { recursive: true });
 
-  const built = {};
+  const main = path.join(options.out, "cli");
+  const built = [];
   const missing = [];
   for (const [key, platform] of Object.entries(platforms)) {
     const source = path.join(options.binaries, key);
-    const exe = path.join(source, platform.exe);
-    if (!fs.existsSync(exe)) {
+    if (!fs.existsSync(path.join(source, platform.exe))) {
       missing.push(key);
       continue;
     }
-    const dir = path.join(options.out, `cli-${key}`);
-    copyDir(source, path.join(dir, "bin"));
-    if (platform.os !== "win32") fs.chmodSync(path.join(dir, "bin", platform.exe), 0o755);
-    writeJson(path.join(dir, "package.json"), {
-      name: `${SCOPE}/cli-${key}`,
-      version,
-      description: `The hivey binary for ${key} (installed by ${cli.name})`,
-      homepage: cli.homepage,
-      repository: cli.repository,
-      license: cli.license,
-      os: [platform.os],
-      cpu: [platform.cpu],
-      files: ["bin"],
-      preferUnplugged: true,
-    });
-    fs.writeFileSync(
-      path.join(dir, "README.md"),
-      `# ${SCOPE}/cli-${key}\n\nThe prebuilt hivey binary for ${key}. Install \`${cli.name}\` instead:\n\n` +
-        `\`\`\`bash\nnpm install -g ${cli.name}\n\`\`\`\n`,
-    );
-    built[key] = dir;
+    const target = path.join(main, "native", key);
+    copyDir(source, target);
+    if (platform.os !== "win32") fs.chmodSync(path.join(target, platform.exe), 0o755);
+    built.push(key);
   }
   if (missing.length && !options.allowMissing) {
     throw new Error(`missing binaries for ${missing.join(", ")} in ${options.binaries}`);
   }
-  if (Object.keys(built).length === 0) throw new Error(`no binaries found in ${options.binaries}`);
+  if (built.length === 0) throw new Error(`no binaries found in ${options.binaries}`);
 
-  const main = path.join(options.out, "cli");
   copyDir(path.join(ROOT, "npm", "cli", "bin"), path.join(main, "bin"));
   fs.chmodSync(path.join(main, "bin", "hivey.js"), 0o755);
   fs.copyFileSync(path.join(ROOT, "npm", "platforms.json"), path.join(main, "platforms.json"));
@@ -125,10 +106,11 @@ function main() {
   writeJson(path.join(main, "package.json"), {
     ...cli,
     version,
-    optionalDependencies: Object.fromEntries(Object.keys(built).map((key) => [`${SCOPE}/cli-${key}`, version])),
+    os: [...new Set(built.map((key) => platforms[key].os))],
+    cpu: [...new Set(built.map((key) => platforms[key].cpu))],
   });
 
-  const order = [...Object.values(built), main];
+  const order = [main];
   if (options.pack) {
     const tarballs = path.join(options.out, "tarballs");
     fs.mkdirSync(tarballs);
@@ -139,10 +121,10 @@ function main() {
       const entry = Array.isArray(report) ? report[0] : Object.values(report)[0];
       return path.join(tarballs, entry.filename);
     });
-    // publish.sh reads this to publish platforms before @hivey/cli, which depends on them.
+    // publish.sh publishes the tarballs listed here, in this order.
     fs.writeFileSync(path.join(tarballs, "ORDER"), `${packed.map((file) => path.basename(file)).join("\n")}\n`);
   }
-  console.log(`hivey ${version}: ${order.map((dir) => path.relative(ROOT, dir)).join(", ")}`);
+  console.log(`hivey ${version}: ${path.relative(ROOT, main)} (${built.join(", ")})`);
   if (missing.length) console.log(`not built (no binary): ${missing.join(", ")}`);
 }
 

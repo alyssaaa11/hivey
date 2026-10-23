@@ -115,18 +115,15 @@ pub(crate) fn repo() -> std::path::PathBuf {
         .unwrap_or(built)
 }
 
-/// `@hivey/cli/repo` for a binary at `<node_modules>/@hivey/cli-<platform>/bin/`: installed
-/// beside `@hivey/cli` (a global install) or inside its own `node_modules`.
+/// `@hivey/cli/repo` for the binary npm installed at `@hivey/cli/native/<platform>/hivey`.
 fn npm_repo(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     let exe = std::fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf());
-    let package = exe.parent()?.parent()?;
-    if !package.file_name()?.to_str()?.starts_with("cli-") {
+    let native = exe.parent()?.parent()?;
+    if native.file_name()? != "native" {
         return None;
     }
-    let scope = package.parent()?;
-    let beside = scope.join("cli").join("repo");
-    let nested = scope.parent()?.parent()?.join("repo");
-    [beside, nested].into_iter().find(|repo| repo.is_dir())
+    let repo = native.parent()?.join("repo");
+    repo.is_dir().then_some(repo)
 }
 
 /// `hivey update [--yes] [--check]`: runs `scripts/sync-herdr.sh` in the hivey repo (pull the
@@ -189,25 +186,17 @@ pub(crate) fn isolate_from_parent_herdr() {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn npm_repo_is_found_next_to_the_platform_package() {
+    fn npm_repo_is_found_in_the_npm_package() {
         let root = std::env::temp_dir().join(format!("hivey-npm-repo-{}", std::process::id()));
-        let scope = root.join("node_modules").join("@hivey");
-        let exe = scope.join("cli-darwin-arm64").join("bin").join("hivey");
+        let cli = root.join("node_modules").join("@hivey").join("cli");
+        let exe = cli.join("native").join("darwin-arm64").join("hivey");
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, b"").unwrap();
         assert_eq!(super::npm_repo(&exe), None, "no @hivey/cli/repo yet");
 
-        std::fs::create_dir_all(scope.join("cli").join("repo")).unwrap();
-        let found = super::npm_repo(&exe).expect("repo next to the platform package");
-        assert!(found.ends_with("@hivey/cli/repo"), "{}", found.display());
-
-        let cli = root.join("nested").join("cli");
-        let nested_exe = cli.join("node_modules/@hivey/cli-linux-x64/bin/hivey");
-        std::fs::create_dir_all(nested_exe.parent().unwrap()).unwrap();
-        std::fs::write(&nested_exe, b"").unwrap();
         std::fs::create_dir_all(cli.join("repo")).unwrap();
-        let found = super::npm_repo(&nested_exe).expect("repo of the @hivey/cli it is nested in");
-        assert!(found.ends_with("nested/cli/repo"), "{}", found.display());
+        let found = super::npm_repo(&exe).expect("repo of the npm package");
+        assert!(found.ends_with("@hivey/cli/repo"), "{}", found.display());
 
         let elsewhere = root.join("bin").join("hivey");
         std::fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();

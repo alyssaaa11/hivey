@@ -1,8 +1,8 @@
 name: Publish npm
 
 # hivey's npm release: builds the binary for every platform in npm/platforms.json (now only
-# Apple Silicon), packs @hivey/cli and @hivey/cli-<os>-<cpu>, checks the packages install and
-# run, then publishes them with trusted publishing (no token).
+# Apple Silicon), packs them into @hivey/cli, checks it installs and runs, then publishes it
+# with trusted publishing (no token).
 #
 # Publishes when main gets a Cargo.toml version that isn't on npm yet (every hivey commit
 # raises it, and `hivey update` pushes main), on a v* tag, or by hand with "publish" ticked.
@@ -215,23 +215,22 @@ jobs:
           pattern: bin-*
           path: binaries
 
-      - name: Build npm packages
+      - name: Build the npm package
         run: |
           for dir in binaries/bin-*; do mv "$dir" "binaries/${dir#binaries/bin-}"; done
           node scripts/npm/build-packages.mjs --binaries binaries --out target/npm --pack
           ls -l target/npm/tarballs
 
-      # Installs the packed @hivey/cli the way users will (the darwin-arm64 binary from the local
-      # tarball), then runs hivey through the launcher.
+      # Installs the packed @hivey/cli the way users will, then runs hivey through the launcher.
       - name: Test install
         run: |
           cd target/npm/tarballs
-          npm install -g ./hivey-cli-darwin-arm64-*.tgz ./hivey-cli-[0-9]*.tgz
+          npm install -g ./hivey-cli-*.tgz
           hivey --version
           hivey setup --help
           test -f "$(npm root -g)/@hivey/cli/repo/plugins/slack-relay/herdr-plugin.toml"
 
-      - name: Upload npm packages
+      - name: Upload the npm package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: npm-packages

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Publishes the tarballs build-packages.mjs --pack wrote, in its ORDER (platform packages first,
-# then @hivey/cli, which depends on them). Versions already on npm are skipped, so a failed
-# release can simply be run again.
+# Publishes the tarballs build-packages.mjs --pack wrote, in its ORDER. Versions already on
+# npm are skipped, so a failed release can simply be run again.
 #
 #   scripts/npm/publish.sh <tarballs dir> [--dry-run]
 #

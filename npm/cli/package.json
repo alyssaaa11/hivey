@@ -8,7 +8,6 @@
   "repository": { "type": "git", "url": "git+https://github.com/alyssaaa11/hivey.git" },
   "license": "Apache-2.0",
   "bin": { "hivey": "bin/hivey.js" },
-  "files": ["bin", "platforms.json", "repo"],
-  "engines": { "node": ">=18" },
-  "optionalDependencies": {}
+  "files": ["bin", "native", "platforms.json", "repo"],
+  "engines": { "node": ">=18" }
 }
