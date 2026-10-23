@@ -80,7 +80,16 @@ Hivey integrates with **[Skylls](https://skylls.dev/)**, a separate website and 
 
 ## Install
 
-Hivey installs from source on **macOS or Linux**.
+**With npm** (prebuilt for macOS, Linux and Windows; no Rust or Zig needed):
+
+```bash
+npm install -g @hivey/cli
+hivey setup   # skills, hooks, bundled plugins and the lead agent (macOS or Linux, needs Python 3)
+```
+
+`hivey update` then updates through npm. To change Hivey itself, install from source instead.
+
+**From source** on **macOS or Linux**.
 
 Before starting, install **Git, Rust/Cargo, Zig 0.16.0, and Python 3**. Install **Node.js/npx** for the installer’s skill-library setup. The Hivey lead-agent setup uses Claude Code; configure your chosen agents and their access separately. See [`install.sh`](install.sh) for the current requirements and setup options.
 

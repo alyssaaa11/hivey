@@ -99,11 +99,34 @@ fn run_in_background(args: &[&str]) {
     }
 }
 
-/// The hivey checkout this binary was built from, or `HIVEY_REPO`.
+/// The hivey checkout this binary was built from, or `HIVEY_REPO`. A release binary installed
+/// with npm was built elsewhere: its plugins, pets and scripts are in `@hivey/cli/repo`.
 pub(crate) fn repo() -> std::path::PathBuf {
-    std::env::var_os("HIVEY_REPO")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")))
+    if let Some(repo) = std::env::var_os("HIVEY_REPO") {
+        return std::path::PathBuf::from(repo);
+    }
+    let built = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    if built.is_dir() {
+        return built;
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| npm_repo(&exe))
+        .unwrap_or(built)
+}
+
+/// `@hivey/cli/repo` for a binary at `<node_modules>/@hivey/cli-<platform>/bin/`: installed
+/// beside `@hivey/cli` (a global install) or inside its own `node_modules`.
+fn npm_repo(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    let exe = std::fs::canonicalize(exe).unwrap_or_else(|_| exe.to_path_buf());
+    let package = exe.parent()?.parent()?;
+    if !package.file_name()?.to_str()?.starts_with("cli-") {
+        return None;
+    }
+    let scope = package.parent()?;
+    let beside = scope.join("cli").join("repo");
+    let nested = scope.parent()?.parent()?.join("repo");
+    [beside, nested].into_iter().find(|repo| repo.is_dir())
 }
 
 /// `hivey update [--yes] [--check]`: runs `scripts/sync-herdr.sh` in the hivey repo (pull the
@@ -160,5 +183,36 @@ pub(crate) fn isolate_from_parent_herdr() {
         for var in INHERITED_HERDR_VARS {
             std::env::remove_var(var);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn npm_repo_is_found_next_to_the_platform_package() {
+        let root = std::env::temp_dir().join(format!("hivey-npm-repo-{}", std::process::id()));
+        let scope = root.join("node_modules").join("@hivey");
+        let exe = scope.join("cli-darwin-arm64").join("bin").join("hivey");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"").unwrap();
+        assert_eq!(super::npm_repo(&exe), None, "no @hivey/cli/repo yet");
+
+        std::fs::create_dir_all(scope.join("cli").join("repo")).unwrap();
+        let found = super::npm_repo(&exe).expect("repo next to the platform package");
+        assert!(found.ends_with("@hivey/cli/repo"), "{}", found.display());
+
+        let cli = root.join("nested").join("cli");
+        let nested_exe = cli.join("node_modules/@hivey/cli-linux-x64/bin/hivey");
+        std::fs::create_dir_all(nested_exe.parent().unwrap()).unwrap();
+        std::fs::write(&nested_exe, b"").unwrap();
+        std::fs::create_dir_all(cli.join("repo")).unwrap();
+        let found = super::npm_repo(&nested_exe).expect("repo of the @hivey/cli it is nested in");
+        assert!(found.ends_with("nested/cli/repo"), "{}", found.display());
+
+        let elsewhere = root.join("bin").join("hivey");
+        std::fs::create_dir_all(elsewhere.parent().unwrap()).unwrap();
+        std::fs::write(&elsewhere, b"").unwrap();
+        assert_eq!(super::npm_repo(&elsewhere), None);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

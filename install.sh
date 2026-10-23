@@ -14,7 +14,8 @@
 # the hivey agent in ~/.hivey/agent (needs Claude Code; Slack channel #hivey when connected). Swarms and agents keep their Obsidian wiki in their own
 # folder (<folder>/<name>-wiki), so there is no Obsidian folder to set up.
 # --no-setup skips the questions and the hivey agent. Run it again any time; later updates are
-# just `hivey update`.
+# just `hivey update`. --prebuilt <hivey> skips the build and sets up that installed hivey instead
+# (what `hivey setup` runs after `npm install -g @hivey/cli`).
 #
 # Needs: git, Rust (cargo, via https://rustup.rs), Zig 0.16.0 (https://ziglang.org/download,
 # or set ZIG=/path/to/zig), python3, Node.js (npx for skills.sh, npm for envsave). macOS or Linux.
@@ -25,13 +26,20 @@ cd "$ROOT"
 BIN_DIR="${HIVEY_BIN_DIR:-$HOME/.local/bin}"
 BIN="$BIN_DIR/hivey"
 SETUP=1
-for arg in "$@"; do
-  case "$arg" in
+PREBUILT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
     --no-setup) SETUP=0 ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "unknown option $arg (./install.sh [--no-setup])"; exit 2 ;;
+    --prebuilt) PREBUILT="${2:?--prebuilt needs the path of an installed hivey}"; shift ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown option $1 (./install.sh [--no-setup] [--prebuilt <hivey>])"; exit 2 ;;
   esac
+  shift
 done
+if [ -n "$PREBUILT" ]; then
+  BIN="$PREBUILT"
+  BIN_DIR="$(dirname "$BIN")"
+fi
 
 say() { printf '\n== %s\n' "$*"; }
 fail() { printf 'install: %s\n' "$*" >&2; exit 1; }
@@ -59,8 +67,15 @@ tracked() {
 
 # This machine's own additions to AGENTS.md go here (git ignores it; AGENTS.md points to it).
 NEW_EXTRA=0
-[ -e EXTRA_AGENTS.md ] || { : > EXTRA_AGENTS.md; NEW_EXTRA=1; }
+[ -n "$PREBUILT" ] || [ -e EXTRA_AGENTS.md ] || { : > EXTRA_AGENTS.md; NEW_EXTRA=1; }
 
+if [ -n "$PREBUILT" ]; then
+say "check requirements"
+case "$(uname -s)" in Darwin|Linux) ;; *) fail "hivey setup runs on macOS or Linux only" ;; esac
+command -v python3 >/dev/null || fail "python3 not found"
+NOW=$("$BIN" --version) || fail "$BIN does not run"
+echo "python3, $NOW: ok"
+else
 say "check requirements"
 case "$(uname -s)" in Darwin|Linux) ;; *) fail "hivey installs on macOS or Linux only" ;; esac
 command -v git >/dev/null || fail "git not found"
@@ -114,6 +129,7 @@ STATE="$HOME/.local/state/hivey/installed-commit"
 [ -e "$STATE" ] || NEW_STATE=1
 git rev-parse --short HEAD >"$STATE"
 [ "${NEW_STATE:-0}" = 1 ] && changed new "$STATE (which commit is installed)"
+fi
 
 say "coding agents hivey runs (Claude Code, Codex, Antigravity/Gemini, Grok)"
 # Each one found is linked to hivey (`hivey integration install`) so its panes show working /
@@ -341,6 +357,7 @@ Start hivey:        hivey
 New swarm:          hivey swarm new "<task>"   (from the project folder)
 Update later:       hivey update
 EOF
+[ -z "$PREBUILT" ] || echo "                    (an npm install: runs npm install -g @hivey/cli@latest)"
 if [ "$SETUP" = 1 ] && [ "$SLACK" = 0 ]; then
   echo
   echo "Slack is NOT connected: agents can't get Slack channels until you run"
