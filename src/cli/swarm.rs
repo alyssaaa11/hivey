@@ -49,8 +49,9 @@ hivey swarm commands:
                                      gets its own Slack channel #<slug> when Slack is connected
   hivey swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hivey swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
-  hivey swarm session <pane> [--direction right|down]
+  hivey swarm session <pane> [--direction right|down] [--worktree]
                                      a second session of the agent in <pane>, in a new pane beside it
+                                     (--worktree: in a git worktree, merged back when it ends)
   hivey swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
                                      alias: import
   hivey swarm unregister <slug>      remove it from hivey (files are kept); alias: forget

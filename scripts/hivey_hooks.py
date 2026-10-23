@@ -573,6 +573,8 @@ edit("src/client/shell/state.rs",
     // hivey: a second session of an agent, split off its pane (`hivey swarm session`)
     NewAgentSessionRight,
     NewAgentSessionDown,
+    // hivey: the same, in a git worktree merged back when it ends (`--worktree`)
+    NewAgentSessionWorktree,
 }
 """, marker="NewAgentSessionRight,")
 edit("src/client/shell/state.rs",
@@ -603,6 +605,7 @@ edit("src/client/shell/context_menu.rs",
             ClientContextMenuTarget::Agent { .. } => vec![
                 item("New session right", Action::NewAgentSessionRight),
                 item("New session below", Action::NewAgentSessionDown),
+                item("New session in worktree", Action::NewAgentSessionWorktree),
             ],
         }
 """, marker="Action::NewAgentSessionRight")
@@ -637,13 +640,17 @@ edit("src/client/shell/context_menu.rs",
                 } else {
                     "right"
                 };
-                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                let mut args = vec![
                     "swarm".into(),
                     "session".into(),
                     pane_id,
                     "--direction".into(),
                     direction.into(),
-                ]));
+                ];
+                if action == ClientContextMenuAction::NewAgentSessionWorktree {
+                    args.push("--worktree".into());
+                }
+                outcome.actions.push(ClientShellAction::RunHivey(args));
             }
         }
         outcome.repaint = true;

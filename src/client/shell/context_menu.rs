@@ -83,6 +83,7 @@ impl ClientContextMenuOverlay {
             ClientContextMenuTarget::Agent { .. } => vec![
                 item("New session right", Action::NewAgentSessionRight),
                 item("New session below", Action::NewAgentSessionDown),
+                item("New session in worktree", Action::NewAgentSessionWorktree),
             ],
         }
     }
@@ -237,13 +238,17 @@ impl ClientShellState {
                 } else {
                     "right"
                 };
-                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                let mut args = vec![
                     "swarm".into(),
                     "session".into(),
                     pane_id,
                     "--direction".into(),
                     direction.into(),
-                ]));
+                ];
+                if action == ClientContextMenuAction::NewAgentSessionWorktree {
+                    args.push("--worktree".into());
+                }
+                outcome.actions.push(ClientShellAction::RunHivey(args));
             }
         }
         outcome.repaint = true;

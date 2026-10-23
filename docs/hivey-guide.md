@@ -162,6 +162,16 @@ Profiles → Keyboard → "Use Option as Meta key"; iTerm2: Profiles → Keys �
   worker) → **New session right** / **New session below**: a second session of the same agent
   (same CLI, arguments and folder, a new conversation) opens in a pane beside it, so two run at
   once. From the terminal: `hivey swarm session <pane> [--direction right|down]`.
+  Both sessions edit the same files. **New session in worktree** keeps them apart: the new
+  session works in a git worktree of the agent's repository (branch `hivey-session-N`, under
+  herdr's `[worktrees] directory`, `~/.herdr/worktrees/<repo>/` by default), started from the
+  last commit, so uncommitted changes in the agent's folder are not in it. When you exit that
+  agent, the pane asks to commit what is left and to merge the branch into the agent's folder,
+  then removes the worktree and closes. If the merge conflicts, it is stopped and the agent's
+  folder is left as it was; the work stays on the branch, and the pane shows how to resolve it
+  and finish with `hivey swarm session --finish <worktree>`. Closing the pane without exiting
+  the agent skips this step; run `--finish` yourself later. Needs the agent's folder to be in a
+  git repository.
 
 ### The screen
 

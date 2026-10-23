@@ -577,3 +577,25 @@ fn agent_rows_offer_a_second_session_beside_the_agent() {
             if args == &["swarm", "session", "pane_1", "--direction", "down"]
     ));
 }
+
+// hivey: right-click an agent's row → a second session of it in a git worktree.
+#[test]
+fn agent_rows_offer_a_worktree_session() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.open_agent_context_menu("pane_1".into(), 2, 2);
+    let worktree = match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => menu
+            .items()
+            .iter()
+            .position(|item| item.action == ClientContextMenuAction::NewAgentSessionWorktree)
+            .expect("new session in worktree item"),
+        _ => panic!("agent context menu"),
+    };
+    let mut outcome = ClientShellInput::default();
+    state.activate_context_menu_item(worktree, &mut outcome);
+    assert!(matches!(
+        &outcome.actions[..],
+        [ClientShellAction::RunHivey(args)]
+            if args == &["swarm", "session", "pane_1", "--direction", "right", "--worktree"]
+    ));
+}

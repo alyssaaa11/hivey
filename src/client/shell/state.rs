@@ -621,6 +621,8 @@ pub(super) enum ClientContextMenuAction {
     // hivey: a second session of an agent, split off its pane (`hivey swarm session`)
     NewAgentSessionRight,
     NewAgentSessionDown,
+    // hivey: the same, in a git worktree merged back when it ends (`--worktree`)
+    NewAgentSessionWorktree,
 }
 
 #[derive(Debug)]
