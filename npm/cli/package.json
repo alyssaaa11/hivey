@@ -1,9 +1,9 @@
 {
   "name": "@hivey/cli",
   "version": "0.0.0",
-  "description": "hivey: a terminal workspace for swarms of AI coding agents",
+  "description": "All your AI swarms, one terminal: a workspace and lead agent for teams of Claude Code and Codex agents",
   "keywords": ["hivey", "agents", "swarm", "terminal", "claude-code", "codex"],
-  "homepage": "https://github.com/alyssaaa11/hivey",
+  "homepage": "https://hivey.dev",
   "bugs": "https://github.com/alyssaaa11/hivey/issues",
   "repository": { "type": "git", "url": "git+https://github.com/alyssaaa11/hivey.git" },
   "license": "Apache-2.0",
