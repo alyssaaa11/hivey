@@ -1,20 +1,23 @@
 name: Publish npm
 
 # hivey's npm release: builds the binary for every platform in npm/platforms.json (now only
-# Apple Silicon), packs @hivey/cli and @hivey/cli-<os>-<cpu>, checks the
-# packages install and run, then publishes them with trusted publishing (no token). A v* tag publishes. Running it by hand builds and tests
-# only, unless "publish" is ticked; so does a branch push that changes the packaging.
-# First release and trust setup: docs/hivey-npm.md.
+# Apple Silicon), packs @hivey/cli and @hivey/cli-<os>-<cpu>, checks the packages install and
+# run, then publishes them with trusted publishing (no token).
+#
+# Publishes when main gets a Cargo.toml version that isn't on npm yet (every hivey commit
+# raises it, and `hivey update` pushes main), on a v* tag, or by hand with "publish" ticked.
+# Other branches changing the packaging only build and test. A push to main whose version is
+# already on npm does nothing. First release and trust setup: docs/hivey-npm.md.
 
 on:
   push:
     tags:
       - "v*"
-    # Any branch changing the packaging: build and test only (publishing needs a tag).
     # GitHub ignores these paths for tag pushes.
     branches:
       - "**"
     paths:
+      - "Cargo.toml"
       - "npm/**"
       - "scripts/npm/**"
       - ".github/workflows/publish-npm.yml"
@@ -38,8 +41,50 @@ env:
   RUST_TOOLCHAIN_VERSION: 1.96.1
 
 jobs:
-  build:
+  # Which version this is, whether it is already on npm, and so whether to build and publish.
+  plan:
     if: github.repository == 'alyssaaa11/hivey'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Plan
+        id: plan
+        env:
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          if [ "$(npm view "@hivey/cli@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+            ON_NPM=true
+          else
+            ON_NPM=false
+          fi
+          BUILD=true
+          PUBLISH=false
+          case "$GITHUB_REF" in
+            refs/tags/v*) PUBLISH=true ;;
+            refs/heads/main)
+              if [ "$GITHUB_EVENT_NAME" = push ] && [ "$ON_NPM" = true ]; then BUILD=false; fi
+              [ "$ON_NPM" = false ] && PUBLISH=true ;;
+          esac
+          [ "$PUBLISH_INPUT" = true ] && PUBLISH=true
+          [ "$BUILD" = true ] || PUBLISH=false
+          echo "hivey $VERSION: on npm $ON_NPM, build $BUILD, publish $PUBLISH"
+          {
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            echo "publish=$PUBLISH"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -194,8 +239,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: package
-    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    needs: [plan, package]
+    if: needs.plan.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

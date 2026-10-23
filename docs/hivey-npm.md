@@ -35,13 +35,16 @@ template work without a checkout. Two commands behave differently in an npm inst
 
 ## A release
 
-1. Set the version in `Cargo.toml` (and `Cargo.lock`), commit, push `main`.
-2. Tag and push: `git tag v0.9.36 && git push origin v0.9.36`.
-3. **Publish npm** runs: it builds the binaries, packs the packages, installs the packed
-   `@hivey/cli` on an Apple Silicon runner and runs `hivey --version`, then publishes with trusted publishing.
+Nothing to do by hand. Every hivey commit raises the version in `Cargo.toml`, and
+`hivey update` pushes `main`. When `main` gets a version that isn't on npm yet, **Publish
+npm** builds the binaries, packs the packages, installs the packed `@hivey/cli` on an Apple
+Silicon runner and runs `hivey --version`, then publishes with trusted publishing. A push to
+`main` whose version is already on npm does nothing.
 
-Running the workflow by hand (Actions → Publish npm → Run workflow) only builds and tests,
-unless "publish" is ticked. The tarballs are kept as the run's `npm-packages` artifact.
+A `v*` tag also publishes (the tag must match `Cargo.toml`). Running the workflow by hand
+(Actions → Publish npm → Run workflow) only builds and tests, unless "publish" is ticked.
+Other branches that change the packaging build and test only. The tarballs are kept as each
+run's `npm-packages` artifact.
 
 ## First release (once)
 
