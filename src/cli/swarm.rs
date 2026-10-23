@@ -15,6 +15,7 @@ mod migrate;
 mod pet;
 mod quiet;
 mod safety;
+mod session;
 mod skill;
 mod skills;
 mod slack;
@@ -48,6 +49,8 @@ hivey swarm commands:
                                      gets its own Slack channel #<slug> when Slack is connected
   hivey swarm addon <swarm> <plugin>...  open addons (dashboard, relays) in a running swarm
   hivey swarm relaunch <swarm> [<agent>...]  restart agents (continuing their conversation) and addons
+  hivey swarm session <pane> [--direction right|down]
+                                     a second session of the agent in <pane>, in a new pane beside it
   hivey swarm register <root>        register a swarm or agent folder (<root>/.swarm/agents.json);
                                      alias: import
   hivey swarm unregister <slug>      remove it from hivey (files are kept); alias: forget
@@ -648,6 +651,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
         Some("launch") => launch::run(&args[1..]),
         Some("addon") => launch::run_addon(&args[1..]),
         Some("relaunch") => launch::relaunch::run(&args[1..]),
+        Some("session") => session::run(&args[1..]),
         Some("info") => {
             let args = match rest.first() {
                 Some(slug) => json!({ "swarm": slug }),

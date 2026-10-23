@@ -1873,6 +1873,17 @@ impl ClientShellState {
                 if !self.config.mouse_capture {
                     return;
                 }
+                // hivey: an agent's row (or a swarm header, for its master) offers a second session.
+                let agent_pane_id = self
+                    .active_endpoint_id
+                    .is_local()
+                    .then(|| super::swarm_sidebar::agent_row_pane_at(&self.hits, point))
+                    .flatten();
+                if let Some(pane_id) = agent_pane_id {
+                    self.open_agent_context_menu(pane_id, mouse.column, mouse.row);
+                    outcome.repaint = true;
+                    return;
+                }
                 let workspace_id = (!self.sidebar_collapsed)
                     .then(|| self.active_endpoint_workspace_at(point))
                     .flatten();

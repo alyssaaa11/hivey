@@ -618,6 +618,9 @@ pub(super) enum ClientContextMenuAction {
     Zoom,
     ToggleRightClickPassthrough,
     ClosePane,
+    // hivey: a second session of an agent, split off its pane (`hivey swarm session`)
+    NewAgentSessionRight,
+    NewAgentSessionDown,
 }
 
 #[derive(Debug)]
@@ -641,6 +644,8 @@ pub(super) enum ClientContextMenuTarget {
         has_manual_label: bool,
         right_click_passthrough: bool,
     },
+    /// hivey: an agent's row in the Agents panel
+    Agent { pane_id: String },
 }
 
 #[derive(Debug)]

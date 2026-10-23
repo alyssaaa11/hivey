@@ -149,6 +149,21 @@ impl TreeRow {
     }
 }
 
+/// The pane of the agent row at `point` in the Agents panel: an agent's own row, or a swarm
+/// header (its master).
+pub(super) fn agent_row_pane_at(hits: &ShellHitMap, point: (u16, u16)) -> Option<String> {
+    hits.agents
+        .iter()
+        .find(|(rect, _)| super::contains(*rect, point))
+        .map(|(_, pane_id)| pane_id.clone())
+        .or_else(|| {
+            hits.swarm_headers
+                .iter()
+                .find(|(rect, ..)| super::contains(*rect, point))
+                .and_then(|(.., master)| master.clone())
+        })
+}
+
 fn needs_attention(status: AgentStatus) -> bool {
     matches!(status, AgentStatus::Blocked | AgentStatus::Done)
 }

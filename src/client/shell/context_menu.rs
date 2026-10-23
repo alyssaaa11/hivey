@@ -79,6 +79,11 @@ impl ClientContextMenuOverlay {
                 ]);
                 items
             }
+            // hivey: a second session of the agent, beside it
+            ClientContextMenuTarget::Agent { .. } => vec![
+                item("New session right", Action::NewAgentSessionRight),
+                item("New session below", Action::NewAgentSessionDown),
+            ],
         }
     }
 }
@@ -167,6 +172,16 @@ impl ClientShellState {
         }));
     }
 
+    /// hivey: right-click on an agent's row in the Agents panel.
+    pub(super) fn open_agent_context_menu(&mut self, pane_id: String, x: u16, y: u16) {
+        self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
+            target: ClientContextMenuTarget::Agent { pane_id },
+            x,
+            y,
+            highlighted: 0,
+        }));
+    }
+
     pub(super) fn move_context_menu_selection(&mut self, delta: isize) {
         let Some(ClientShellOverlay::ContextMenu(menu)) = self.overlay.as_mut() else {
             return;
@@ -215,6 +230,21 @@ impl ClientShellState {
                 action,
                 outcome,
             ),
+            // hivey: `hivey swarm session` splits the agent's pane and starts the new session.
+            ClientContextMenuTarget::Agent { pane_id } => {
+                let direction = if action == ClientContextMenuAction::NewAgentSessionDown {
+                    "down"
+                } else {
+                    "right"
+                };
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "swarm".into(),
+                    "session".into(),
+                    pane_id,
+                    "--direction".into(),
+                    direction.into(),
+                ]));
+            }
         }
         outcome.repaint = true;
     }

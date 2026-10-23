@@ -523,3 +523,57 @@ fn close_confirmation_error_becomes_client_owned_overlay_and_stable_workspace_cl
             if params.workspace_id == "ws_1" && !params.close_group
     ));
 }
+
+// hivey: right-click an agent's row → a second session of it, split off its pane.
+#[test]
+fn agent_rows_offer_a_second_session_beside_the_agent() {
+    let mut projected = snapshot();
+    projected.agents = vec![ClientShellAgent {
+        pane_id: "pane_1".into(),
+        workspace_id: "ws_1".into(),
+        tab_id: "tab_1".into(),
+        name: Some("reviewer".into()),
+        display_agent: None,
+        agent: Some("claude".into()),
+        title: None,
+        terminal_title: None,
+        terminal_title_stripped: None,
+        agent_status: AgentStatus::Idle,
+        state_change_seq: 1,
+        state_labels: Vec::new(),
+        tokens: Vec::new(),
+        focused: true,
+    }];
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.compose(106, 30).expect("agent sidebar frame");
+    let row = state.hits.agents.first().expect("agent row hit").0;
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: row.x + 2,
+        row: row.y,
+        modifiers: KeyModifiers::empty(),
+    })]);
+    let below = match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => {
+            assert!(matches!(
+                &menu.target,
+                ClientContextMenuTarget::Agent { pane_id } if pane_id == "pane_1"
+            ));
+            menu.items()
+                .iter()
+                .position(|item| item.action == ClientContextMenuAction::NewAgentSessionDown)
+                .expect("new session below item")
+        }
+        _ => panic!("agent context menu"),
+    };
+    let mut outcome = ClientShellInput::default();
+    state.activate_context_menu_item(below, &mut outcome);
+    assert!(state.overlay.is_none());
+    assert!(matches!(
+        &outcome.actions[..],
+        [ClientShellAction::RunHivey(args)]
+            if args == &["swarm", "session", "pane_1", "--direction", "down"]
+    ));
+}

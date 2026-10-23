@@ -69,7 +69,8 @@ Keys (after `hivey swarm setup`): `⌥S` swarms picker, `⌥M` master, `⌥A` al
 `⌥L` message log, `⌥F` / double-click a pane title = zoom, `⌥Q` quit. The `ctrl+b` prefix keys
 still work. If `⌥` types symbols, the terminal must send Option as Meta (Terminal.app: Profiles →
 Keyboard → "Use Option as Meta key"; iTerm2: Profiles → Keys → Left Option = Esc+).
-Mouse: click a swarm in the sidebar → focuses its master; hover → info card.
+Mouse: click a swarm in the sidebar → focuses its master; hover → info card; right-click an
+agent → New session right/below (a second session of it beside it: `hivey swarm session <pane>`).
 
 ## Swarms
 

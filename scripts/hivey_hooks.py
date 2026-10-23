@@ -561,3 +561,121 @@ edit("src/client/shell/mouse.rs",
             }
         }""", marker="self.swarm_tree.title_double_click(")
 print("title-bar double-click zoom hooks applied")
+
+# Right-click an agent's row: a second session of it in a new pane (`hivey swarm session`)
+edit("src/client/shell/state.rs",
+     """    ToggleRightClickPassthrough,
+    ClosePane,
+}
+""",
+     """    ToggleRightClickPassthrough,
+    ClosePane,
+    // hivey: a second session of an agent, split off its pane (`hivey swarm session`)
+    NewAgentSessionRight,
+    NewAgentSessionDown,
+}
+""", marker="NewAgentSessionRight,")
+edit("src/client/shell/state.rs",
+     """        has_manual_label: bool,
+        right_click_passthrough: bool,
+    },
+}
+""",
+     """        has_manual_label: bool,
+        right_click_passthrough: bool,
+    },
+    /// hivey: an agent's row in the Agents panel
+    Agent { pane_id: String },
+}
+""", marker="Agent { pane_id: String },")
+edit("src/client/shell/context_menu.rs",
+     """                    item("Close pane", Action::ClosePane),
+                ]);
+                items
+            }
+        }
+""",
+     """                    item("Close pane", Action::ClosePane),
+                ]);
+                items
+            }
+            // hivey: a second session of the agent, beside it
+            ClientContextMenuTarget::Agent { .. } => vec![
+                item("New session right", Action::NewAgentSessionRight),
+                item("New session below", Action::NewAgentSessionDown),
+            ],
+        }
+""", marker="Action::NewAgentSessionRight")
+edit("src/client/shell/context_menu.rs",
+     """    pub(super) fn move_context_menu_selection(""",
+     """    /// hivey: right-click on an agent's row in the Agents panel.
+    pub(super) fn open_agent_context_menu(&mut self, pane_id: String, x: u16, y: u16) {
+        self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
+            target: ClientContextMenuTarget::Agent { pane_id },
+            x,
+            y,
+            highlighted: 0,
+        }));
+    }
+
+    pub(super) fn move_context_menu_selection(""", marker="fn open_agent_context_menu(")
+edit("src/client/shell/context_menu.rs",
+     """                action,
+                outcome,
+            ),
+        }
+        outcome.repaint = true;
+    }
+""",
+     """                action,
+                outcome,
+            ),
+            // hivey: `hivey swarm session` splits the agent's pane and starts the new session.
+            ClientContextMenuTarget::Agent { pane_id } => {
+                let direction = if action == ClientContextMenuAction::NewAgentSessionDown {
+                    "down"
+                } else {
+                    "right"
+                };
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "swarm".into(),
+                    "session".into(),
+                    pane_id,
+                    "--direction".into(),
+                    direction.into(),
+                ]));
+            }
+        }
+        outcome.repaint = true;
+    }
+""", marker="\"session\".into(),")
+edit("src/client/shell/mouse.rs",
+     """                if !self.config.mouse_capture {
+                    return;
+                }
+                let workspace_id = (!self.sidebar_collapsed)
+                    .then(|| self.active_endpoint_workspace_at(point))""",
+     """                if !self.config.mouse_capture {
+                    return;
+                }
+                // hivey: an agent's row (or a swarm header, for its master) offers a second session.
+                let agent_pane_id = self
+                    .active_endpoint_id
+                    .is_local()
+                    .then(|| super::swarm_sidebar::agent_row_pane_at(&self.hits, point))
+                    .flatten();
+                if let Some(pane_id) = agent_pane_id {
+                    self.open_agent_context_menu(pane_id, mouse.column, mouse.row);
+                    outcome.repaint = true;
+                    return;
+                }
+                let workspace_id = (!self.sidebar_collapsed)
+                    .then(|| self.active_endpoint_workspace_at(point))""", marker="swarm_sidebar::agent_row_pane_at(")
+edit("src/client/shell_runtime.rs",
+     """                    .args(&args)
+                    .stdin(std::process::Stdio::null())""",
+     """                    .args(&args)
+                    // hivey: the server this client is attached to (a named session's, too)
+                    .env(crate::api::SOCKET_PATH_ENV_VAR, crate::api::socket_path())
+                    .stdin(std::process::Stdio::null())""", marker="// hivey: the server this client is attached to")
+print("agent second-session hooks applied")

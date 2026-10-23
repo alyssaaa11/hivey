@@ -50,6 +50,8 @@ pub(super) fn dispatch_client_shell_actions(
             shell::ClientShellAction::RunHivey(args) => match std::env::current_exe() {
                 Ok(exe) => match std::process::Command::new(&exe)
                     .args(&args)
+                    // hivey: the server this client is attached to (a named session's, too)
+                    .env(crate::api::SOCKET_PATH_ENV_VAR, crate::api::socket_path())
                     .stdin(std::process::Stdio::null())
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())

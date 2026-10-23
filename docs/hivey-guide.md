@@ -158,6 +158,10 @@ Profiles → Keyboard → "Use Option as Meta key"; iTerm2: Profiles → Keys �
 - **Double-click a pane's title bar** (the `◆ coordinator · demo` line): that agent's terminal
   fills the screen; double-click again to put it back. (Double-click *inside* a terminal still
   selects a word.)
+- **Right-click an agent** in the sidebar (the hivey agent, a solo agent, a swarm's master or
+  worker) → **New session right** / **New session below**: a second session of the same agent
+  (same CLI, arguments and folder, a new conversation) opens in a pane beside it, so two run at
+  once. From the terminal: `hivey swarm session <pane> [--direction right|down]`.
 
 ### The screen
 
