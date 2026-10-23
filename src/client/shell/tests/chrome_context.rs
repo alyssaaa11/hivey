@@ -655,3 +655,30 @@ fn agent_spaces_offer_a_second_session_of_their_master() {
     state.activate_context_menu_item(rename, &mut outcome);
     assert!(matches!(state.overlay, Some(ClientShellOverlay::Rename(_))));
 }
+
+// hivey: a space's info card hides while a menu is open, so it never covers the menu.
+#[test]
+fn info_card_hides_while_a_menu_is_open() {
+    let mut projected = snapshot();
+    projected.workspaces[0].tokens = vec![
+        ("master_pane".into(), "pane_1".into()),
+        ("info1".into(), "card-marker".into()),
+    ];
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.compose(106, 20).expect("composed frame");
+    state.swarm_tree.set_hover(Some("ws_1".into()));
+    let text = |state: &mut ClientShellState| -> String {
+        state
+            .compose(106, 20)
+            .expect("frame")
+            .cells
+            .iter()
+            .map(|cell| cell.symbol.as_str())
+            .collect()
+    };
+    assert!(text(&mut state).contains("card-marker"));
+    state.open_agent_context_menu("pane_1".into(), 2, 2);
+    assert!(!text(&mut state).contains("card-marker"));
+}

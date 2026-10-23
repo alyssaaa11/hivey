@@ -560,8 +560,13 @@ impl ClientShellState {
             ));
             frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
         }
-        // hivey: swarm info card while hovering a swarm row, drawn over the panes.
-        if let Some(card) = super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot)
+        // hivey: swarm info card while hovering a swarm row, drawn over the panes (not while a
+        // menu or dialog is open: it would cover it).
+        if let Some(card) = self
+            .overlay
+            .is_none()
+            .then(|| super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot))
+            .flatten()
         {
             if let Some(mut composed) = frame.to_ratatui_buffer() {
                 let cursor = frame.cursor.clone();

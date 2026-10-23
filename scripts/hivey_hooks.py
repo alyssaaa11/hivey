@@ -516,8 +516,14 @@ edit("src/client/shell/composition.rs",
         self.hits.popup = None;""",
      """            frame.replace_from_ratatui_buffer_preserving_effects(&composed, cursor);
         }
-        // hivey: swarm info card while hovering a swarm row, drawn over the panes.
-        if let Some(card) = super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot) {
+        // hivey: swarm info card while hovering a swarm row, drawn over the panes (not while a
+        // menu or dialog is open: it would cover it).
+        if let Some(card) = self
+            .overlay
+            .is_none()
+            .then(|| super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot))
+            .flatten()
+        {
             if let Some(mut composed) = frame.to_ratatui_buffer() {
                 let cursor = frame.cursor.clone();
                 occlusion.cover(super::swarm_sidebar::render_hover_card(&mut composed, &card, &self.config));
@@ -525,6 +531,18 @@ edit("src/client/shell/composition.rs",
             }
         }
         self.hits.popup = None;""", marker="swarm_sidebar::hover_card(")
+edit("src/client/shell/composition.rs",
+     """        // hivey: swarm info card while hovering a swarm row, drawn over the panes.
+        if let Some(card) = super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot)
+        {""",
+     """        // hivey: swarm info card while hovering a swarm row, drawn over the panes (not while a
+        // menu or dialog is open: it would cover it).
+        if let Some(card) = self
+            .overlay
+            .is_none()
+            .then(|| super::swarm_sidebar::hover_card(&self.swarm_tree, &self.hits, snapshot))
+            .flatten()
+        {""", required=False, marker=".then(|| super::swarm_sidebar::hover_card(")
 print("swarm info hover card hooks applied")
 
 # Double-click a pane's title bar: zoom it to full size, and back
