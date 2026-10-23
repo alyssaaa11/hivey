@@ -20,8 +20,13 @@ for arg in "$@"; do
 done
 [ -f "$DIR/ORDER" ] || { echo "publish: no $DIR/ORDER (run build-packages.mjs --pack)" >&2; exit 1; }
 
+# Read the list first: npm publish needs the terminal as its input to ask for 2FA.
+TARBALLS=()
 while IFS= read -r tarball; do
-  [ -n "$tarball" ] || continue
+  [ -n "$tarball" ] && TARBALLS+=("$tarball")
+done <"$DIR/ORDER"
+
+for tarball in "${TARBALLS[@]}"; do
   manifest=$(tar -xOzf "$DIR/$tarball" package/package.json)
   name=$(node -e 'const p = JSON.parse(process.argv[1]); console.log(p.name)' "$manifest")
   version=$(node -e 'const p = JSON.parse(process.argv[1]); console.log(p.version)' "$manifest")
@@ -31,4 +36,4 @@ while IFS= read -r tarball; do
   fi
   echo "$name@$version: publishing"
   npm publish "$DIR/$tarball" --access public ${DRY[@]+"${DRY[@]}"}
-done <"$DIR/ORDER"
+done
