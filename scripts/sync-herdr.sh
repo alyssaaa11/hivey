@@ -121,7 +121,7 @@ if [ "$CHECK" = 0 ]; then
     echo "hivey update: build failed, hivey was not changed (full log: $BUILD_LOG)"
     exit 1
   fi
-  echo "  built in $((SECONDS - BUILD_START))s; installing $BIN…"
+  echo "  built in $((SECONDS - BUILD_START))s; installing ${BIN}…"
   install_and_handoff 1
   # Users who ran `hivey swarm setup` get new Option keys (e.g. ⌥P); the pet is rebuilt when
   # its code changed.
