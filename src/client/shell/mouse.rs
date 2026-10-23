@@ -1889,6 +1889,7 @@ impl ClientShellState {
                     .flatten();
                 if let Some(workspace_id) = workspace_id {
                     self.open_workspace_context_menu(workspace_id, mouse.column, mouse.row);
+                    self.offer_agent_sessions_in_workspace_menu(); // hivey
                     outcome.repaint = true;
                     return;
                 }

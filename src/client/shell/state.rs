@@ -646,8 +646,12 @@ pub(super) enum ClientContextMenuTarget {
         has_manual_label: bool,
         right_click_passthrough: bool,
     },
-    /// hivey: an agent's row in the Agents panel
-    Agent { pane_id: String },
+    /// hivey: an agent's row in the Agents panel, or a space with an agent (its master) in the
+    /// swarms list; then `workspace` is the space's own menu, offered after the session items.
+    Agent {
+        pane_id: String,
+        workspace: Option<Box<ClientContextMenuOverlay>>,
+    },
 }
 
 #[derive(Debug)]

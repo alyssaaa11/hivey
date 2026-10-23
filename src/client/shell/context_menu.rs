@@ -80,11 +80,15 @@ impl ClientContextMenuOverlay {
                 items
             }
             // hivey: a second session of the agent, beside it
-            ClientContextMenuTarget::Agent { .. } => vec![
-                item("New session right", Action::NewAgentSessionRight),
-                item("New session below", Action::NewAgentSessionDown),
-                item("New session in worktree", Action::NewAgentSessionWorktree),
-            ],
+            ClientContextMenuTarget::Agent { workspace, .. } => {
+                let mut items = vec![
+                    item("New session right", Action::NewAgentSessionRight),
+                    item("New session below", Action::NewAgentSessionDown),
+                    item("New session in worktree", Action::NewAgentSessionWorktree),
+                ];
+                items.extend(workspace.iter().flat_map(|menu| menu.items()));
+                items
+            }
         }
     }
 }
@@ -176,7 +180,37 @@ impl ClientShellState {
     /// hivey: right-click on an agent's row in the Agents panel.
     pub(super) fn open_agent_context_menu(&mut self, pane_id: String, x: u16, y: u16) {
         self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
-            target: ClientContextMenuTarget::Agent { pane_id },
+            target: ClientContextMenuTarget::Agent {
+                pane_id,
+                workspace: None,
+            },
+            x,
+            y,
+            highlighted: 0,
+        }));
+    }
+
+    /// hivey: a space's menu that was just opened, for a space with an agent (a swarm's or
+    /// an agent's space in the swarms list), also offers a second session of its master.
+    pub(super) fn offer_agent_sessions_in_workspace_menu(&mut self) {
+        let Some(ClientShellOverlay::ContextMenu(menu)) = self.overlay.as_ref() else {
+            return;
+        };
+        let ClientContextMenuTarget::Workspace { workspace_id, .. } = &menu.target else {
+            return;
+        };
+        let Some(pane_id) = self.swarm_master_pane(&self.active_endpoint_id, workspace_id) else {
+            return;
+        };
+        let Some(ClientShellOverlay::ContextMenu(menu)) = self.overlay.take() else {
+            return;
+        };
+        let (x, y) = (menu.x, menu.y);
+        self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
+            target: ClientContextMenuTarget::Agent {
+                pane_id,
+                workspace: Some(Box::new(menu)),
+            },
             x,
             y,
             highlighted: 0,
@@ -231,8 +265,33 @@ impl ClientShellState {
                 action,
                 outcome,
             ),
+            // hivey: the space's own items (Rename, Close, …) act on the space.
+            ClientContextMenuTarget::Agent {
+                workspace: Some(workspace),
+                ..
+            } if !matches!(
+                action,
+                ClientContextMenuAction::NewAgentSessionRight
+                    | ClientContextMenuAction::NewAgentSessionDown
+                    | ClientContextMenuAction::NewAgentSessionWorktree
+            ) =>
+            {
+                if let ClientContextMenuTarget::Workspace {
+                    workspace_id,
+                    close_group,
+                    ..
+                } = workspace.target
+                {
+                    self.activate_workspace_context_action(
+                        workspace_id,
+                        close_group,
+                        action,
+                        outcome,
+                    );
+                }
+            }
             // hivey: `hivey swarm session` splits the agent's pane and starts the new session.
-            ClientContextMenuTarget::Agent { pane_id } => {
+            ClientContextMenuTarget::Agent { pane_id, .. } => {
                 let direction = if action == ClientContextMenuAction::NewAgentSessionDown {
                     "down"
                 } else {

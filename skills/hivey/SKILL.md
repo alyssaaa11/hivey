@@ -70,7 +70,7 @@ Keys (after `hivey swarm setup`): `⌥S` swarms picker, `⌥M` master, `⌥A` al
 still work. If `⌥` types symbols, the terminal must send Option as Meta (Terminal.app: Profiles →
 Keyboard → "Use Option as Meta key"; iTerm2: Profiles → Keys → Left Option = Esc+).
 Mouse: click a swarm in the sidebar → focuses its master; hover → info card; right-click an
-agent → New session right/below (a second session of it beside it: `hivey swarm session <pane>`)
+agent (or its row in the swarms list) → New session right/below (a second session of it beside it: `hivey swarm session <pane>`)
 or New session in worktree (`--worktree`: own git branch/worktree, merged back into the agent's
 folder when that agent exits; conflicts abort the merge; `hivey swarm session --finish <worktree>`).
 

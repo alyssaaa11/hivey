@@ -51,7 +51,7 @@ impl ClientShellState {
     }
 
     /// hivey: the master pane the swarm engine reports on a swarm's space.
-    fn swarm_master_pane(
+    pub(super) fn swarm_master_pane(
         &self,
         endpoint_id: &ClientEndpointId,
         workspace_id: &str,

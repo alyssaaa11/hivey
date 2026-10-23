@@ -559,7 +559,7 @@ fn agent_rows_offer_a_second_session_beside_the_agent() {
         Some(ClientShellOverlay::ContextMenu(menu)) => {
             assert!(matches!(
                 &menu.target,
-                ClientContextMenuTarget::Agent { pane_id } if pane_id == "pane_1"
+                ClientContextMenuTarget::Agent { pane_id, .. } if pane_id == "pane_1"
             ));
             menu.items()
                 .iter()
@@ -598,4 +598,60 @@ fn agent_rows_offer_a_worktree_session() {
         [ClientShellAction::RunHivey(args)]
             if args == &["swarm", "session", "pane_1", "--direction", "right", "--worktree"]
     ));
+}
+
+// hivey: right-click a space with an agent (the swarms list) → its master's session items, then
+// the space's own items, which still act on the space.
+#[test]
+fn agent_spaces_offer_a_second_session_of_their_master() {
+    let mut projected = snapshot();
+    projected.workspaces[0].tokens = vec![("master_pane".into(), "pane_1".into())];
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.compose(106, 20).expect("composed frame");
+    let workspace = state.hits.workspaces[0].rect;
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: workspace.x + 2,
+        row: workspace.y,
+        modifiers: KeyModifiers::empty(),
+    })]);
+    let items = match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => {
+            assert!(matches!(
+                &menu.target,
+                ClientContextMenuTarget::Agent { pane_id, workspace: Some(_) } if pane_id == "pane_1"
+            ));
+            menu.items()
+        }
+        _ => panic!("space context menu"),
+    };
+    let position = |action| {
+        items
+            .iter()
+            .position(|item| item.action == action)
+            .expect("menu item")
+    };
+    assert_eq!(position(ClientContextMenuAction::NewAgentSessionRight), 0);
+    let worktree = position(ClientContextMenuAction::NewAgentSessionWorktree);
+    let rename = position(ClientContextMenuAction::Rename);
+
+    let mut outcome = ClientShellInput::default();
+    state.activate_context_menu_item(worktree, &mut outcome);
+    assert!(matches!(
+        &outcome.actions[..],
+        [ClientShellAction::RunHivey(args)]
+            if args == &["swarm", "session", "pane_1", "--direction", "right", "--worktree"]
+    ));
+
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: workspace.x + 2,
+        row: workspace.y,
+        modifiers: KeyModifiers::empty(),
+    })]);
+    let mut outcome = ClientShellInput::default();
+    state.activate_context_menu_item(rename, &mut outcome);
+    assert!(matches!(state.overlay, Some(ClientShellOverlay::Rename(_))));
 }
