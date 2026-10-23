@@ -189,11 +189,12 @@ jobs:
           [ -f "$exe" ] || exe="$exe.exe"
           "$exe" --version
 
+      # dist/ holds only this platform's folder, so the artifact keeps <key>/ at its root.
       - name: Upload binary
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: bin-${{ matrix.key }}
-          path: dist/${{ matrix.key }}
+          path: dist/
           if-no-files-found: error
 
   package:
@@ -214,10 +215,10 @@ jobs:
         with:
           pattern: bin-*
           path: binaries
+          merge-multiple: true  # binaries/<key>/, however many platforms
 
       - name: Build the npm package
         run: |
-          for dir in binaries/bin-*; do mv "$dir" "binaries/${dir#binaries/bin-}"; done
           node scripts/npm/build-packages.mjs --binaries binaries --out target/npm --pack
           ls -l target/npm/tarballs
 
