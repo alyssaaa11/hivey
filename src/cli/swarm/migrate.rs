@@ -3,6 +3,7 @@
 //! number of times.
 //!
 //! - the hivey skill and the `hivey-*` skills next to it (`hivey skill install`);
+//! - the skylls and envsave skills, for installs older than `install.sh` adding them;
 //! - plugins, old copies the `hivey-*` skills replaced, the hivey agent's brief and hooks.
 
 use std::path::{Path, PathBuf};
@@ -10,6 +11,8 @@ use std::path::{Path, PathBuf};
 const USAGE: &str = "usage: hivey migrate [--dry-run]
   bring an older hivey install up to date (run it after hivey update; safe to run again):
   - the hivey skill and the hivey-* skills next to it (hivey-wiki-ingest, …)
+  - the skylls and envsave skills when those tools are installed but their skill is not (also
+    linked into ~/.agents/skills for Codex)
   - old copies (wiki-ingest, …, agents-create-wiki, agy, grok, swarm, agent-creator) that hivey-* ones
     replaced, the hivey-wiki-* commands the wiki skills replaced and hivey skills in Codex's old
     ~/.codex/skills (now ~/.agents/skills): moved to ~/.hivey/old/, never deleted
@@ -58,6 +61,9 @@ pub(super) fn leftovers(home: &Path, dry: bool) -> std::io::Result<()> {
         println!("{line}");
     }
     for line in update_home_brief(home, dry)? {
+        println!("{line}");
+    }
+    for line in tool_skills(home, dry) {
         println!("{line}");
     }
     // hivey's Claude Code hooks (safety switch, spoken summaries), replacing older ones.
@@ -299,6 +305,91 @@ fn update_plugins(repo: &Path, dry: bool) -> Vec<String> {
     report
 }
 
+/// The tools `install.sh` installs with their skill: (program, skill, command installing the
+/// skill for Claude Code). Older installs have the tool without its skill.
+const TOOL_SKILLS: &[(&str, &str, &[&str])] = &[
+    ("skylls", "skylls", &["agent-skill", "-g", "-a", "all"]),
+    (
+        "envsave",
+        "envsave",
+        &["install-skill", "--agent", "claude", "--global"],
+    ),
+];
+
+/// Installs the skill of each `TOOL_SKILLS` tool found on PATH whose skill is missing, then
+/// links each one Claude Code has into ~/.agents/skills so Codex has it too (envsave only
+/// installs for Claude). A tool that isn't installed gets a hint, nothing else.
+fn tool_skills(home: &Path, dry: bool) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (program, skill, args) in TOOL_SKILLS {
+        let claude = home.join(".claude/skills").join(skill);
+        if !claude.join("SKILL.md").is_file() {
+            if !on_path(program) {
+                lines.push(format!(
+                    "{skill} skill: not installed and no {program} on PATH (rerun install.sh)"
+                ));
+                continue;
+            }
+            if dry {
+                lines.push(format!(
+                    "{skill} skill: would install ({program} {})",
+                    args.join(" ")
+                ));
+                continue;
+            }
+            let ok = std::process::Command::new(program)
+                .args(*args)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success());
+            if ok && claude.join("SKILL.md").is_file() {
+                lines.push(format!(
+                    "{skill} skill: installed in ~/.claude/skills/{skill}"
+                ));
+            } else {
+                lines.push(format!(
+                    "{skill} skill: could not install (try: {program} {})",
+                    args.join(" ")
+                ));
+                continue;
+            }
+        }
+        if let Some(line) = link_for_codex(home, skill, dry) {
+            lines.push(line);
+        }
+    }
+    lines
+}
+
+/// ~/.agents/skills/<skill> → ~/.claude/skills/<skill> when Codex's folder lacks it.
+fn link_for_codex(home: &Path, skill: &str, dry: bool) -> Option<String> {
+    let claude = home.join(".claude/skills").join(skill);
+    let codex_dir = home.join(super::skill::CODEX_SKILLS);
+    let codex = codex_dir.join(skill);
+    if !claude.join("SKILL.md").is_file() || std::fs::symlink_metadata(&codex).is_ok() {
+        return None;
+    }
+    if !dry {
+        std::fs::create_dir_all(&codex_dir).ok()?;
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&claude, &codex).ok()?;
+        #[cfg(not(unix))]
+        return None;
+    }
+    Some(format!(
+        "{skill} skill: {} ~/{}/{skill} for Codex",
+        if dry { "would link" } else { "linked" },
+        super::skill::CODEX_SKILLS
+    ))
+}
+
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH")
+        .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
+}
+
 /// The hivey agent's brief is written once and then belongs to the user, so updates never
 /// rewrite it. Sections hivey marks in its template (`<!-- hivey section: <id> -->` …
 /// `<!-- /hivey section: <id> -->`) that an existing brief lacks are added (before `## Notes`
@@ -485,5 +576,21 @@ mod tests {
             .is_file());
         assert!(home.join(".codex/skills/hivey-grok/SKILL.md").is_file());
         assert!(home.join(".agents/skills/hivey-grok/SKILL.md").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_tool_skills_for_codex_once() {
+        let home = scratch("tool-skills");
+        let skill = home.join(".claude/skills/envsave");
+        std::fs::create_dir_all(&skill).expect("skill");
+        std::fs::write(skill.join("SKILL.md"), "---\nname: envsave\n---\n").expect("skill");
+        assert!(link_for_codex(&home, "envsave", true).is_some());
+        assert!(!home.join(".agents/skills/envsave").exists());
+        let line = link_for_codex(&home, "envsave", false).expect("linked");
+        assert!(line.contains("linked"), "{line}");
+        assert!(home.join(".agents/skills/envsave/SKILL.md").is_file());
+        assert!(link_for_codex(&home, "envsave", false).is_none());
+        assert!(link_for_codex(&home, "skylls", false).is_none());
     }
 }

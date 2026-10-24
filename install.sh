@@ -247,6 +247,14 @@ if command -v envsave >/dev/null 2>&1; then
 else
   echo "  envsave: not installed (later: npm install -g @envsave/cli; needs Node.js)"
 fi
+# Codex reads ~/.agents/skills: link the skills there too (envsave only installs for Claude).
+for skill in skylls envsave; do
+  if [ -f "$HOME/.claude/skills/$skill/SKILL.md" ] && [ ! -e "$HOME/.agents/skills/$skill" ] \
+      && [ ! -L "$HOME/.agents/skills/$skill" ]; then
+    mkdir -p "$HOME/.agents/skills" && ln -s "$HOME/.claude/skills/$skill" "$HOME/.agents/skills/$skill" \
+      && changed linked "$HOME/.agents/skills/$skill (for Codex)"
+  fi
+done
 
 say "bundled plugins"
 STARTED_SERVER=0
