@@ -1114,8 +1114,9 @@ fn import(root: &Path) -> Result<(), String> {
     }
 }
 
-/// Opens each addon's pane in the swarm's space, stacked under `below`. A missing or
-/// failing addon is reported but doesn't stop the launch.
+/// Opens each addon's pane in the swarm's space, stacked under `below`. The Slack relay has
+/// nothing to look at, so it runs in its own unfocused tab of that space instead of taking
+/// room under the agents. A missing or failing addon is reported but doesn't stop the launch.
 fn open_addons(
     addons: &[Addon],
     slug: &str,
@@ -1125,30 +1126,40 @@ fn open_addons(
 ) -> Vec<Value> {
     let mut opened = Vec::new();
     let mut target = below.to_string();
+    let workspace = api("pane.get", json!({ "pane_id": below }))
+        .ok()
+        .and_then(|got| got["pane"]["workspace_id"].as_str().map(str::to_string));
     for (plugin, entry) in addons {
         let entrypoint = entry.clone().unwrap_or_else(|| default_entrypoint(plugin));
-        let result = api(
-            "plugin.pane.open",
-            json!({
-                "plugin_id": plugin,
-                "entrypoint": entrypoint,
-                "placement": "split",
-                "target_pane_id": target,
-                "direction": "down",
-                "cwd": root,
-                "focus": false,
-                "env": {
-                    "HIVEY_SWARM_ROOT": root,
-                    "HIVEY_SWARM_SLUG": slug,
-                    "HIVEY_SWARM_CHANNEL": channel,
-                },
-            }),
-        );
-        match result {
+        let mut params = json!({
+            "plugin_id": plugin,
+            "entrypoint": entrypoint,
+            "cwd": root,
+            "focus": false,
+            "env": {
+                "HIVEY_SWARM_ROOT": root,
+                "HIVEY_SWARM_SLUG": slug,
+                "HIVEY_SWARM_CHANNEL": channel,
+            },
+        });
+        let in_tab = match workspace.as_deref() {
+            Some(workspace) if plugin == super::slack::RELAY => {
+                params["placement"] = json!("tab");
+                params["workspace_id"] = json!(workspace);
+                true
+            }
+            _ => {
+                params["placement"] = json!("split");
+                params["target_pane_id"] = json!(target);
+                params["direction"] = json!("down");
+                false
+            }
+        };
+        match api("plugin.pane.open", params) {
             Ok(result) => {
                 let pane = result["plugin_pane"]["pane"]["pane_id"].as_str().unwrap_or("").to_string();
                 eprintln!("  addon {plugin}:{entrypoint}: started in {pane}");
-                if !pane.is_empty() {
+                if !pane.is_empty() && !in_tab {
                     target = pane.clone();
                 }
                 opened.push(json!({ "plugin": plugin, "entrypoint": entrypoint, "pane_id": pane }));
