@@ -64,7 +64,10 @@ hivey setup
    swarm creator, agent creator, skills library, swarm watcher and voice plugins.
 4. **Optional extras.** It asks about Slack (to talk to your agents from any device), online
    skill search, a desktop pet (a small character that reacts to your agents and can speak
-   updates), and the Hivey lead agent in `~/.hivey/agent`.
+   updates), and the Hivey lead agent in `~/.hivey/agent`. It also offers two companion tools,
+   both off unless you say yes: **skylls** (a library to find, save and share skills, agents
+   and swarms; needs a GitHub login) and **envsave** (keeps API keys out of your code; needs
+   an envsave license).
 
 `hivey setup --no-setup` skips the questions and does only the non-interactive part. Run
 `hivey setup` again any time; it only changes what's missing or out of date.

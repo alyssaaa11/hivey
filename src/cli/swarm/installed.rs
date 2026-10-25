@@ -115,7 +115,7 @@ fn inventory(home: &Path, config_dir: &Path) -> String {
     })
     .collect();
     section(
-        "Tools and their skills (Claude Code; rerun ./install.sh if missing)",
+        "Tools and their skills (Claude Code; optional: rerun hivey setup or ./install.sh to add)",
         tools,
         "",
     );

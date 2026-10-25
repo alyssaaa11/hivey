@@ -36,9 +36,11 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+RERUN=./install.sh  # what to run again later, in the hints below
 if [ -n "$PREBUILT" ]; then
   BIN="$PREBUILT"
   BIN_DIR="$(dirname "$BIN")"
+  RERUN="hivey setup"
 fi
 
 say() { printf '\n== %s\n' "$*"; }
@@ -165,11 +167,11 @@ for agent in "claude:Claude Code:claude:y" "codex:Codex:codex:n" "agy:Antigravit
         echo "  could not install $label"
       fi
     else
-      echo "  $label: not installed (later: rerun ./install.sh)"
+      echo "  $label: not installed (later: rerun $RERUN)"
       continue
     fi
   fi
-  command -v "$cmd" >/dev/null || { echo "  $label: not found after installing (open a new shell, then rerun ./install.sh)"; continue; }
+  command -v "$cmd" >/dev/null || { echo "  $label: not found after installing (open a new shell, then rerun $RERUN)"; continue; }
   echo "  $label: $("$cmd" --version 2>/dev/null | head -1)"
   tracked "$BIN" integration install "$target" | sed 's/^/    /' \
     || echo "    could not link $label to hivey (later: hivey integration install $target)"
@@ -204,7 +206,13 @@ fi
 # is left as it is.
 SKYLLS_URL=https://raw.githubusercontent.com/jcsancho/skylls/main/install.sh
 say "skylls and envsave (tools and their skills)"
-if ! command -v skylls >/dev/null 2>&1; then
+# Optional extras: offered, not assumed. A source install (the maintainers' machines) says yes
+# by default; an npm install says no, since envsave needs a license and skylls an account.
+EXTRAS_DEFAULT=y; [ -z "$PREBUILT" ] || EXTRAS_DEFAULT=n
+if ! command -v skylls >/dev/null 2>&1 \
+    && ! ask_yes "Install skylls (a library to find, save and share skills, agents and swarms; asks for a GitHub login)?" "$EXTRAS_DEFAULT"; then
+  :  # skipped: the "not installed (later: …)" line below says how
+elif ! command -v skylls >/dev/null 2>&1; then
   # Its installer asks its own questions on the terminal (uv, gh, gitleaks, your account);
   # --no-setup leaves its account setup for later.
   SKYLLS_OPT=""; [ "$SETUP" = 1 ] || SKYLLS_OPT=--no-setup
@@ -227,7 +235,10 @@ if command -v skylls >/dev/null 2>&1; then
 else
   echo "  skylls: not installed (later: bash -c \"\$(curl -fsSL $SKYLLS_URL)\")"
 fi
-if ! command -v envsave >/dev/null 2>&1; then
+if ! command -v envsave >/dev/null 2>&1 \
+    && ! ask_yes "Install envsave (keeps API keys out of your code; needs an envsave license)?" "$EXTRAS_DEFAULT"; then
+  :  # skipped: the "not installed (later: …)" line below says how
+elif ! command -v envsave >/dev/null 2>&1; then
   if js_global @envsave/cli; then
     hash -r
     command -v envsave >/dev/null 2>&1 && changed installed "envsave: $(command -v envsave)"
