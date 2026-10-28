@@ -69,7 +69,9 @@ owns it (name that agent).>
 - **Sharing files:** write under `<root>/shared/` for hand-offs, then send the path to the
   consumer with `hivey msg send <consumer> "…"`.
 - Your home: `<root>/<agent>/`, for notes, scratch and logs.
-- Don't edit other agents' homes or outputs. Read them freely.
+- Don't open other agents' homes: their notes and plans would pull your work toward theirs
+  (hivey blocks it for Claude agents). What you need comes as a path in a message (a
+  hand-off, which you may then open) or from the wiki; ask its owner with `hivey msg send`.
 
 ---
 

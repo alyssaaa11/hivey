@@ -88,6 +88,7 @@ Registered in `~/.claude/settings.json` (Codex: `~/.codex/hooks.json`).
 | `~/.claude/hooks/hivey-agent-stop.py` (Stop) | speak an agent's `DONE:` line with `hivey voice` (workers stay silent) | now |
 | `~/.claude/hooks/hivey-safety.py` (Bash, Edit, Write, Read) | hivey's own safety check: blocks destructive commands, history rewrites, `curl \| sh`, secret access and hand-edited lockfiles; on by default, settings → safety / `hivey safety on\|off` | now |
 | `~/.claude/hooks/hivey-secret-scan.py` (Bash) | block a `git commit` that contains secrets; same safety switch | now |
+| `~/.claude/hooks/hivey-swarm-guard.py` (Bash, Read, Edit, Write, Grep, Glob) | swarm isolation: a worker can't open or search another agent's folder, the coordinator's notes or the raw message log; paths sent to it in a message stay open. Does nothing outside swarm workers; off per swarm with `"isolation": false` in `.swarm/agents.json`, per session with `HIVEY_ISOLATION=off` | now |
 
 Installing or updating replaces older hooks they cover (a damage-control folder,
 `secret_scan.py`, `agents_stop.py`): unregistered, files moved to `~/.hivey/old/`. The

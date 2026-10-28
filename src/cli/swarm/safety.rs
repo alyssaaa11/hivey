@@ -4,6 +4,9 @@
 //!   default; `hivey safety off` unregisters them (the files stay). The choice lives in
 //!   `~/.hivey/safety.json` and updates keep it.
 //! - `hivey-agent-stop.py` (Stop): speaks each agent's `DONE:` line with `hivey voice say`.
+//! - `hivey-swarm-guard.py` (PreToolUse): keeps swarm workers out of each other's folders, so
+//!   they don't anchor on their teammates' plans. Always registered; it does nothing outside a
+//!   swarm worker's folder, and a swarm turns it off with `"isolation": false` in its manifest.
 //!
 //! The hooks go to `~/.claude/hooks/hivey-*` and are registered in `~/.claude/settings.json`,
 //! edited in place (the user's other settings, order and formatting are kept). The hooks they
@@ -38,10 +41,17 @@ const HOOKS: &[(&str, &str)] = &[
         "hivey-agent-stop.py",
         include_str!("../../../hooks/hivey-agent-stop.py"),
     ),
+    (
+        "hivey-swarm-guard.py",
+        include_str!("../../../hooks/hivey-swarm-guard.py"),
+    ),
 ];
 
 /// Tools the safety hook checks besides Bash.
 const FILE_TOOLS: &str = "Edit|MultiEdit|Write|NotebookEdit|Read";
+
+/// Tools the swarm guard checks: everything that can open or search a path.
+const GUARD_TOOLS: &str = "Bash|Read|Edit|MultiEdit|Write|NotebookEdit|Grep|Glob";
 
 /// Older hooks the hivey ones replace: unregistered (any command that mentions them) and
 /// their files moved to ~/.hivey/old/.claude/hooks/.
@@ -248,6 +258,7 @@ fn register(content: &str, hooks_dir: &Path, safety_on: bool) -> io::Result<Stri
         );
         add("PreToolUse", Some(FILE_TOOLS), &["hivey-safety.py"]);
     }
+    add("PreToolUse", Some(GUARD_TOOLS), &["hivey-swarm-guard.py"]);
     add("Stop", None, &["hivey-agent-stop.py"]);
     let after = root.to_serde_value();
     if after == before && !content.trim().is_empty() {
@@ -313,6 +324,12 @@ mod tests {
         );
         assert!(pre.iter().any(|c| c.contains("hivey-secret-scan.py")));
         assert_eq!(
+            pre.iter()
+                .filter(|c| c.contains("hivey-swarm-guard.py"))
+                .count(),
+            1
+        );
+        assert_eq!(
             commands(&settings, "Stop"),
             vec![r#"python3 "/h/.claude/hooks/hivey-agent-stop.py""#.to_string()]
         );
@@ -326,19 +343,25 @@ mod tests {
     }
 
     #[test]
-    fn off_keeps_the_voice_and_drops_the_safety_hooks() {
+    fn off_keeps_the_voice_and_the_guard_and_drops_the_safety_hooks() {
         let dir = Path::new("/h/.claude/hooks");
         let on = register(USER, dir, true).expect("on");
         let off = value(&register(&on, dir, false).expect("off"));
         let pre = commands(&off, "PreToolUse");
-        assert_eq!(pre, vec!["my-own-check".to_string()]);
+        assert_eq!(
+            pre,
+            vec![
+                "my-own-check".to_string(),
+                r#"python3 "/h/.claude/hooks/hivey-swarm-guard.py""#.to_string()
+            ]
+        );
         assert_eq!(commands(&off, "Stop").len(), 1);
     }
 
     #[test]
     fn starts_from_no_settings() {
         let out = register("", Path::new("/h/.claude/hooks"), true).expect("empty");
-        assert_eq!(commands(&value(&out), "PreToolUse").len(), 3);
+        assert_eq!(commands(&value(&out), "PreToolUse").len(), 4);
     }
 
     #[test]
