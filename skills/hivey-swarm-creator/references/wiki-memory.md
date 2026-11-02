@@ -12,7 +12,7 @@ Only the coordinator writes `wiki/`; agents write reports to `raw/reports/<agent
     `findings/`, `decisions/` or `lessons/` (concept pages as needed). **Merge into an existing
     page** when another agent already covered the topic, instead of making a near-duplicate.
   - **Connect across agents.** When two agents' findings relate (the researcher's data behind
-    the builder's feature choice, the critic's issue with a design decision), link them both ways
+    the builder's feature choice, a fresh review's issue with a design decision), link them both ways
     with `[[wiki-links]]`. Where they contradict, record it in a `> [!warning]` callout on both
     pages and in `lessons/`.
   - Every page cites its source report(s). Update `wiki/agents/<agent>.md` (status,
@@ -20,8 +20,8 @@ Only the coordinator writes `wiki/`; agents write reports to `raw/reports/<agent
 - **When an agent sends FINISHED, ingest its final report before anything else.** A worker only
   counts as finished once its final report is in the wiki, fully linked, and its agent page says
   `finished`. A watcher "stopped" alert is often the moment to check this.
-- **Connection pass.** When every worker has sent FINISHED (which needs critic approval), the
-  critic has written its final review, and all final reports are ingested, run the Lint workflow
+- **Connection pass.** When every worker has sent FINISHED (which needs every deliverable approved
+  by its fresh review), and all final reports are ingested, run the Lint workflow
   in `<vault>/CLAUDE.md` (`/hivey-wiki-lint`) to find orphan pages, missing cross-links,
   contradictions and concepts that deserve their own page. Fix what it finds. Then write
   `wiki/swarm-final-report.md` (outcome vs. the original request, per-agent results linking

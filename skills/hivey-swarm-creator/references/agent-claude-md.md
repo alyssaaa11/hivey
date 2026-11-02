@@ -93,7 +93,6 @@ owns it (name that agent).>
 | Agent | CLI | Role | Owns / produces | Ask them for |
 |-------|-----|------|-----------------|--------------|
 | coordinator | Claude Code | Master: planned the swarm, monitors everyone | the plan, priorities, scope | decisions outside your scope, conflicts, unblocking, anything the user must decide |
-| critic | <CLI> | Reviews every deliverable, sends critique, approves | reviews in `<root>/critic/reviews/` | a review of your work, including early drafts |
 | <agent-a> | <CLI> | <role> | <deliverables + paths> | <what others should ask them> |
 
 ### Who to talk to
@@ -112,17 +111,17 @@ S=~/.claude/skills/hivey-swarm-creator/scripts; [ -d "$S" ] || S=~/.agents/skill
 python3 $S/swarm_tasks.py list --owner <agent>                         # your tasks
 python3 $S/swarm_tasks.py claim <ID> --as <agent>                      # fails if deps aren't approved
 python3 $S/swarm_tasks.py verify <ID> --as <agent>                     # run the task's check yourself
-python3 $S/swarm_tasks.py set <ID> review --as <agent> --note "<path>" # DONE → critic
+python3 $S/swarm_tasks.py submit <ID> --as <agent> [--artifact <path>] [--repo <worktree> --range main...swarm/<agent>]  # → fresh review
 python3 $S/swarm_tasks.py set <ID> blocked --as <agent> --note "waiting on …"
 ```
 - If a claim fails because a dependency isn't approved, work on something unblocked.
 - If a task you need isn't on the board, ask the coordinator; don't invent parallel work.
-- Run `verify` before you send DONE. A task with a check can't be approved until it passes.
-- Only the critic (or the coordinator) sets `approved`.
+- Run `verify` before you submit. A task with a check can't be approved until it passes.
+- Only a fresh review (or the coordinator) sets `approved`; you can't approve your own task.
 
 ### Hand-offs
 <The dependency chain in order, e.g. `researcher → findings.md → product → spec.md → builder →
-app/ → critic`. Say who waits for whom and what each one can do while waiting.>
+app/ → integrator`. Say who waits for whom and what each one can do while waiting.>
 
 ### Reports (wiki)
 Write reports as Markdown in `<vault>/raw/reports/<agent>/`, named `<agent>-<topic>_YYYY-MM-DD.md`:
@@ -141,18 +140,23 @@ reports into the wiki:
 Don't edit `wiki/` or other agents' report folders. Mention the report path in your DONE and
 FINISHED messages. You're not finished until your final report is in the wiki.
 
-### Critique loop
-Every deliverable goes through the critic before it counts as done:
-1. Owner sends `DONE <deliverable> → <path>` to `critic` (and to the consumer if someone waits).
-2. Critic writes `<root>/critic/reviews/<agent>-<deliverable>-r<N>.md` and sends the owner
-   `CRITIQUE r<N> <deliverable> → <review path>` with the top issues, ranked by severity.
-3. Owner fixes what's valid and sends `REVISED r<N> <deliverable> → <path>` to `critic`. For a
-   point it disagrees with, it sends `DISAGREE <point>: <reason>` instead of ignoring it.
-4. Critic re-reviews and sends `APPROVED <deliverable>`, or runs another round. No approval
-   after 3 rounds, or an unresolved disagreement, goes to the coordinator, who decides.
+### Review (fresh critics)
+Every deliverable is reviewed before it counts as done, by fresh critics, not by a teammate:
+1. When your task is done and `verify` passes, run `swarm_tasks.py submit <ID> --as <agent>`
+   (code: add `--repo <root>/<agent>/repo --range main...swarm/<agent>`; other outputs: add
+   `--artifact <path>` for anything beyond the task's path). It returns at once.
+2. In the background, <N> one-shot critics read the task spec, the user's request and your
+   artifact (never your notes or messages), run the check themselves and exit. You get a
+   message: `APPROVED <ID>` or `CRITIQUE r<N> <ID> → <review path>`. Work on something else
+   meanwhile; don't submit again while it's in review.
+3. On CRITIQUE, open the review and fix **every** defect in its Defects list in one revision
+   (each has file:line and evidence), then `submit` again. The next critics re-check that list
+   and review the rest fresh. If a defect is wrong, tell the coordinator with your evidence
+   instead of ignoring it.
+4. After the last round (<R>) the task is `blocked` and the coordinator decides.
 
-Critique is about the work, not the agent. Ask the critic early ("can you sanity-check my
-approach …") when a wrong direction would be costly.
+Critique is about the work, not the agent. Before building something costly, sanity-check the
+approach with the coordinator.
 
 ### How to communicate
 Every message goes through hivey's message bus. It's delivered when the recipient is idle
@@ -162,7 +166,7 @@ Every message goes through hivey's message bus. It's delivered when the recipien
 |----|-----|
 | another agent | `hivey msg send <agent> "<msg>"` |
 | everyone | `hivey msg send @all "<msg>"` |
-| a role | `hivey msg send @role:critic "<msg>"` (`worker`, `critic`, `master`) |
+| a role | `hivey msg send @role:worker "<msg>"` (`worker`, `master`) |
 | the coordinator (master) | `hivey msg send coordinator "<msg>"` |
 | the user | through the coordinator, or `hivey msg send human "<msg>"` |
 
@@ -194,7 +198,7 @@ something the roster says someone else owns.
 
 ### Contracts and code
 - If `<root>/shared/CONTRACTS.md` exists, it's binding: interfaces, data shapes, formats,
-  naming. Build to it. To change it, send the proposal to the coordinator and the critic and
+  naming. Build to it. To change it, send the proposal to the coordinator and
   wait for approval, because teammates build against it too.
 - **If you have your own git worktree**: work only in `<root>/<agent>/repo` on branch
   `swarm/<agent>`. Commit small and often. Never commit on another agent's branch or push to
@@ -226,7 +230,7 @@ For any library, framework, SDK, API, CLI or cloud service, look the docs up wit
 <Role-specific method; see the guidance below.>
 
 ## Definition of done
-<Checklist. Always includes "every deliverable APPROVED by the critic (or accepted by the
+<Checklist. Always includes "every deliverable APPROVED by its fresh review (or accepted by the
 coordinator)", "every check passes" and "final report written to the wiki". Send FINISHED only
 when every item is true.>
 
@@ -251,11 +255,11 @@ _Not started yet._
 <!-- Rewrite this block; keep this shape:
 **Updated:** YYYY-MM-DD HH:MM · **State:** not-started | working | blocked | waiting-review | paused | finished
 **Summary:** 1–2 sentences on where the work stands.
-**Done:** - <deliverable> → `<path>` (APPROVED r2 / DONE, awaiting critic)
+**Done:** - <deliverable> → `<path>` (APPROVED r2 / in review r1)
 **In progress:** - <what, and how far along>
 **Next steps (do these first on resume):** 1. … 2. …
 **Open first:** - `<path>`: why
-**Open threads:** - critique r<N> on <deliverable> (`<review path>`) · waiting on <agent> for …
+**Open threads:** - review r<N> on <deliverable> (`<review path>`) · waiting on <agent> for …
 **Gotchas / decisions:** - things you learned that you'd otherwise rediscover
 -->
 <!-- STATUS:END -->
@@ -286,30 +290,14 @@ generate images.
 `hivey skills guide` when a particular voice is wanted.
 
 **Reviewer / second opinion** (often Codex): what to review, against which criteria, where to
-write findings, and that it reports to the critic, not straight to the builder, unless told.
+write findings, and that it reports to the coordinator, not straight to the builder, unless
+told. It's an extra opinion from another model family; tasks are still approved by their fresh
+review.
 
-**Critic** (always present): the swarm's quality loop. It sets tasks to `approved`
-(`swarm_tasks.py set <ID> approved --as critic`), which runs the task's check; a failing check
-means it can't approve. In code swarms it's usually also the **integrator**: it merges each
-`swarm/<agent>` branch into the main checkout and runs the full suite on the combined result.
-Its CLAUDE.md should give:
-- **What to review**: every deliverable in the roster and its check, plus the user's original
-  request, which is the bar everything is judged against.
-- **Criteria** per deliverable type. Code: run it and the tests; correctness, edge cases,
-  security. Research: sources, recency, gaps, logic. Design and copy: clarity, consistency,
-  audience fit.
-- **How to critique**: read or run the actual artifact (open sites and apps in a browser). Give
-  specific, actionable issues ranked blocker / major / minor, each with a suggested fix. Don't
-  restyle work to its own taste or rewrite others' work itself.
-- **The loop**: `CRITIQUE r<N>` → `REVISED` → `APPROVED`, at most 3 rounds before escalating to
-  the coordinator. Reviews go in `<root>/critic/reviews/`.
-- **Cross-cutting checks**: whether deliverables fit together (did the builder implement what
-  the researcher found and the spec says?). Raise mismatches with `@all`.
-- **Final report**: when all workers are FINISHED, write
-  `<vault>/raw/reports/critic/critic-final-review_YYYY-MM-DD.md` (verdict per deliverable,
-  remaining risks) and send `FINISHED` to the coordinator.
-- **Its Status** tracks review state per deliverable (round, verdict, review path), so it can
-  resume the loop after a restart.
+**Integrator** (code swarms; one of the builders or a dedicated agent): merges each approved
+`swarm/<agent>` branch into the main checkout and runs the full suite on the combined result,
+as its own task with a check, which gets its own fresh review like any other.
 
-Give it skills that support verification: browser or testing skills for builds, research skills
-for fact-checking.
+**No critic agent.** Reviews are fresh one-shot critics started by `submit` (see the Review
+section of every brief). Put each task's "done when" on the board (`--spec`) and the user's
+request in `.swarm/REQUEST.md`: that's all the critics see besides the artifact.

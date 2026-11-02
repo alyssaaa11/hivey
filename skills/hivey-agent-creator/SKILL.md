@@ -66,8 +66,8 @@ From the request, work out:
   | `agy`, Antigravity (Gemini) | fast, cheap tasks; image generation | see the `hivey-agy` skill's model table |
 
   All four read the brief: you write `CLAUDE.md`, and launch links `AGENTS.md` (and `GEMINI.md`
-  for agy) to it. Only Claude Code gets hivey's safety hooks, the done gate and the reviewer
-  subagent; say so when you suggest another kind.
+  for agy) to it. Only Claude Code gets hivey's safety hooks and the done gate; say so when
+  you suggest another kind. The fresh review works for all four.
 - **schedule** (ongoing agents): on demand only, an interval (`--heartbeat 6h`), or fixed times
   (`hivey swarm schedule add <name> --at 08:57 …`). Draft the exact prompt each run gets.
 
@@ -121,7 +121,8 @@ Skills: <a> (why), <b> (why)               gaps: <gap> → suggestion
 MCPs:   none | <x> (why, needs key: <name>)    CLIs: <ok…>  missing: <tool> → <install cmd>
 Permissions: pre-approved + hivey safety on | (non-Claude: no safety hooks)   deny: git push, <…>
 Extra dirs: <paths>
-Run check: <command> · done gate: yes | no · reviewer: yes | no   (Claude Code only)
+Run check: <command> · done gate: yes | no (Claude Code only)
+Review:   <N> fresh critics × <model> per run, <R> rounds max | none   (default 2 × sonnet, 3)
 Memory:   <name>-wiki | none
 Slack:    #<name> | none (Slack not connected)
 Schedule: on demand | --heartbeat <6h> | at <HH:MM>, … → "<run prompt>"
@@ -140,9 +141,13 @@ tool (AskUserQuestion in Claude Code; otherwise plain questions):
 3. **Schedule** (ongoing agents only): your recommendation first. Runs happen only while hivey
    runs; each wake-up arrives as a `[hivey]` message when the agent is idle, never piles up and
    never expires.
-4. **Done gate and reviewer** (Claude Code only): propose the reviewer when the output can be
-   checked against sources or specs and a second read is worth the tokens; leave it out for
-   routine ops.
+4. **Done gate** (Claude Code only) and **fresh review** (every kind, on by default): how many
+   fresh critics review each run before it counts as done (suggest 2; 3 for code or claims
+   where a miss is costly; 0 only for trivial routine ops), their model (suggest `sonnet`) and
+   the maximum rounds (suggest 3). Each critic is a one-shot `claude -p` run with an empty
+   context and no saved session: it gets only the spec (The ask, Deliverables), the artifact
+   and the check, runs the check itself, gives PASS or defects with evidence, and exits. N
+   critics cost about N extra reads of the output.
 
 **Slack is not a question.** Run `hivey slack status`. Connected: launch creates (or joins)
 `#<name>`, invites the user and starts the relay. Not connected: ask the user to run `hivey
@@ -157,7 +162,7 @@ Adjust the plan if the user tweaks it; continue once they approve.
 python3 $A/setup_agent.py "$DIR" --name <name> --kind <claude|codex|grok|agy> \
     [--dirs /extra/path,…] [--allow 'Bash(gh:*)'] [--deny 'Bash(rm:*)'] \
     [--mcp '<server>={"command":"npx","args":["-y","<pkg>"]}'] \
-    [--check-cmd 'bash scripts/check.sh'] [--gate] [--reviewer] [--git]
+    [--check-cmd 'bash scripts/check.sh'] [--gate] [--critics 2 --critic-model sonnet --review-rounds 3] [--git]
 ```
 
 It is idempotent (re-running only adds) and prints JSON. It writes:
@@ -168,9 +173,10 @@ It is idempotent (re-running only adds) and prints JSON. It writes:
 - `.mcp.json` with each `--mcp` server (`--enable-mcps x,y` pre-approves servers already in
   it). For a Codex agent the same servers are copied into `.codex/config.toml`. Grok and agy:
   set up MCP servers with their own CLI if really needed, or prefer a CLI tool;
-- `.agent/config.json` with the run check; with `--gate` (Claude Code) the **done gate** and
-  **resume context** hooks are registered in the agent's own `.claude/settings.json`, never the
-  global one; `--reviewer` installs the read-only `reviewer` subagent in `.claude/agents/`;
+- `.agent/config.json` with the run check and the fresh review (`"review"`: critics, model,
+  rounds; change it later with `fresh_review.py config <folder> --critics N`); with `--gate`
+  (Claude Code) the **done gate** and **resume context** hooks are registered in the agent's
+  own `.claude/settings.json`, never the global one;
 - `.gitignore` (keeps `.mcp.json`, `.codex/`, `.agent/state/`, `logs/` out of git) and, with
   `--git`, a git repo in the folder if it isn't in one.
 
@@ -185,7 +191,7 @@ The harness, when chosen:
 |---|---|
 | Done gate | Stop hook `agent_gate.py`: while `.agent/state/run_active` exists, runs the check when the agent tries to finish and blocks it (at most 3 times), logging to `.agent/state/gate.log` |
 | Resume context | SessionStart hook `agent_context.py`: on startup, resume and compaction injects run-in-progress, gate log, `tasks.json` progress, recent commits and the newest progress-log entries |
-| Reviewer | `.claude/agents/reviewer.md`: read-only subagent (Sonnet) that checks artifacts against The ask and their sources |
+| Fresh review | the hivey skill's `fresh_review.py run --folder .`: N one-shot critics in parallel (`claude -p`, empty context, no saved session, read-only), merged into one review in `.agent/reviews/`; exit 0 only if every critic PASSes and the check exits 0 |
 
 The hooks point at this skill's scripts, so improving them upgrades every agent. Codex, Grok
 and agy agents run the check themselves (the template says how).
@@ -265,7 +271,7 @@ MCPs:     <list> | none          (keys in .mcp.json for: …)
 Memory:   <DIR>/<name>-wiki | none
 Slack:    #<name> | none
 Schedule: on demand | heartbeat <6h> | at <times>
-Harness:  check `<cmd>` · done gate · resume context · reviewer | none
+Harness:  check `<cmd>` · done gate · resume context · fresh review <N> × <model> | none
 Space:    <emoji> <name> (★ in the sidebar)
 Talk to it:  hivey msg send <name>/master "…"   (or in #<name>)
 Relaunch:    hivey swarm relaunch <name>

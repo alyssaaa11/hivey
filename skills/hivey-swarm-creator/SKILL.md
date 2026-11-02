@@ -1,6 +1,6 @@
 ---
 name: hivey-swarm-creator
-description: Turn a task into a coordinated swarm of coding agents (Claude Code, Codex, Grok, Antigravity/Gemini) in hivey. This session becomes the coordinator (the swarm's master) - it designs the smallest team with the user, always adds a critic, writes a detailed CLAUDE.md brief per agent with deliverables and runnable checks, sets up the task board, git worktrees, the swarm's wiki, skills and Slack, launches it with `hivey swarm launch`, and then coordinates it. Use whenever the user says "swarm", "/swarm", "/hivey-swarm-creator", "spin up a team of agents", "launch multiple agents for this", "split this across agents", "create agents to build/research X in parallel", or otherwise wants several agents working together on one project, even if they don't say the word swarm. Also use to pause, resume, restart or continue an existing swarm ("pause the swarm", "stop the agents and save progress", "resume the swarm").
+description: Turn a task into a coordinated swarm of coding agents (Claude Code, Codex, Grok, Antigravity/Gemini) in hivey. This session becomes the coordinator (the swarm's master) - it designs the smallest team with the user, writes a detailed CLAUDE.md brief per agent with deliverables and runnable checks, sets up the task board with fresh one-shot critics reviewing every deliverable, git worktrees, the swarm's wiki, skills and Slack, launches it with `hivey swarm launch`, and then coordinates it. Use whenever the user says "swarm", "/swarm", "/hivey-swarm-creator", "spin up a team of agents", "launch multiple agents for this", "split this across agents", "create agents to build/research X in parallel", or otherwise wants several agents working together on one project, even if they don't say the word swarm. Also use to pause, resume, restart or continue an existing swarm ("pause the swarm", "stop the agents and save progress", "resume the swarm").
 ---
 
 > Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
@@ -54,11 +54,20 @@ Work out the **smallest team** that covers the task, usually 2–5 workers. Each
 attention and coordination, so give each a **distinct deliverable**. If one agent needs
 another's output, make that hand-off explicit instead of having two agents share a job.
 
-**Every swarm includes a `critic`**, on top of the workers. It produces nothing itself: it
-reviews each deliverable posted as DONE, sends concrete critique to the owner, and approves the
-work once it's good, so the team improves its drafts instead of shipping them. Tailor its
-criteria to the project (code: correctness, tests, security; research: sources, gaps, logic;
-copy: clarity, audience fit) and put them in its CLAUDE.md.
+**Every deliverable gets a fresh review; there is no critic agent.** When an owner submits a
+task (`swarm_tasks.py submit`), the hivey skill's `fresh_review.py` starts N one-shot critics
+in parallel (default 2 × Sonnet). Each is a `claude -p` process with no saved session, started
+in an empty folder, given only the task spec, the user's request (`.swarm/REQUEST.md`), the
+artifact (for code: the worktree and git range) and the check. It runs the check itself,
+returns PASS or defects with file:line and evidence, and exits. The script merges the
+verdicts (a defect counts if any critic reports it) and updates the board: every critic PASS
+and the check exits 0 → `approved`; otherwise the task goes back to its owner with one merged
+review for a single revision, and after the last round it's `blocked` for you to decide.
+Nothing in the review lives on or remembers earlier rounds except the defect list it's asked
+to re-check. Fresh critics catch more than a reviewer that has watched the work, and parallel
+ones cost less than extra rounds. Ask the user how many critics, the model and the rounds
+(step 3); it's set per swarm in `.swarm/review.json` (`fresh_review.py config`). Write each
+task's "done when" into the board (`--spec`): it is what the critics judge against.
 
 For each agent decide:
 - **key**: short kebab-case role matching `[a-z][a-z0-9_-]{0,31}` (`researcher`, `builder`,
@@ -66,12 +75,12 @@ For each agent decide:
 - **mission and deliverables**: exact output paths and an objective **"done when"** for each.
 - **dependencies**: who it needs input from and who consumes its output.
 - **coding agent** (`--kinds`): which CLI runs it. Claude Code is the default. Suggest per
-  role: **Claude Code** for most work and the critic; **Codex** for code review or a second
+  role: **Claude Code** for most work; **Codex** for code review or a second
   opinion; **Grok** for X/Twitter and web research; **agy** (Antigravity, Gemini) for fast,
   cheap tasks and image generation. All four read the CLAUDE.md you write: launch links
   `AGENTS.md` (and `GEMINI.md` for agy) to it.
-- **model** (`--models`): for Claude Code, `opus` for builders, the critic and deep reasoning;
-  `sonnet` for research, writing and data gathering, at a fraction of the cost. A swarm costs
+- **model** (`--models`): for Claude Code, `opus` for builders and deep reasoning; `sonnet`
+  for research, writing and data gathering, at a fraction of the cost. A swarm costs
   many times what one agent does, so spend the strong model where it pays off. For Codex, Grok
   and agy leave it to the CLI's default unless the user names one.
 - **skills**: run `hivey skills guide` and follow it for every agent (skylls first, skills.sh
@@ -90,11 +99,11 @@ contracts and checks target exactly those.
 **Contracts first** when agents build things that must fit together (code, data, APIs, file
 formats): task T1 is "Write `<root>/shared/CONTRACTS.md`" (interfaces, data shapes, formats,
 naming, layout), with a check, and every build task depends on it, so no builder starts before
-the critic approves the contract.
+the contract's fresh review approves it.
 
 **Code swarms: one git worktree per builder.** When two or more agents write code in the same
 repo, each gets its own worktree and branch (step 6) so they never overwrite each other. Name an
-**integrator** (the critic, or a dedicated agent for bigger builds) who merges the branches into
+**integrator** (one of the builders, or a dedicated agent for bigger builds) who merges the branches into
 the main checkout and runs the full test suite on the combined result, as its own task with a
 check.
 
@@ -122,7 +131,7 @@ Tasks:
 | ID | Task | Owner | Deps | Check |
 Skill gaps: <gap> → suggestion …
 Code: <repo path>, worktrees for <builders>, integrator: <agent>   (code swarms only)
-(critic always included)
+Review: <N> fresh critics × <model> per deliverable, <R> rounds max   (default 2 × sonnet, 3)
 Wiki: <root>/<name>-wiki   (the swarm's memory; say no to skip it)
 Slack: #<name> (connected) | not connected: run `hivey slack connect` first, or go without
 Schedules: monitoring pass every <N> min · <timed task> … (or none)
@@ -142,6 +151,10 @@ In the same message:
     user", "every 2 h run the test suite and file failures").
   - or **none** (you only react to messages and alerts).
   Each wake-up costs a turn of your model.
+- **Ask how many fresh critics review each deliverable** (suggest 2; 3 for code or claims
+  where a miss is costly; 0 turns fresh review off and you approve by hand), their model
+  (suggest `sonnet`) and the maximum rounds (suggest 3). Each critic is one short `claude -p`
+  run per review, so N critics cost about N extra reads of the deliverable.
 - **Slack**: run `hivey slack status` before showing the plan. Connected: `hivey swarm launch`
   creates (or joins) `#<name>`, invites the user and starts the relay, nothing else to do. Not
   connected: ask the user to run `hivey slack connect` in a terminal (never ask for the token in
@@ -159,7 +172,9 @@ Obsidian is. In anything an agent reads, write it relative to the agent's folder
 ```bash
 mkdir -p <root>/shared
 python3 $S/shared_rules.py <root>          # house rules into <root>/CLAUDE.md (marked block)
-python3 $S/setup_agent.py <root> <agent> [--worktree <root>/app]   # once per agent, critic too
+python3 $S/setup_agent.py <root> <agent> [--worktree <root>/app]   # once per agent
+F=~/.claude/skills/hivey/scripts/fresh_review.py; [ -f "$F" ] || F=~/.agents/skills/hivey/scripts/fresh_review.py
+python3 $F config <root> --critics 2 --model sonnet --rounds 3     # the user's choice (step 3)
 ```
 
 `setup_agent.py` creates `<root>/<agent>/` and its `.claude/settings.json`, which grants access
@@ -178,15 +193,19 @@ directory may not be under the root:
 ```bash
 T="python3 $S/swarm_tasks.py --root <root>"
 $T add T1 "Write shared/CONTRACTS.md" --owner builder --path shared/CONTRACTS.md \
-   --check "test -s shared/CONTRACTS.md"
-$T add T2 "Build the API" --owner builder --deps T1 --path app/ --check "cd app && npm test"
+   --check "test -s shared/CONTRACTS.md" --spec "every endpoint's request/response shape and errors"
+$T add T2 "Build the API" --owner builder --deps T1 --path app/ --check "cd app && npm test" \
+   --spec "all CONTRACTS.md endpoints implemented, each with a test"
 ```
+
+Also write the user's request, verbatim, to `<root>/.swarm/REQUEST.md`: every fresh critic
+judges against it.
 
 This writes `.swarm/tasks.json` (the `hivey.dashboard` reads it), a readable `.swarm/TASKS.md`,
 and `.swarm/events.jsonl`, the swarm's timeline. Rules the board enforces: agents **claim**
 before starting, only their own (or unowned) tasks, and only once every dependency is
-`approved`. Only `critic` or `coordinator` can set `approved`, and only when the task's check
-passes (checks run outside the board lock, so a slow suite doesn't block anyone). Statuses:
+`approved`. Owners `submit` a finished task, which starts its fresh review; only that review
+(every critic PASS) or you can set `approved`, and only when the task's check passes (checks run outside the board lock, so a slow suite doesn't block anyone). Statuses:
 `open → in-progress → review → approved` (`blocked` any time).
 
 ## 5. Write the briefs
@@ -196,7 +215,7 @@ the heart of the swarm. Each agent works only from its own file, so it must unde
 whole team, not just its own job.
 
 1. **Write "The swarm" section once**: setup (root, the swarm's space, you as master, Slack
-   mirror, wiki), the **full roster** (every agent including you and the critic: key, CLI, role,
+   mirror, wiki), the **full roster** (every agent including you: key, CLI, role,
    what it owns, what to ask it for), a "who to talk to" list, the task board, the hand-off
    chain, critique loop, messaging, contracts and code, safety, secrets and docs. Save it as
    `<root>/.swarm/README.md`.
@@ -212,10 +231,10 @@ teammate or asks the wrong agent.
 
 Unless the user said no, create the swarm's Obsidian wiki with the **`hivey-create-wiki`**
 skill (Skill tool, args `<name> --in <root> --agent <root>/<agent> [--agent …]`, every agent
-including the critic) now that the briefs exist. It reads the briefs, tailors the vault and
+now that the briefs exist. It reads the briefs, tailors the vault and
 patches every agent's CLAUDE.md. Answer any question it has from the plan instead of asking the
 user again. If the vault already exists (a resumed swarm), reuse it. Shape it for a swarm:
-- `raw/reports/<agent>/` for each worker and the critic: agents write their reports there, and
+- `raw/reports/<agent>/` for each worker: agents write their reports there, and
   only there.
 - `wiki/` sub-folders: `agents/`, `findings/`, `decisions/`, `deliverables/`, `lessons/`.
 - In the vault's CLAUDE.md add the swarm rule: *only the coordinator writes `wiki/`; it ingests
@@ -230,8 +249,8 @@ user's tweaks), linked from `index.md`, with a `bootstrap` entry in `log.md`.
 ## 7. Launch
 
 ```bash
-hivey swarm launch <root> --slug <name> --icon <emoji> <agent>... critic \
-    --models builder=opus,critic=opus,writer=sonnet --kinds reviewer=codex,scout=grok \
+hivey swarm launch <root> --slug <name> --icon <emoji> <agent>... \
+    --models builder=opus,writer=sonnet --kinds reviewer=codex,scout=grok \
     --budget-min 120 --heartbeat 15m \
     --heartbeat-task "Monitoring pass: follow the hivey-swarm-creator skill's monitoring pass" \
     --addon hivey.dashboard --addon hivey.swarm-watcher \
@@ -300,7 +319,8 @@ coordinator work.
 - **It asked a question**: answer it if it's within the plan; if it's the user's call, ask the
   user and relay the answer.
 - **It says it's done**: check the deliverable exists, meets its "done when" and its check
-  passes, that it sent DONE to the critic and wrote its report to the wiki. If anything is
+  passes, that its fresh review approved it (`.swarm/reviews/`) and it wrote its report to the
+  wiki. If anything is
   missing, tell it exactly what.
 - **It's waiting on a teammate**: check that teammate's state and nudge whichever side holds
   things up.
@@ -331,9 +351,12 @@ two saves an hour.
    and deliverables, critique rounds, open decisions, what to do first on resume).
 5. Tell the user only what changed or needs their decision; otherwise keep the pass quiet.
 
-**Critique loop.** Every deliverable goes owner → DONE → critic → CRITIQUE r<N> → REVISED →
-APPROVED. If owner and critic disagree, or a deliverable reaches round 3 without APPROVED, you
-decide: accept, re-scope, or give a specific fix, and tell both.
+**Review loop.** Every deliverable goes owner → `submit` → fresh review (N one-shot critics in
+parallel, one merged review in `.swarm/reviews/<ID>-r<N>.md`) → APPROVED, or CRITIQUE back to
+the owner → one revision → `submit` again. A task `blocked` after its last round, or a review
+that ended in ERROR, is yours: read the review and accept it (`set <ID> approved --as
+coordinator`), re-scope it, or give the owner a specific fix. If an owner disputes a defect, it
+tells you with evidence; you decide. Don't review deliverables yourself instead of the critics.
 
 **Roster changes** (agents added or re-scoped): update `.swarm/README.md` and the swarm section
 in every agent's CLAUDE.md, then `hivey msg send @all` what changed. A new agent: scaffold it,
@@ -344,7 +367,7 @@ Every agent keeps its own Status section; if one looks stale against its pane ou
 agent to update it. Don't close the swarm's space or panes unless the user asks.
 
 **Finishing.** A worker only counts as finished once every deliverable is APPROVED and its final
-report is ingested into the wiki. When all workers and the critic have finished, run the
+report is ingested into the wiki. When all workers have finished, run the
 connection pass and write `wiki/swarm-final-report.md` (`references/wiki-memory.md`), check the
 deliverables against the user's original request, and give the user the **final report**:
 outcome, where each deliverable is, open risks, next steps and the wiki path. If the `archify`

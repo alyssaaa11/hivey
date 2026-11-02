@@ -110,6 +110,16 @@ hivey swarm schedule add <slug> --at 09:00 --id morning "Morning status report t
 hivey swarm schedule list|remove|run [<slug>] [<id>]
 ```
 
+Fresh review (swarms and solo agents; no critic agent): every deliverable is reviewed by N
+one-shot critics in parallel, each a `claude -p` run with an empty context and no saved session
+that reads only the spec, the artifact and the check, then exits. Set N per swarm or agent:
+```bash
+python3 <this skill>/scripts/fresh_review.py config <swarm root | agent folder> \
+    [--critics N] [--model sonnet] [--rounds 3]        # no flags: show; --critics 0: off
+```
+Swarm owners start it with `swarm_tasks.py submit <ID> --as <agent>`; solo agents with
+`fresh_review.py run --folder .`. Reviews land in `.swarm/reviews/` or `.agent/reviews/`.
+
 Messages (delivered when the target is idle; `--fyi` never wakes; `--urgent` now):
 ```bash
 hivey msg send <agent|@all|@role:worker|@masters|<swarm>/<agent>|human> "text" [--fyi|--urgent] [--swarm S]

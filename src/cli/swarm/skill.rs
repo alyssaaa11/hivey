@@ -15,6 +15,14 @@ const FILES: &[(&str, &str)] = &[
         "scripts/new_wiki.py",
         include_str!("../../../skills/hivey/scripts/new_wiki.py"),
     ),
+    (
+        "scripts/fresh_review.py",
+        include_str!("../../../skills/hivey/scripts/fresh_review.py"),
+    ),
+    (
+        "scripts/critic-brief.md",
+        include_str!("../../../skills/hivey/scripts/critic-brief.md"),
+    ),
 ];
 
 /// The other skills hivey ships, installed next to the hivey skill (`skills/<name>`): Claude
@@ -124,10 +132,6 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
             (
                 "references/global-guidelines.md",
                 include_str!("../../../skills/hivey-agent-creator/references/global-guidelines.md"),
-            ),
-            (
-                "references/reviewer-agent.md",
-                include_str!("../../../skills/hivey-agent-creator/references/reviewer-agent.md"),
             ),
             (
                 "scripts/agent_context.py",

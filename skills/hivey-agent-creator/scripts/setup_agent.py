@@ -9,8 +9,10 @@ Writes, inside the agent folder only (never the global Claude Code config):
                           resume-context (SessionStart) hooks
   .mcp.json               project-scoped MCP servers given with --mcp
   .codex/config.toml      the same MCP servers for a Codex agent
-  .agent/config.json      the run check (--check-cmd) and optional progress log
-  .claude/agents/reviewer.md   with --reviewer (Claude Code only)
+  .agent/config.json      the run check (--check-cmd), optional progress log and the fresh
+                          review ("review": critics, default 2 × sonnet; --critics 0 = off),
+                          run by the hivey skill's fresh_review.py: one-shot critics with an
+                          empty context and no saved session, for every kind of agent
   .gitignore              keeps files that may hold keys and runtime state out of git
 
 Idempotent: re-running only adds. Skills are not installed here: follow `hivey skills guide`.
@@ -159,7 +161,7 @@ def main():
         description="Scaffold or update a hivey solo agent's folder (see SKILL.md step 5).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="example:\n  setup_agent.py ~/agents/seo-auditor --name seo-auditor --kind claude \\\n"
-               "      --check-cmd 'bash scripts/check.sh' --gate --reviewer --git")
+               "      --check-cmd 'bash scripts/check.sh' --gate --critics 2 --git")
     p.add_argument("folder", help="the agent folder (created if missing)")
     p.add_argument("--name", required=True, help="agent name / slug, [a-z][a-z0-9-]{0,31}")
     p.add_argument("--kind", choices=KINDS, default="claude", help="coding agent (default claude)")
@@ -173,8 +175,11 @@ def main():
     p.add_argument("--progress-log", help="a newest-first log file the resume context summarizes")
     p.add_argument("--gate", action="store_true",
                    help="register the done gate and resume-context hooks (Claude Code only)")
-    p.add_argument("--reviewer", action="store_true",
-                   help="install the read-only reviewer subagent (Claude Code only)")
+    p.add_argument("--critics", type=int,
+                   help="fresh critics per review (default 2; 0 = no fresh review)")
+    p.add_argument("--critic-model", help="the critics' model (default sonnet)")
+    p.add_argument("--review-rounds", type=int, help="max review rounds per run (default 3)")
+    p.add_argument("--reviewer", action="store_true", help=argparse.SUPPRESS)  # old flag: no-op
     p.add_argument("--git", action="store_true", help="git init the folder if it isn't in a repo")
     args = p.parse_args()
 
@@ -185,6 +190,8 @@ def main():
         raise SystemExit("refusing to use your home folder as an agent folder")
     if args.gate and not (args.check_cmd or read_json(agent_dir / ".agent" / "config.json").get("check")):
         raise SystemExit("--gate needs a run check: pass --check-cmd")
+    if args.critics is not None and not 0 <= args.critics <= 8:
+        raise SystemExit("--critics must be 0..8")
     agent_dir.mkdir(parents=True, exist_ok=True)
     result = {"agent": args.name, "kind": args.kind, "dir": str(agent_dir), "notes": []}
 
@@ -239,14 +246,23 @@ def main():
                                    "with its own CLI, or prefer a CLI tool")
 
     cfg_path = agent_dir / ".agent" / "config.json"
-    if args.check_cmd or args.progress_log:
-        cfg = read_json(cfg_path)
-        if args.check_cmd:
-            cfg["check"] = args.check_cmd
-        if args.progress_log:
-            cfg["progress_log"] = str(Path(args.progress_log).expanduser())
-        write_json(cfg_path, cfg)
-        result["agent_config"] = cfg
+    cfg = read_json(cfg_path)
+    review = cfg.setdefault("review", {})
+    review.setdefault("critics", 2)
+    review.setdefault("model", "sonnet")
+    review.setdefault("rounds", 3)
+    if args.critics is not None:
+        review["critics"] = args.critics
+    if args.critic_model:
+        review["model"] = args.critic_model
+    if args.review_rounds:
+        review["rounds"] = args.review_rounds
+    if args.check_cmd:
+        cfg["check"] = args.check_cmd
+    if args.progress_log:
+        cfg["progress_log"] = str(Path(args.progress_log).expanduser())
+    write_json(cfg_path, cfg)
+    result["agent_config"] = cfg
     (agent_dir / ".agent" / "state").mkdir(parents=True, exist_ok=True)
     (agent_dir / "logs").mkdir(exist_ok=True)
 
@@ -256,15 +272,6 @@ def main():
         else:
             result["notes"].append("the done gate is a Claude Code hook: the brief tells this "
                                    "agent to run the check itself")
-    if args.reviewer:
-        if args.kind != "claude":
-            result["reviewer"] = "skipped: the reviewer subagent is Claude Code only"
-        else:
-            dest = agent_dir / ".claude" / "agents" / "reviewer.md"
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy(HERE.parent / "references" / "reviewer-agent.md", dest)
-            result["reviewer"] = str(dest)
-
     write_json(settings_path, settings)
     result["settings"] = str(settings_path)
 

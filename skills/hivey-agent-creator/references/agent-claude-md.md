@@ -118,10 +118,17 @@ run; it has the full method.">
    and blocks you until it passes, up to 3 times. Answering a question isn't a run: don't set
    the flag for that.
 2. Do the work following **Method**.
-3. **Review**: <with a reviewer:> hand the artifacts to the `reviewer` subagent (Agent tool,
-   `subagent_type: reviewer`, with the paths). Fix every defect it reports, then ask again
-   until it says PASS (at most 3 rounds; then record what's left in Status).
-   <without one:> self-review (below), spot-checking 3 claims against their sources.
+3. **Fresh review**: <with fresh review, the default:> run
+   `python3 ~/.claude/skills/hivey/scripts/fresh_review.py run --folder . --label <run> --artifact <path> …`
+   (`~/.agents/skills/…` if that's missing; for code add `--repo . --range <first commit of
+   this run>~1..HEAD`; from round 2 add `--round <n> --previous <last review>`). It takes a few
+   minutes (allow up to 15: run it in the background or with a long timeout). <N> one-shot
+   critics read only your spec, the artifact and the check (not your notes or this
+   conversation), and it writes one merged review to `.agent/reviews/`. Exit 0 = APPROVED.
+   Otherwise fix **every** defect in its Defects list in one revision and run it again (at
+   most <R> rounds; then record what's left in Status and tell the user). Don't summarize or
+   defend your work to the critics: they judge the result.
+   <without (critics 0):> self-review (below), spot-checking 3 claims against their sources.
 4. **Check**: run `<check command>` yourself. It must exit 0.
 5. **Commit** this folder only, never push: `git add -A . && git commit -m "<name>: <what
    changed>"`. The git log is part of your memory.
@@ -167,7 +174,7 @@ does, its skills and tools, and whether it is busy or idle.
 
 ## Definition of done
 - [ ] Every deliverable's Check passes
-- [ ] Self-review done against The ask
+- [ ] Fresh review APPROVED <or, with critics 0: self-review done against The ask>
 - [ ] <memory: wiki ingested>
 - [ ] <if Slack: run summary sent>
 - [ ] Committed, not pushed
@@ -210,11 +217,12 @@ The same CLAUDE.md works; adjust these parts:
 - **Skills**: these CLIs don't load `.claude/skills/` by themselves. In the Skills table, give
   each skill's path (`.claude/skills/<skill>/SKILL.md`) and write "read the skill's SKILL.md
   before the first time you use it".
-- **No hooks**: there is no done gate, resume context or reviewer subagent. Replace step 0 of
+- **No hooks**: there is no done gate or resume context (the fresh review still works: it's a
+  script). Replace step 0 of
   "Start of every session" with: read `.agent/state/gate.log` (if any), `git log -5 --oneline
   -- .` and `tasks.json` (if any). In the Run protocol, run the check yourself and don't finish
-  until it passes (at most 3 attempts; then write why into Status). Self-review instead of the
-  reviewer.
+  until it passes (at most 3 attempts; then write why into Status). Use
+  `~/.agents/skills/hivey/scripts/fresh_review.py` for the review.
 - **Grok** can't work in extra folders: keep everything inside the agent folder.
 - **Codex** MCP servers live in `.codex/config.toml` (setup_agent.py copies them there).
 - Keep the `DONE:` rule: it's how hivey and the user see each run's summary.
