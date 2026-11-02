@@ -82,6 +82,7 @@ The swarm manifest `<root>/.swarm/agents.json` is hivey's; a provider may add:
 | `info` | `{"Slack": "#swarm-x (C0…)", "vault": "…"}` or `[[label, value], …]`: shown in the hover card and `hivey swarm info` |
 | `product_dir` | the product folder `hivey.github` publishes (default `app`) |
 | `state` | `"paused"` holds all deliveries (what `hivey swarm pause` sets) |
+| `comms` | message limits (`rate_per_min`, `pair_wakes`, `pair_window_min`, `hourly_wakes`, `broadcasts_per_hour`, `dedupe_min`) and the Slack mirror scope (`slack`: `masters`, `all`, `off`), set with `hivey swarm comms` |
 | `.swarm/tasks.json` | `{"tasks": [{"status": "open\|in-progress\|review\|approved\|blocked"}]}`: task counts in info and the dashboard |
 
 Step-by-step guide and an example to copy: [`../docs/hivey-providers.md`](../docs/hivey-providers.md)

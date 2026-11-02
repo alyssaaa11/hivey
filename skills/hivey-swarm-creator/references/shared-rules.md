@@ -5,6 +5,15 @@ Always end your final response with `DONE: <3 words max>` on its own line (e.g. 
 stop hooks`). hivey's Stop hook reads it as the run's summary and speaks it for masters and solo
 agents; swarm workers stay silent.
 
+# Messages
+
+Every message wakes someone and costs their turn. Send only what the other agent must act on:
+no acks, thanks or "got it"; one message per hand-off; long content goes in a file and you
+send the path. Don't reply to FYIs. Use `@all` only when everyone must act. When a notice says
+you and a teammate hit the pair limit, or your hourly limit, stop and batch what's left into
+one message (or let the task board and files speak). Your swarm's limits: `hivey swarm comms
+<swarm>`.
+
 # Docs: Context7 first
 
 For any library, framework, SDK, API, CLI or cloud service, look the docs up with the

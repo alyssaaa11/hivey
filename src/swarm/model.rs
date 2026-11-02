@@ -107,8 +107,123 @@ pub(crate) struct Swarm {
     /// Manifest `"profile"`: what the swarm or agent does, for the directory other agents
     /// read before asking for help (`description`, `skills`, `tools`).
     pub profile: Value,
+    /// Manifest `"comms"`: how much the swarm's agents may message each other.
+    pub comms: Comms,
     /// Master first, then by role, then by key (manifest maps are key-sorted).
     pub agents: Vec<SwarmAgent>,
+}
+
+/// Manifest `"comms"`: limits on agent messages, so a swarm doesn't flood or over-discuss.
+/// They apply to swarm agents only; the human and the hivey agent are never limited. Every
+/// field is optional (missing = the default); `0` turns a limit off where noted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Comms {
+    /// Messages one agent may send per minute (`rate_per_min`); more is refused.
+    pub rate_per_min: usize,
+    /// Wake-ups between two agents per window (`pair_wakes`); more are saved as FYI.
+    pub pair_wakes: usize,
+    /// The pair window in minutes (`pair_window_min`).
+    pub pair_window_min: u64,
+    /// Wake-up messages one agent may send per hour (`hourly_wakes`, 0 = no limit); more are
+    /// saved as FYI.
+    pub hourly_wakes: usize,
+    /// `@all`, `@role:…` and `@masters` sends per agent per hour (`broadcasts_per_hour`,
+    /// 0 = no limit); more are refused.
+    pub broadcasts_per_hour: usize,
+    /// The same text to the same recipient within this many minutes is dropped
+    /// (`dedupe_min`, 0 = off).
+    pub dedupe_min: u64,
+    /// What the Slack relay mirrors (`slack`: masters, all, off); `None` = the relay's config.
+    pub slack: Option<String>,
+}
+
+pub(crate) const DEFAULT_RATE_PER_MIN: usize = 10;
+pub(crate) const DEFAULT_PAIR_WAKES: usize = 6;
+pub(crate) const DEFAULT_PAIR_WINDOW_MIN: u64 = 5;
+pub(crate) const DEFAULT_HOURLY_WAKES: usize = 30;
+pub(crate) const DEFAULT_BROADCASTS_PER_HOUR: usize = 4;
+pub(crate) const DEFAULT_DEDUPE_MIN: u64 = 10;
+pub(crate) const SLACK_SCOPES: [&str; 3] = ["masters", "all", "off"];
+
+impl Default for Comms {
+    fn default() -> Self {
+        Self {
+            rate_per_min: DEFAULT_RATE_PER_MIN,
+            pair_wakes: DEFAULT_PAIR_WAKES,
+            pair_window_min: DEFAULT_PAIR_WINDOW_MIN,
+            hourly_wakes: DEFAULT_HOURLY_WAKES,
+            broadcasts_per_hour: DEFAULT_BROADCASTS_PER_HOUR,
+            dedupe_min: DEFAULT_DEDUPE_MIN,
+            slack: None,
+        }
+    }
+}
+
+impl Comms {
+    /// The limits in a manifest's `"comms"` object, defaults for anything missing or invalid.
+    pub(crate) fn from_value(value: Option<&Value>) -> Self {
+        let mut comms = Self::default();
+        let Some(value) = value.filter(|value| value.is_object()) else {
+            return comms;
+        };
+        let number = |field: &str| value.get(field).and_then(Value::as_u64);
+        if let Some(n) = number("rate_per_min").filter(|n| *n > 0) {
+            comms.rate_per_min = n as usize;
+        }
+        if let Some(n) = number("pair_wakes").filter(|n| *n > 0) {
+            comms.pair_wakes = n as usize;
+        }
+        if let Some(n) = number("pair_window_min").filter(|n| *n > 0) {
+            comms.pair_window_min = n;
+        }
+        if let Some(n) = number("hourly_wakes") {
+            comms.hourly_wakes = n as usize;
+        }
+        if let Some(n) = number("broadcasts_per_hour") {
+            comms.broadcasts_per_hour = n as usize;
+        }
+        if let Some(n) = number("dedupe_min") {
+            comms.dedupe_min = n;
+        }
+        comms.slack = value
+            .get("slack")
+            .and_then(Value::as_str)
+            .filter(|scope| SLACK_SCOPES.contains(scope))
+            .map(str::to_string);
+        comms
+    }
+
+    /// The effective limits as manifest JSON (defaults filled in).
+    pub(crate) fn to_value(&self) -> Value {
+        serde_json::json!({
+            "rate_per_min": self.rate_per_min,
+            "pair_wakes": self.pair_wakes,
+            "pair_window_min": self.pair_window_min,
+            "hourly_wakes": self.hourly_wakes,
+            "broadcasts_per_hour": self.broadcasts_per_hour,
+            "dedupe_min": self.dedupe_min,
+            "slack": self.slack.as_deref().unwrap_or("masters"),
+        })
+    }
+
+    /// A named preset: `quiet`, `normal` (the defaults) or `chatty`.
+    pub(crate) fn preset(name: &str) -> Option<Self> {
+        let (rate, pair, window, hourly, broadcasts, dedupe, slack) = match name {
+            "quiet" => (5, 3, 10, 12, 2, 30, "masters"),
+            "normal" => return Some(Self::default()),
+            "chatty" => (20, 10, 5, 60, 8, 5, "all"),
+            _ => return None,
+        };
+        Some(Self {
+            rate_per_min: rate,
+            pair_wakes: pair,
+            pair_window_min: window,
+            hourly_wakes: hourly,
+            broadcasts_per_hour: broadcasts,
+            dedupe_min: dedupe,
+            slack: Some(slack.to_string()),
+        })
+    }
 }
 
 pub(crate) fn manifest_path(root: &Path) -> PathBuf {
@@ -211,6 +326,7 @@ impl Swarm {
                 .filter(|profile| profile.is_object())
                 .cloned()
                 .unwrap_or(Value::Null),
+            comms: Comms::from_value(manifest.get("comms")),
             agents,
         })
     }
@@ -311,6 +427,50 @@ mod tests {
         assert!(roles.contains(&("relay", Role::Script)));
         assert!(roles.contains(&("slack-relay", Role::Script)));
         assert_eq!(roles.last().unwrap().1, Role::Script);
+    }
+
+    #[test]
+    fn comms_defaults_when_missing_and_reads_overrides() {
+        let swarm = Swarm::from_manifest(Path::new("/tmp/s"), &manifest()).unwrap();
+        assert_eq!(swarm.comms, Comms::default());
+        assert_eq!(swarm.comms.rate_per_min, DEFAULT_RATE_PER_MIN);
+        let mut with = manifest();
+        with["comms"] = serde_json::json!({
+            "rate_per_min": 3, "hourly_wakes": 0, "dedupe_min": 0, "slack": "off",
+            "pair_wakes": "lots"
+        });
+        let comms = Swarm::from_manifest(Path::new("/tmp/s"), &with)
+            .unwrap()
+            .comms;
+        assert_eq!(comms.rate_per_min, 3);
+        assert_eq!(comms.hourly_wakes, 0, "0 turns the hourly limit off");
+        assert_eq!(comms.dedupe_min, 0);
+        assert_eq!(comms.slack.as_deref(), Some("off"));
+        assert_eq!(
+            comms.pair_wakes, DEFAULT_PAIR_WAKES,
+            "invalid values keep the default"
+        );
+        with["comms"] = serde_json::json!({"slack": "everything", "rate_per_min": 0});
+        let comms = Swarm::from_manifest(Path::new("/tmp/s"), &with)
+            .unwrap()
+            .comms;
+        assert_eq!(comms.slack, None, "unknown Slack scopes are ignored");
+        assert_eq!(
+            comms.rate_per_min, DEFAULT_RATE_PER_MIN,
+            "a zero rate would block all"
+        );
+    }
+
+    #[test]
+    fn comms_presets() {
+        assert_eq!(Comms::preset("normal"), Some(Comms::default()));
+        let quiet = Comms::preset("quiet").unwrap();
+        assert_eq!((quiet.rate_per_min, quiet.hourly_wakes), (5, 12));
+        assert_eq!(
+            Comms::preset("chatty").unwrap().slack.as_deref(),
+            Some("all")
+        );
+        assert!(Comms::preset("loud").is_none());
     }
 
     #[test]

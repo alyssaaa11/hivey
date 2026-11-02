@@ -40,6 +40,7 @@ usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
          [--kinds a=codex,b=grok,c=agy] [--claude-args|--codex-args|--grok-args|--agy-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move] [--icon EMOJI]
          [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack|--no-slack]
+         [--comms-preset quiet|normal|chatty]   (message limits; fine-tune with hivey swarm comms)
        hivey swarm launch <root> --slug SLUG --solo [--model M] [--kind claude|codex|grok|agy] [options]
          [--description TEXT] [--skills a,b] [--tools x,y]   (profile in hivey swarm directory)
   Starts one coding agent per agent in <root>/<agent>/ (CLAUDE.md required) as <slug>-<agent>:
@@ -101,6 +102,9 @@ struct Options {
     no_slack: bool,
     /// Directory entry (`--description`, `--skills`, `--tools`); kept when not given.
     profile: serde_json::Map<String, Value>,
+    /// `--comms-preset quiet|normal|chatty`: the swarm's message limits (manifest `"comms"`);
+    /// kept when not given.
+    comms: Option<Value>,
 }
 
 impl Options {
@@ -245,6 +249,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
         slack: false,
         no_slack: false,
         profile: serde_json::Map::new(),
+        comms: None,
     };
     // `--model` / `--kind` (solo agent), keyed by slug once it is known.
     let mut solo_model = None;
@@ -288,6 +293,13 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--home" => opts.home = true,
             "--slack" => opts.slack = true,
             "--no-slack" => opts.no_slack = true,
+            "--comms-preset" => {
+                let name = value("--comms-preset")?;
+                let preset = crate::swarm::model::Comms::preset(&name).ok_or(format!(
+                    "--comms-preset {name:?}: must be quiet, normal or chatty"
+                ))?;
+                opts.comms = Some(preset.to_value());
+            }
             "--description" => {
                 opts.profile
                     .insert("description".into(), json!(value("--description")?));
@@ -1080,6 +1092,9 @@ fn new_manifest(
     if let Some(object) = manifest.as_object_mut() {
         object.remove("addons");
     }
+    if let Some(comms) = &opts.comms {
+        manifest["comms"] = comms.clone();
+    }
     if !opts.profile.is_empty() {
         if !manifest["profile"].is_object() {
             manifest["profile"] = json!({});
@@ -1377,6 +1392,22 @@ mod tests {
         let mut home = opts(&[]);
         home.home = true;
         assert!(!wants_auto_slack(&home));
+    }
+
+    #[test]
+    fn comms_preset_sets_the_swarms_message_limits() {
+        let parse_with = |extra: &[&str]| {
+            let mut args = vec!["/tmp/s", "--slug", "x", "a"];
+            args.extend_from_slice(extra);
+            parse(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>())
+        };
+        assert!(
+            parse_with(&[]).unwrap().comms.is_none(),
+            "kept when not given"
+        );
+        let quiet = parse_with(&["--comms-preset", "quiet"]).unwrap();
+        assert_eq!(quiet.comms.unwrap()["rate_per_min"], 5);
+        assert!(parse_with(&["--comms-preset", "loud"]).is_err());
     }
 
     #[test]

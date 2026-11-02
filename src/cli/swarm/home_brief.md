@@ -63,7 +63,8 @@ command) and the `hivey` CLI:
   channel is done, check the command's output lists them as invited or the channel as
   existing, and give its name (`#<slug>`).
 - **Run them:** `hivey swarm relaunch|pause|resume <slug>`, `hivey swarm schedule add …`,
-  `hivey swarm addon <slug> <plugin>`, `hivey swarm profile <slug> …`.
+  `hivey swarm addon <slug> <plugin>`, `hivey swarm profile <slug> …`, `hivey swarm comms
+  <slug> [--preset quiet|normal|chatty]` (message limits; too much chatter → `quiet`).
 - **hivey itself:** `hivey update` (latest version), `hivey plugin list`, `hivey skill install`.
 - **Desktop pet (macOS):** `hivey pet` shows it; when the user asks, `hivey pet use
   hivey-h|hivey-dot|hivey-prompt` switches it (first build ~1 min) and `hivey pet off` removes it.

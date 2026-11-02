@@ -14,7 +14,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 
 use super::bus::{self, Decision, Kind, Message, Presence, Record, Sender};
-use super::model::{Role, Swarm, SwarmAgent};
+use super::model::{Comms, Role, Swarm, SwarmAgent};
 use crate::api::schema::{
     AgentInfo, AgentPromptParams, AgentStatus, EmptyParams, Method, PaneReportAgentSessionParams,
     PaneReportMetadataParams, Request, WorkspaceReportMetadataParams,
@@ -24,11 +24,9 @@ use crate::api::ApiRequestSender;
 const TICK: Duration = Duration::from_secs(1);
 const RELOAD_EVERY: Duration = Duration::from_secs(5);
 const RATE_WINDOW: Duration = Duration::from_secs(60);
-const RATE_LIMIT: usize = 30;
-/// Two agents may wake each other this many times per `PAIR_WINDOW`; after that their
-/// messages are saved as FYI, which breaks agent↔agent ping-pong.
-const PAIR_LIMIT: usize = 6;
-const PAIR_WINDOW: Duration = Duration::from_secs(300);
+const HOUR: Duration = Duration::from_secs(3600);
+// Per-swarm message limits (rate, agent↔agent ping-pong, hourly wake-ups, broadcasts,
+// duplicates) come from the manifest's `"comms"` (`super::model::Comms`, defaults there).
 const METADATA_SOURCE: &str = "hivey:swarm";
 /// Pane glyph of a solo agent (`"solo": true`), which is its own master.
 const SOLO_GLYPH: &str = "★";
@@ -81,8 +79,14 @@ struct State {
     /// Info lines per swarm (hover card / `hivey swarm info`), refreshed every RELOAD_EVERY.
     info_cache: HashMap<String, (Instant, Vec<String>)>,
     sent_at: HashMap<String, VecDeque<Instant>>,
-    /// Wake-up messages per agent pair (sorted labels), for `PAIR_LIMIT`.
+    /// Wake-up messages per agent pair (sorted labels), for `comms.pair_wakes`.
     pair_wakes: HashMap<(String, String), VecDeque<Instant>>,
+    /// Wake-up messages per sender, for `comms.hourly_wakes`.
+    hourly_wakes: HashMap<String, VecDeque<Instant>>,
+    /// `@all` / `@role:` / `@masters` sends per sender, for `comms.broadcasts_per_hour`.
+    broadcasts: HashMap<String, VecDeque<Instant>>,
+    /// Recent texts per (sender, recipient) as (when, text hash), for `comms.dedupe_min`.
+    recent_texts: HashMap<(String, String), VecDeque<(Instant, u64)>>,
     seq: u64,
     last_reload: Option<Instant>,
     /// Keeps the hivey agent (`hivey home`) alive.
@@ -326,45 +330,102 @@ impl State {
     }
 
     /// Counts a wake-up message between two agents; false once the pair is over its limit.
-    fn pair_allows_wake(&mut self, a: &str, b: &str) -> bool {
+    fn pair_allows_wake(&mut self, a: &str, b: &str, comms: &Comms) -> bool {
         let key = if a <= b {
             (a.to_string(), b.to_string())
         } else {
             (b.to_string(), a.to_string())
         };
-        let now = Instant::now();
-        let times = self.pair_wakes.entry(key).or_default();
-        while times
-            .front()
-            .is_some_and(|at| now.duration_since(*at) > PAIR_WINDOW)
-        {
-            times.pop_front();
-        }
-        if times.len() >= PAIR_LIMIT {
-            return false;
-        }
-        times.push_back(now);
-        true
+        let window = Duration::from_secs(comms.pair_window_min * 60);
+        allow_in_window(
+            self.pair_wakes.entry(key).or_default(),
+            window,
+            comms.pair_wakes,
+        )
     }
 
-    fn rate_limited(&mut self, sender: &str) -> bool {
-        let now = Instant::now();
+    fn rate_limited(&mut self, sender: &str, comms: &Comms) -> bool {
         let times = self.sent_at.entry(sender.to_string()).or_default();
-        while times
-            .front()
-            .is_some_and(|at| now.duration_since(*at) > RATE_WINDOW)
-        {
-            times.pop_front();
+        !allow_in_window(times, RATE_WINDOW, comms.rate_per_min)
+    }
+
+    /// Counts one wake-up from `sender`; false once it's over `comms.hourly_wakes`.
+    fn hourly_allows_wake(&mut self, sender: &str, comms: &Comms) -> bool {
+        let times = self.hourly_wakes.entry(sender.to_string()).or_default();
+        allow_in_window(times, HOUR, comms.hourly_wakes)
+    }
+
+    /// Counts one broadcast from `sender`; false once it's over `comms.broadcasts_per_hour`.
+    fn broadcast_allowed(&mut self, sender: &str, comms: &Comms) -> bool {
+        let times = self.broadcasts.entry(sender.to_string()).or_default();
+        allow_in_window(times, HOUR, comms.broadcasts_per_hour)
+    }
+
+    /// True if `sender` sent this exact text to `recipient` within `comms.dedupe_min`;
+    /// otherwise remembers it and returns false.
+    fn is_duplicate(&mut self, sender: &str, recipient: &str, text: &str, comms: &Comms) -> bool {
+        if comms.dedupe_min == 0 {
+            return false;
         }
-        if times.len() >= RATE_LIMIT {
+        let window = Duration::from_secs(comms.dedupe_min * 60);
+        let hash = {
+            use std::hash::{Hash, Hasher};
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            text.trim().hash(&mut hasher);
+            hasher.finish()
+        };
+        let now = Instant::now();
+        let recent = self
+            .recent_texts
+            .entry((sender.to_string(), recipient.to_string()))
+            .or_default();
+        while recent
+            .front()
+            .is_some_and(|(at, _)| now.duration_since(*at) > window)
+        {
+            recent.pop_front();
+        }
+        if recent.iter().any(|(_, seen)| *seen == hash) {
             return true;
         }
-        times.push_back(now);
+        recent.push_back((now, hash));
         false
+    }
+
+    /// The limits for messages from `sender`: its swarm's `comms`, or `None` when it is never
+    /// limited (the human, the hivey agent, and script panes such as the Slack relay, which
+    /// forward the human's messages).
+    fn comms_for(&self, sender: &Sender) -> Option<Comms> {
+        let slug = sender.swarm.as_deref()?;
+        if sender.role == Some(Role::Script) {
+            return None;
+        }
+        let swarm = self.swarm(slug)?;
+        (!swarm.home).then(|| swarm.comms.clone())
     }
 }
 
 // ---------------------------------------------------------------------------
+/// Sliding-window counter: drops entries older than `window`, then records one more and
+/// returns true, or returns false if `limit` are already in the window. `limit` 0 = no limit.
+fn allow_in_window(times: &mut VecDeque<Instant>, window: Duration, limit: usize) -> bool {
+    if limit == 0 {
+        return true;
+    }
+    let now = Instant::now();
+    while times
+        .front()
+        .is_some_and(|at| now.duration_since(*at) > window)
+    {
+        times.pop_front();
+    }
+    if times.len() >= limit {
+        return false;
+    }
+    times.push_back(now);
+    true
+}
+
 // The loop
 // ---------------------------------------------------------------------------
 
@@ -1547,29 +1608,52 @@ fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
         .or_else(|| sender.swarm.clone())
         .or_else(|| context_swarm(state, args));
     let recipients = bus::resolve(to, &sender, default_swarm.as_deref(), &state.swarms)?;
-    if state.rate_limited(&sender.label()) {
-        return Err(format!(
-            "{} is sending too fast ({RATE_LIMIT}/min); slow down",
-            sender.label()
-        ));
+    let comms = state.comms_for(&sender);
+    let from = sender.label();
+    if let Some(comms) = &comms {
+        if state.rate_limited(&from, comms) {
+            return Err(format!(
+                "{from} is sending too fast ({}/min); slow down: batch what you have into one message",
+                comms.rate_per_min
+            ));
+        }
+        if to.trim().starts_with('@') && !state.broadcast_allowed(&from, comms) {
+            return Err(format!(
+                "{from} already sent {} broadcasts ({to}) this hour; message only the agents who must act",
+                comms.broadcasts_per_hour
+            ));
+        }
     }
     let ts = now_ms();
     let mut sent = Vec::new();
     let mut downgraded = Vec::new();
+    let mut over_hourly = false;
+    let mut duplicates = Vec::new();
     for (slug, key) in recipients {
         let mut kind = kind;
-        // Agent↔agent only: the human and hivey may always wake an agent.
-        if let (Some(_), Some(to_slug), true) = (&sender.swarm, &slug, kind != Kind::Fyi) {
-            let to_label = format!("{to_slug}/{key}");
-            if !state.pair_allows_wake(&sender.label(), &to_label) {
-                kind = Kind::Fyi;
-                downgraded.push(to_label);
+        let to_label = slug
+            .as_ref()
+            .map_or(key.clone(), |slug| format!("{slug}/{key}"));
+        if let Some(comms) = &comms {
+            if state.is_duplicate(&from, &to_label, text, comms) {
+                duplicates.push(to_label);
+                continue;
+            }
+            // Agent↔agent only: the human and hivey may always wake an agent.
+            if slug.is_some() && kind != Kind::Fyi {
+                if !state.pair_allows_wake(&from, &to_label, comms) {
+                    kind = Kind::Fyi;
+                    downgraded.push(to_label.clone());
+                } else if !state.hourly_allows_wake(&from, comms) {
+                    kind = Kind::Fyi;
+                    over_hourly = true;
+                }
             }
         }
         let msg = Message {
             id: state.next_id(),
             ts,
-            from: sender.label(),
+            from: from.clone(),
             swarm: slug.clone(),
             to: key.clone(),
             addressed: to.to_string(),
@@ -1578,19 +1662,38 @@ fn op_send(state: &mut State, args: &Value) -> Result<Value, String> {
             reply_to: arg(args, "reply_to").map(str::to_string),
             copy: false,
         };
-        sent.push(
-            json!({ "id": msg.id, "to": slug.map_or(key.clone(), |s| format!("{s}/{key}")) }),
-        );
+        sent.push(json!({ "id": msg.id, "to": to_label }));
         state.post(msg)?;
     }
-    let mut result = json!({ "from": sender.label(), "sent": sent });
-    if !downgraded.is_empty() {
-        result["notice"] = json!(format!(
-            "you and {} have woken each other {PAIR_LIMIT} times in {} min; saved as FYI so it won't wake them. \
-             Message again only if they must act; otherwise stop replying.",
-            downgraded.join(", "),
-            PAIR_WINDOW.as_secs() / 60
-        ));
+    let mut notices = Vec::new();
+    if let Some(comms) = &comms {
+        if !downgraded.is_empty() {
+            notices.push(format!(
+                "you and {} have woken each other {} times in {} min; saved as FYI so it won't wake them. \
+                 Message again only if they must act; otherwise stop replying.",
+                downgraded.join(", "),
+                comms.pair_wakes,
+                comms.pair_window_min
+            ));
+        }
+        if over_hourly {
+            notices.push(format!(
+                "you've sent {} wake-up messages this hour; saved as FYI so it won't wake anyone. \
+                 Batch what's left into one message, or stop until it matters.",
+                comms.hourly_wakes
+            ));
+        }
+        if !duplicates.is_empty() {
+            notices.push(format!(
+                "not sent to {}: you sent the same text in the last {} min",
+                duplicates.join(", "),
+                comms.dedupe_min
+            ));
+        }
+    }
+    let mut result = json!({ "from": from, "sent": sent });
+    if !notices.is_empty() {
+        result["notice"] = json!(notices.join(" "));
     }
     Ok(result)
 }
@@ -2115,7 +2218,8 @@ mod tests {
     fn agent_ping_pong_is_downgraded_to_fyi_after_the_pair_limit() {
         let root = temp_swarm("png");
         let mut state = state_with(&[&root]);
-        for round in 0..PAIR_LIMIT {
+        let limit = Comms::default().pair_wakes;
+        for round in 0..limit {
             let (from, to) = if round % 2 == 0 {
                 ("png/scout", "coordinator")
             } else {
@@ -2124,7 +2228,7 @@ mod tests {
             let sent = run_op(
                 &mut state,
                 "msg.send",
-                &json!({"to": to, "text": "ok", "from": from}),
+                &json!({"to": to, "text": format!("ok {round}"), "from": from}),
             )
             .unwrap();
             assert!(sent.get("notice").is_none(), "round {round} still wakes");
@@ -2132,7 +2236,7 @@ mod tests {
         let sent = run_op(
             &mut state,
             "msg.send",
-            &json!({"to": "coordinator", "text": "ok", "from": "png/scout"}),
+            &json!({"to": "coordinator", "text": "ok again", "from": "png/scout"}),
         )
         .unwrap();
         assert!(sent["notice"].as_str().unwrap().contains("saved as FYI"));
@@ -2146,6 +2250,111 @@ mod tests {
         )
         .unwrap();
         assert!(human.get("notice").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A temp swarm whose manifest carries `comms`.
+    fn temp_swarm_with_comms(slug: &str, comms: Value) -> PathBuf {
+        let root = temp_swarm(slug);
+        let path = root.join(".swarm/agents.json");
+        let mut manifest: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        manifest["comms"] = comms;
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        root
+    }
+
+    fn send(state: &mut State, from: &str, to: &str, text: &str) -> Result<Value, String> {
+        run_op(
+            state,
+            "msg.send",
+            &json!({"to": to, "text": text, "from": from}),
+        )
+    }
+
+    #[test]
+    fn rate_limit_comes_from_the_senders_swarm() {
+        let tight = temp_swarm_with_comms("rt", json!({"rate_per_min": 2, "dedupe_min": 0}));
+        let loose = temp_swarm_with_comms("rl", json!({"rate_per_min": 50, "dedupe_min": 0}));
+        let mut state = state_with(&[&tight, &loose]);
+        for n in 0..2 {
+            send(&mut state, "rt/scout", "coordinator", &format!("m{n}")).unwrap();
+        }
+        let err = send(&mut state, "rt/scout", "coordinator", "m2").unwrap_err();
+        assert!(err.contains("too fast (2/min)"), "{err}");
+        for n in 0..5 {
+            send(&mut state, "rl/scout", "coordinator", &format!("m{n}")).unwrap();
+        }
+        // The human is never limited.
+        for n in 0..5 {
+            run_op(
+                &mut state,
+                "msg.send",
+                &json!({"to": "rt/scout", "text": format!("h{n}")}),
+            )
+            .unwrap();
+        }
+        let _ = std::fs::remove_dir_all(&tight);
+        let _ = std::fs::remove_dir_all(&loose);
+    }
+
+    #[test]
+    fn wake_ups_over_the_hourly_budget_are_saved_as_fyi() {
+        let root = temp_swarm_with_comms(
+            "hw",
+            json!({"hourly_wakes": 2, "pair_wakes": 50, "rate_per_min": 50, "dedupe_min": 0}),
+        );
+        let mut state = state_with(&[&root]);
+        for n in 0..2 {
+            let sent = send(&mut state, "hw/scout", "coordinator", &format!("m{n}")).unwrap();
+            assert!(sent.get("notice").is_none());
+        }
+        let sent = send(&mut state, "hw/scout", "coordinator", "m2").unwrap();
+        assert!(sent["notice"]
+            .as_str()
+            .unwrap()
+            .contains("wake-up messages this hour"));
+        let queue = &state.queues[&("hw".to_string(), "coordinator".to_string())];
+        assert_eq!(queue.last().unwrap().kind, Kind::Fyi);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn broadcasts_are_capped_per_hour() {
+        let root = temp_swarm_with_comms(
+            "bc",
+            json!({"broadcasts_per_hour": 1, "rate_per_min": 50, "dedupe_min": 0}),
+        );
+        let mut state = state_with(&[&root]);
+        send(&mut state, "bc/scout", "@all", "first").unwrap();
+        let err = send(&mut state, "bc/scout", "@all", "second").unwrap_err();
+        assert!(err.contains("broadcasts"), "{err}");
+        // A direct message still goes through.
+        send(&mut state, "bc/scout", "coordinator", "direct").unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_same_text_to_the_same_agent_is_dropped() {
+        let root = temp_swarm_with_comms("dd", json!({"dedupe_min": 10, "rate_per_min": 50}));
+        let mut state = state_with(&[&root]);
+        send(&mut state, "dd/scout", "coordinator", "status: done").unwrap();
+        let again = send(&mut state, "dd/scout", "coordinator", "status: done ").unwrap();
+        assert!(again["sent"].as_array().unwrap().is_empty());
+        assert!(again["notice"].as_str().unwrap().contains("same text"));
+        let queue = &state.queues[&("dd".to_string(), "coordinator".to_string())];
+        assert_eq!(queue.len(), 1);
+        // Different text, or the human repeating itself, is delivered.
+        send(&mut state, "dd/scout", "coordinator", "status: blocked").unwrap();
+        for _ in 0..2 {
+            let human = run_op(
+                &mut state,
+                "msg.send",
+                &json!({"to": "dd/coordinator", "text": "go"}),
+            )
+            .unwrap();
+            assert_eq!(human["sent"].as_array().unwrap().len(), 1);
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

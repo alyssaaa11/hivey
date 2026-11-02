@@ -406,6 +406,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         slack: false,
         no_slack: true,
         profile: serde_json::Map::new(),
+        comms: None,
     };
 
     let mut relaunched = 0;

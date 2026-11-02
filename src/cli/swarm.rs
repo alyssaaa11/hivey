@@ -7,6 +7,7 @@ use std::io::{BufRead, Write};
 use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
+mod comms;
 mod directory;
 mod home;
 mod installed;
@@ -59,6 +60,11 @@ hivey swarm commands:
                                      busy or idle, address (ask the user before sending work)
   hivey swarm profile <slug> [--description T] [--skills a,b] [--tools x,y]
                                      set (or show) a directory entry
+  hivey swarm comms <slug> [--preset quiet|normal|chatty] [--rate-per-min N] [--pair-wakes N]
+         [--pair-window-min N] [--hourly-wakes N] [--broadcasts-per-hour N] [--dedupe-min N]
+         [--slack masters|all|off]
+                                     message limits against floods and over-discussion
+                                     (no flags: show; 0 = no limit for hourly/broadcasts/dedupe)
   hivey swarm list [--json]          swarms, agents, roles, states and queued messages
   hivey swarm master [<slug>] [--focus]
                                      show (or focus) a swarm's master; default: your swarm
@@ -601,6 +607,7 @@ pub(super) fn run_swarm_command(args: &[String]) -> std::io::Result<i32> {
         }
         Some("directory" | "dir") => directory::directory(json_out),
         Some("profile") => directory::profile(&rest),
+        Some("comms") => comms::comms(&rest),
         Some("forget" | "unregister") if rest.len() == 1 => {
             let response = call("forget", json!({ "slug": rest[0] }))?;
             Ok(if result(&response).is_some() { 0 } else { 1 })
@@ -1247,6 +1254,9 @@ mod help_tests {
         let resume = sub_help(SWARM_HELP, "hivey swarm", "resume");
         assert!(resume.contains("pause|resume"));
         assert!(sub_help(SWARM_HELP, "hivey swarm", "import").contains("alias: import"));
+        let comms = sub_help(SWARM_HELP, "hivey swarm", "comms");
+        assert!(comms.contains("--dedupe-min") && comms.contains("over-discussion"));
+        assert!(!comms.contains("hivey swarm list"));
         assert!(sub_help(MSG_HELP, "hivey msg", "send").contains("--urgent"));
         assert_eq!(sub_help(SWARM_HELP, "hivey swarm", "nope"), SWARM_HELP);
     }

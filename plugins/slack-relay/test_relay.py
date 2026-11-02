@@ -94,6 +94,13 @@ class Mirror(unittest.TestCase):
         self.assertTrue(keep(self.msg("ideas/scout", "critic"), "all", self.roles, set()))
         self.assertFalse(keep(self.msg("ideas/scout", "coordinator"), "off", self.roles, set()))
 
+    def test_the_swarms_comms_slack_wins_over_the_relay_config(self):
+        self.assertEqual(relay.mirror_scope({"comms": {"slack": "off"}}, "all"), "off")
+        self.assertEqual(relay.mirror_scope({"comms": {"slack": "all"}}, "masters"), "all")
+        self.assertEqual(relay.mirror_scope({}, "masters"), "masters")
+        self.assertEqual(relay.mirror_scope({"comms": {"slack": "loud"}}, "masters"), "masters")
+        self.assertEqual(relay.mirror_scope({"comms": None}, "all"), "all")
+
     def test_never_echoes_slack_messages_or_sender_copies(self):
         self.assertFalse(relay.should_mirror(self.msg("human", "coordinator"), "all", self.roles, {"m1"}))
         self.assertFalse(relay.should_mirror(self.msg("ideas/coordinator", "coordinator", copy=True),
@@ -163,6 +170,16 @@ class RoundTrip(unittest.TestCase):
             self.assertEqual(len(slack.posted), 1)
             self.assertIn("scout → coordinator", slack.posted[0])
             self.assertEqual(len(hivey.sent), 1)
+            # The swarm turns Slack off in its manifest: read live, nothing more is posted.
+            (root / ".swarm" / "agents.json").write_text(
+                json.dumps({**MANIFEST, "comms": {"slack": "off"}}))
+            with open(bus, "a") as f:
+                f.write("\n" + json.dumps({"ev": "msg", "id": "a2", "from": "ideas/scout",
+                                            "to": "coordinator", "swarm": "ideas",
+                                            "text": "found 4"}) + "\n")
+            r.step()
+            self.assertEqual(len(slack.posted), 1, slack.posted)
+            (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
             # State survives a restart of the relay.
             again = relay.Relay(root, slack, hivey, "C1", "masters")
             again.step()

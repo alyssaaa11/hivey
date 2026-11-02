@@ -120,6 +120,18 @@ python3 <this skill>/scripts/fresh_review.py config <swarm root | agent folder> 
 Swarm owners start it with `swarm_tasks.py submit <ID> --as <agent>`; solo agents with
 `fresh_review.py run --folder .`. Reviews land in `.swarm/reviews/` or `.agent/reviews/`.
 
+Comms limits (per swarm, against floods and over-discussion; the human and hivey are never
+limited): messages per agent per minute, wake-ups per agent pair, wake-ups per agent per hour
+(then saved as FYI), `@all`/`@role:` broadcasts per hour, the same text twice dropped, and
+what the Slack relay mirrors:
+```bash
+hivey swarm comms <slug>                                  # show (defaults: 10/min, 6 per pair
+                                                          # per 5 min, 30/h, 4 broadcasts/h, 10 min dedupe)
+hivey swarm comms <slug> --preset quiet|normal|chatty     # or single flags, e.g. --hourly-wakes 12
+hivey swarm comms <slug> --slack masters|all|off          # what goes to its Slack channel
+```
+`hivey swarm launch … --comms-preset quiet` sets it at launch.
+
 Messages (delivered when the target is idle; `--fyi` never wakes; `--urgent` now):
 ```bash
 hivey msg send <agent|@all|@role:worker|@masters|<swarm>/<agent>|human> "text" [--fyi|--urgent] [--swarm S]

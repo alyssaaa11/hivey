@@ -6,9 +6,11 @@ Slack → bus   Human messages in the channel become bus messages from `human`:
               `@coordinator`/`@master` → the master, no mention → the master.
               Posts made by agents with the /swarm skill's swarm_slack.py
               ("*[agent]* text") keep that agent as the sender.
-bus → Slack   Bus messages are mirrored into the channel. Scope (config "mirror"):
-              "masters" (default: only messages to/from a master or the human),
-              "all", or "off". Messages that came from Slack are never echoed.
+bus → Slack   Bus messages are mirrored into the channel. Scope: the swarm's own
+              `comms.slack` in its manifest (`hivey swarm comms <slug> --slack …`, read
+              live), else config "mirror": "masters" (default: only messages to/from a
+              master or the human), "all", or "off". Messages that came from Slack are
+              never echoed.
 Quiet mode    While ~/.hivey/quiet exists (hivey menu → quiet mode, `hivey quiet on`), bus →
               Slack posts are held; when it ends they go out as one catch-up message, with
               posts agents held through swarm_slack.py (~/.hivey/quiet-held/<channel>.jsonl).
@@ -112,6 +114,16 @@ def involves_master(message, roles):
         or is_master(message.get("from", ""))
         or is_master(message.get("to", ""))
     )
+
+
+MIRROR_SCOPES = ("masters", "all", "off")
+
+
+def mirror_scope(manifest, default):
+    """The swarm's own Slack scope (manifest comms.slack) wins over the relay's config."""
+    comms = manifest.get("comms") if isinstance(manifest.get("comms"), dict) else {}
+    scope = comms.get("slack")
+    return scope if scope in MIRROR_SCOPES else default
 
 
 def should_mirror(message, scope, roles, injected):
@@ -317,8 +329,9 @@ class Relay:
             self.catch_up()  # before reading the bus: if it fails, nothing new is lost
         messages, self.state["bus_offset"] = new_bus_messages(self.bus_path, self.state["bus_offset"])
         roles = roster(manifest)
+        scope = mirror_scope(manifest, self.scope)
         for message in messages:
-            if not should_mirror(message, self.scope, roles, set(self.state["injected"])):
+            if not should_mirror(message, scope, roles, set(self.state["injected"])):
                 continue
             text = format_mirror(message, roles, manifest.get("slug", ""))
             if quiet:
@@ -374,7 +387,8 @@ def main():
     scope = config.get("mirror", "masters")
     interval = float(config.get("interval", 10))
     binary = os.environ.get("HERDR_BIN_PATH", "hivey")
-    log(f"hivey slack relay for swarm {slug!r}, channel {channel}, mirror={scope}")
+    log(f"hivey slack relay for swarm {slug!r}, channel {channel}, "
+        f"mirror={mirror_scope(manifest, scope)}")
     if not channel:
         log("no Slack channel (manifest channel_id / HIVEY_SWARM_CHANNEL); idle")
     token = None

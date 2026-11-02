@@ -155,6 +155,12 @@ In the same message:
   where a miss is costly; 0 turns fresh review off and you approve by hand), their model
   (suggest `sonnet`) and the maximum rounds (suggest 3). Each critic is one short `claude -p`
   run per review, so N critics cost about N extra reads of the deliverable.
+- **Ask how chatty the swarm may be** (comms preset): `normal` (suggest it: 10 messages/min,
+  30 wake-ups/h per agent, 4 `@all`/h, repeats dropped, Slack mirrors only master and human
+  traffic), `quiet` for big or long-running swarms (5/min, 12/h, 2 broadcasts/h, Slack masters
+  only), or `chatty` for short, tightly coupled builds (Slack mirrors everything). Over a limit,
+  messages are saved as FYI (they don't wake anyone) or refused, so agents batch and stop
+  ping-ponging.
 - **Slack**: run `hivey slack status` before showing the plan. Connected: `hivey swarm launch`
   creates (or joins) `#<name>`, invites the user and starts the relay, nothing else to do. Not
   connected: ask the user to run `hivey slack connect` in a terminal (never ask for the token in
@@ -251,7 +257,7 @@ user's tweaks), linked from `index.md`, with a `bootstrap` entry in `log.md`.
 ```bash
 hivey swarm launch <root> --slug <name> --icon <emoji> <agent>... \
     --models builder=opus,writer=sonnet --kinds reviewer=codex,scout=grok \
-    --budget-min 120 --heartbeat 15m \
+    --budget-min 120 --heartbeat 15m --comms-preset normal \
     --heartbeat-task "Monitoring pass: follow the hivey-swarm-creator skill's monitoring pass" \
     --addon hivey.dashboard --addon hivey.swarm-watcher \
     --kickoff "Read your CLAUDE.md, then send START to coordinator as it says."
@@ -357,6 +363,11 @@ the owner → one revision → `submit` again. A task `blocked` after its last r
 that ended in ERROR, is yours: read the review and accept it (`set <ID> approved --as
 coordinator`), re-scope it, or give the owner a specific fix. If an owner disputes a defect, it
 tells you with evidence; you decide. Don't review deliverables yourself instead of the critics.
+
+**Too much talk.** If agents ping-pong, flood `@all` or Slack, tighten the swarm's limits
+(`hivey swarm comms <name> --preset quiet`, or one flag such as `--hourly-wakes 12` or
+`--slack masters`) and tell the agents involved to batch their messages. Ask the user before
+loosening them.
 
 **Roster changes** (agents added or re-scoped): update `.swarm/README.md` and the swarm section
 in every agent's CLAUDE.md, then `hivey msg send @all` what changed. A new agent: scaffold it,
