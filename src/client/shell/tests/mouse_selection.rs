@@ -1183,3 +1183,42 @@ fn double_click_inside_pane_toggles_zoom_when_enabled() {
             if matches!(request.method, crate::api::schema::Method::PaneSelectionRead(_)))));
     assert!(state.selection.is_none());
 }
+
+// hivey: the zoom double-click also works over apps that take the mouse (Claude Code fullscreen).
+#[test]
+fn double_click_zooms_a_pane_whose_app_takes_the_mouse() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    let mut pane_surface = surface();
+    pane_surface.panes[0].mouse_reporting = true;
+    state.set_pane_surface(pane_surface);
+    state.compose(106, 20).expect("composed frame");
+    let pane = state.hits.panes[0].clone();
+    let mut press = |state: &mut ClientShellState, kind| {
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind,
+            column: pane.inner_rect.x + 2,
+            row: pane.inner_rect.y + 1,
+            modifiers: KeyModifiers::empty(),
+        })])
+    };
+    let zooms = |input: &ClientShellInput| {
+        input.actions.iter().any(|action| {
+            matches!(action, ClientShellAction::Endpoint { request, .. }
+                if matches!(request.method, crate::api::schema::Method::PaneZoom(_)))
+        })
+    };
+    let first = press(&mut state, MouseEventKind::Down(MouseButton::Left));
+    assert!(
+        !first.requests.is_empty(),
+        "the first click reaches the app"
+    );
+    assert!(!zooms(&first));
+    press(&mut state, MouseEventKind::Up(MouseButton::Left));
+    let second = press(&mut state, MouseEventKind::Down(MouseButton::Left));
+    assert!(zooms(&second), "the second click zooms");
+    assert!(second.requests.is_empty(), "and is not sent to the app");
+    press(&mut state, MouseEventKind::Up(MouseButton::Left));
+    let third = press(&mut state, MouseEventKind::Down(MouseButton::Left));
+    assert!(!zooms(&third), "a third click starts over");
+}

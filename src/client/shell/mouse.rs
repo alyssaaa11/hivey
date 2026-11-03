@@ -2304,6 +2304,41 @@ impl ClientShellState {
                     .find(|hit| super::contains(hit.rect, point))
                     .cloned();
                 if let Some(hit) = pane_hit {
+                    // hivey: with ui.double_click_zoom a double-click anywhere inside the pane
+                    // zooms it (full screen) and back, instead of selecting a word. It also
+                    // works over apps that take the mouse (Claude Code fullscreen): their first
+                    // click goes through, the second one zooms.
+                    if self.config.double_click_zoom
+                        && mouse.modifiers.is_empty()
+                        && super::contains(hit.inner_rect, point)
+                    {
+                        let click = ClientPaneClick {
+                            pane_id: hit.pane_id.clone(),
+                            viewport_row: mouse.row.saturating_sub(hit.inner_rect.y),
+                            col: mouse.column.saturating_sub(hit.inner_rect.x),
+                            at: std::time::Instant::now(),
+                        };
+                        if previous_pane_click
+                            .as_ref()
+                            .is_some_and(|previous| previous.is_double_click_for(&click))
+                        {
+                            self.selection = None;
+                            self.push_endpoint_method(
+                                crate::api::schema::Method::PaneZoom(
+                                    crate::api::schema::PaneZoomParams {
+                                        pane_id: Some(hit.pane_id.clone()),
+                                        mode: crate::api::schema::PaneZoomMode::Toggle,
+                                    },
+                                ),
+                                outcome,
+                            );
+                            outcome.repaint = true;
+                            return;
+                        }
+                        if hit.mouse_reporting {
+                            self.last_pane_click = Some(click);
+                        }
+                    }
                     if hit.mouse_reporting && super::contains(hit.inner_rect, point) {
                         self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
                         self.pane_mouse_gesture = Some(ClientPaneMouseGesture {
@@ -2320,27 +2355,6 @@ impl ClientShellState {
                             col: mouse.column.saturating_sub(hit.inner_rect.x),
                             at: std::time::Instant::now(),
                         };
-                        // hivey: with ui.double_click_zoom a double-click anywhere in the pane
-                        // zooms it (full screen) and back, instead of selecting a word.
-                        if self.config.double_click_zoom
-                            && mouse.modifiers.is_empty()
-                            && previous_pane_click
-                                .as_ref()
-                                .is_some_and(|previous| previous.is_double_click_for(&click))
-                        {
-                            self.selection = None;
-                            self.push_endpoint_method(
-                                crate::api::schema::Method::PaneZoom(
-                                    crate::api::schema::PaneZoomParams {
-                                        pane_id: Some(hit.pane_id.clone()),
-                                        mode: crate::api::schema::PaneZoomMode::Toggle,
-                                    },
-                                ),
-                                outcome,
-                            );
-                            outcome.repaint = true;
-                            return;
-                        }
                         if mouse.modifiers.is_empty()
                             && previous_pane_click
                                 .as_ref()
