@@ -97,7 +97,13 @@ Lower level (what providers call): `hivey swarm launch <root> --slug S <agent>..
 [--kinds b=codex,c=grok,d=agy] [--addon ID]... [--channel C0…] [--heartbeat 15m --heartbeat-task "…"]
 [--budget-min N] [--kickoff "…"]`. Run it from the pane that should become the master.
 Each agent runs on Claude Code unless `--kinds` (or `--kind` for `--solo`) says `codex`, `grok`
-or `agy` (Antigravity, Gemini). They all read the CLAUDE.md you write: launch links `AGENTS.md`
+or `agy` (Antigravity, Gemini). A Claude agent with model `deepseek` (DeepSeek V4.1 Flash 1017) or
+`openrouter:<id>` runs Claude Code on OpenRouter: launch writes its `.claude/settings.local.json`,
+and the key comes from `key_command` in `~/.hivey/openrouter.json` (else `$OPENROUTER_API_KEY`).
+Model `muse` runs it on Muse Glimmer 30B (MLX 6-bit, `~/models/muse-glimmer-30b-mlx-6bit`) on this
+computer: launch starts `mlx_vlm.server` on 127.0.0.1:8092 if it isn't up (log
+`~/.hivey/logs/muse-server.log`; ~25 GB of memory, 131k context, slow first turns, free).
+They all read the CLAUDE.md you write: launch links `AGENTS.md`
 (and `GEMINI.md` for agy) to it. Per-CLI flags: `--claude-args`, `--codex-args`, `--grok-args`,
 `--agy-args` (defaults run them unattended). Pick the CLI per agent with the user: Claude Code
 for most work, Codex for code review and a second opinion, Grok for X/web research, agy for

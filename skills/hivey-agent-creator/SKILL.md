@@ -60,7 +60,7 @@ From the request, work out:
 
   | Kind (`--kind`) | Suggest it for | Model |
   |---|---|---|
-  | `claude`, Claude Code (default) | most work: building, research, writing, ops; browser control | `opus` for code and deep reasoning; `sonnet` for research, writing, routine ops; `haiku` for trivial jobs |
+  | `claude`, Claude Code (default) | most work: building, research, writing, ops; browser control | `opus` for code and deep reasoning; `sonnet` for research, writing, routine ops; `haiku` for trivial jobs; `deepseek` (DeepSeek V4.1 Flash on OpenRouter, ~$0.15/$0.60 per M tokens) for cheap high-volume work, or `openrouter:<id>` for any OpenRouter model; `muse` (Muse Glimmer 30B on this Mac, free and private but slow, 131k context) for offline or private jobs |
   | `codex`, Codex | code review, a second opinion from another model family | leave out to use the user's configured model |
   | `grok`, Grok | X/Twitter and web research | `grok models` lists them |
   | `agy`, Antigravity (Gemini) | fast, cheap tasks; image generation | see the `hivey-agy` skill's model table |

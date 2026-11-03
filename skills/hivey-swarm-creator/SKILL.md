@@ -81,7 +81,11 @@ For each agent decide:
   `AGENTS.md` (and `GEMINI.md` for agy) to it.
 - **model** (`--models`): for Claude Code, `opus` for builders and deep reasoning; `sonnet`
   for research, writing and data gathering, at a fraction of the cost. A swarm costs
-  many times what one agent does, so spend the strong model where it pays off. For Codex, Grok
+  many times what one agent does, so spend the strong model where it pays off. `deepseek`
+  (DeepSeek V4.1 Flash 1017 through OpenRouter, still on Claude Code) is far cheaper for
+  high-volume workers; `openrouter:<id>` picks any other OpenRouter model. `muse` (Muse
+  Glimmer 30B, local on this Mac) is free and private but slow, and all its agents share one
+  local server, so give it to one or two agents at most. For Codex, Grok
   and agy leave it to the CLI's default unless the user names one.
 - **skills**: run `hivey skills guide` and follow it for every agent (skylls first, skills.sh
   only with the user's OK). Skills go in the plan per agent and land in each agent's own

@@ -10,6 +10,7 @@ pub(crate) mod creators;
 pub(crate) mod engine;
 pub(crate) mod home;
 pub(crate) mod model;
+pub(crate) mod providers;
 pub(crate) mod quiet;
 pub(crate) mod safety;
 pub(crate) mod schedule;

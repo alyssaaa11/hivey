@@ -127,7 +127,7 @@ connectors, their own) are not hivey's and are never touched.
 | Folder | What's in it |
 |---|---|
 | `~/.config/hivey/` | `config.toml` (sidebar, keys), plugins, sessions, logs |
-| `~/.hivey/` | the hivey agent (`agent/CLAUDE.md`, its wiki `agent/hivey-wiki/`), settings, Slack token, voice, wiki look (`wiki.json`), `old/` |
+| `~/.hivey/` | the hivey agent (`agent/CLAUDE.md`, its wiki `agent/hivey-wiki/`), settings, Slack token, voice, wiki look (`wiki.json`), OpenRouter key command (`openrouter.json`, for `deepseek` agents), local model server log (`logs/muse-server.log`, for `muse` agents), `old/` |
 | `~/.local/state/hivey/` | which version is installed |
 | `<agent or swarm folder>/<name>-wiki/` | each agent's or swarm's wiki, made when it is created |
 

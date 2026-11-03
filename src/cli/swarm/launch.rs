@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 
 use super::{api, canonical_pane_id};
 use crate::swarm::adapter::AgentKind;
+use crate::swarm::providers;
 
 pub(super) mod relaunch;
 
@@ -36,7 +37,7 @@ const ADDON_ENTRYPOINT: &str = "relay";
 const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
 
 pub(super) const HELP: &str = "\
-usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=opus]
+usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=deepseek,c=muse]
          [--kinds a=codex,b=grok,c=agy] [--claude-args|--codex-args|--grok-args|--agy-args \"...\"]
          [--kickoff TEXT] [--budget-min N] [--master-pane PANE] [--no-move] [--icon EMOJI]
          [--addon PLUGIN[:ENTRYPOINT]]... [--heartbeat 15m [--heartbeat-task TEXT]] [--slack|--no-slack]
@@ -60,7 +61,13 @@ usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models
   snapshot (hivey swarm schedule … adds more, e.g. a daily report at 09:00).
   --solo: a single agent, no workers. It runs in <root> itself (CLAUDE.md or AGENTS.md there)
   as agent <slug>, in a new space <slug>, and is its own master (messages, schedules and
-  heartbeats go to it). The calling pane stays where it is.";
+  heartbeats go to it). The calling pane stays where it is.
+  Models: Claude aliases (opus, sonnet, ...), or deepseek (DeepSeek V4.1 Flash 1017) and
+  openrouter:<id> (any OpenRouter model): Claude Code on OpenRouter, set up in the agent's
+  .claude/settings.local.json. Its key comes from the command in ~/.hivey/openrouter.json
+  ({\"key_command\": \"envsave get es_...\"}), else $OPENROUTER_API_KEY. muse: Muse Glimmer
+  30B (MLX 6-bit, ~/models/muse-glimmer-30b-mlx-6bit) on this computer, through mlx_vlm.server
+  on 127.0.0.1:8092 (started when it isn't running; slow first turns, 131k context).";
 
 #[derive(Clone)]
 struct Options {
@@ -402,7 +409,22 @@ fn ensure_brief(home: &Path, kind: AgentKind) -> Result<(), String> {
     ))
 }
 
+/// OpenRouter and local models (`deepseek`, `openrouter:<id>`, `muse`) run through Claude Code only.
+fn check_models(opts: &Options) -> Result<(), String> {
+    for (agent, model) in &opts.models {
+        let kind = opts.kind(agent);
+        if kind != AgentKind::Claude && providers::resolve(model).is_some() {
+            return Err(format!(
+                "{agent}: model {model:?} runs on Claude Code; drop --kind {}",
+                kind.as_str()
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn check(opts: &Options, root: &Path) -> Result<(), String> {
+    check_models(opts)?;
     if opts.solo {
         return check_solo(opts, root);
     }
@@ -609,7 +631,24 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
         AgentKind::Grok => opts.grok_args.clone(),
         AgentKind::Agy => opts.agy_args.clone(),
     };
-    if let Some(model) = opts.models.get(agent) {
+    // hivey: `deepseek`, `openrouter:<id>` and `muse` run Claude Code on OpenRouter or a local
+    // model (settings.local.json; see swarm::providers).
+    let mut model = opts.models.get(agent).cloned();
+    if opts.kind(agent) == AgentKind::Claude {
+        let route = model.as_deref().and_then(providers::resolve);
+        if let Some(local) = route.as_ref().and_then(|route| route.local.as_ref()) {
+            if let Err(err) = providers::ensure_server(local) {
+                eprintln!("  {agent}: local model server: {err}");
+            }
+        }
+        if let Err(err) = providers::apply(&opts.home(root, agent), route.as_ref()) {
+            eprintln!("  {agent}: model settings not written: {err}");
+        }
+        if route.is_some() {
+            model = Some(providers::LAUNCH_MODEL.to_string());
+        }
+    }
+    if let Some(model) = model {
         match args.iter().position(|arg| arg == "--model") {
             Some(index) if index + 1 < args.len() => args[index + 1] = model.clone(),
             _ => args.extend(["--model".to_string(), model.clone()]),
