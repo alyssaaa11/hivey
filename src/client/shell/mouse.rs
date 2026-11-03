@@ -2320,6 +2320,27 @@ impl ClientShellState {
                             col: mouse.column.saturating_sub(hit.inner_rect.x),
                             at: std::time::Instant::now(),
                         };
+                        // hivey: with ui.double_click_zoom a double-click anywhere in the pane
+                        // zooms it (full screen) and back, instead of selecting a word.
+                        if self.config.double_click_zoom
+                            && mouse.modifiers.is_empty()
+                            && previous_pane_click
+                                .as_ref()
+                                .is_some_and(|previous| previous.is_double_click_for(&click))
+                        {
+                            self.selection = None;
+                            self.push_endpoint_method(
+                                crate::api::schema::Method::PaneZoom(
+                                    crate::api::schema::PaneZoomParams {
+                                        pane_id: Some(hit.pane_id.clone()),
+                                        mode: crate::api::schema::PaneZoomMode::Toggle,
+                                    },
+                                ),
+                                outcome,
+                            );
+                            outcome.repaint = true;
+                            return;
+                        }
                         if mouse.modifiers.is_empty()
                             && previous_pane_click
                                 .as_ref()

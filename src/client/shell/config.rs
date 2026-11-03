@@ -125,6 +125,7 @@ impl ClientShellConfig {
             agents: config.ui.sidebar.agents.clone(),
             agent_panel_sort: config.ui.agent_panel_sort,
             swarm_sidebar: config.ui.swarm_sidebar, // hivey
+            double_click_zoom: config.ui.double_click_zoom, // hivey
             status_indicators: config.ui.status_indicators,
             sound_enabled: config.ui.sound.enabled,
             toast_delivery: config.ui.toast.delivery,
@@ -353,6 +354,7 @@ impl ClientShellConfig {
                 self.agents = ui.sidebar.agents.clone();
                 self.agent_panel_sort = ui.agent_panel_sort;
                 self.swarm_sidebar = ui.swarm_sidebar; // hivey
+                self.double_click_zoom = ui.double_click_zoom; // hivey
                 self.status_indicators = ui.status_indicators;
                 self.sound_enabled = ui.sound.enabled;
                 self.toast_delivery = ui.toast.delivery;

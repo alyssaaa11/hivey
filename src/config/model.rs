@@ -996,6 +996,9 @@ pub struct UiConfig {
     /// hivey: swarm-style sidebar. The space list is titled "swarms" and fills the sidebar;
     /// the agents panel is hidden (agents are the panes). Default: false.
     pub swarm_sidebar: bool,
+    /// hivey: double-click anywhere inside a pane zooms it to full screen and back, instead of
+    /// selecting the word under the mouse. Default: true.
+    pub double_click_zoom: bool,
     /// Retired setting that Herdr wrote before the workspace filter was removed.
     #[serde(rename = "agent_panel_scope")]
     _legacy_agent_panel_scope: Option<LegacyAgentPanelScopeConfig>,
@@ -1227,7 +1230,8 @@ impl Default for UiConfig {
             tab_bar_right_separator: " ".into(),
             window_title: super::window_title::default_window_title(),
             agent_panel_sort: AgentPanelSortConfig::Spaces,
-            swarm_sidebar: false, // hivey
+            swarm_sidebar: false,    // hivey
+            double_click_zoom: true, // hivey
             _legacy_agent_panel_scope: None,
             status_indicators: StatusIndicatorStyle::Dots,
             sidebar: SidebarConfig::default(),

@@ -356,6 +356,7 @@ fn client_double_click_selects_word_and_copies_only_after_release() {
 fn word_drag_state(copy_on_select: bool) -> ClientShellState {
     let mut config = Config::default();
     config.ui.copy_on_select = copy_on_select;
+    config.ui.double_click_zoom = false; // hivey: these tests cover herdr's word selection
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
     state.set_snapshot(Box::new(snapshot()));
     let mut pane_surface = surface();
@@ -1158,4 +1159,27 @@ fn context_menu_keyboard_and_outside_click_are_client_owned() {
         })]);
     assert!(outside.repaint);
     assert!(state.overlay.is_none());
+}
+
+// hivey: ui.double_click_zoom turns a double-click anywhere in the pane into a zoom toggle.
+#[test]
+fn double_click_inside_pane_toggles_zoom_when_enabled() {
+    let mut state = word_drag_state(false);
+    state.config.double_click_zoom = true;
+    let down = MouseEventKind::Down(MouseButton::Left);
+    let up = MouseEventKind::Up(MouseButton::Left);
+    word_drag_mouse(&mut state, down, 1, 8);
+    word_drag_mouse(&mut state, up, 1, 8);
+    let actions = word_drag_mouse(&mut state, down, 1, 8).actions;
+    assert!(
+        actions.iter().any(|action| matches!(action,
+            ClientShellAction::Endpoint { request, .. }
+                if matches!(&request.method, crate::api::schema::Method::PaneZoom(params)
+                    if params.mode == crate::api::schema::PaneZoomMode::Toggle))),
+        "double-click zooms: {actions:?}"
+    );
+    assert!(!actions.iter().any(|action| matches!(action,
+        ClientShellAction::Endpoint { request, .. }
+            if matches!(request.method, crate::api::schema::Method::PaneSelectionRead(_)))));
+    assert!(state.selection.is_none());
 }
