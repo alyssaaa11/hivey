@@ -27,7 +27,7 @@ HERE = Path(__file__).resolve().parent
 APP_MANIFEST = HERE / "slack-app-manifest.json"
 NEW_APP_URL = "https://api.slack.com/apps?new_app=1"
 NEEDED_SCOPES = {"channels:history", "channels:join", "channels:manage", "channels:read",
-                 "chat:write"}
+                 "chat:write", "groups:history", "groups:read", "groups:write"}  # groups: private channels
 
 
 def config_dir():

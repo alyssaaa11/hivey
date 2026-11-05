@@ -57,5 +57,55 @@ class InviteTest(unittest.TestCase):
         self.assertEqual(slack.invited, ["U2"])
 
 
+class CreateSlack:
+    """conversations.create answers with `create_error`, else creates; #taken exists."""
+
+    def __init__(self, create_error=None, taken=None):
+        self.create_error, self.taken, self.calls = create_error, taken, []
+
+    def call(self, method, http="POST", **params):
+        self.calls.append((method, params))
+        if method == "conversations.create":
+            if self.create_error:
+                raise RuntimeError(f"slack conversations.create: {self.create_error}")
+            return {"channel": {"id": "Cnew", "is_private": params["is_private"]}}
+        if method == "conversations.list":
+            self.listed_types = params["types"]
+            return {"channels": [self.taken] if self.taken else []}
+        if method == "conversations.join":
+            return {"ok": True}
+        raise AssertionError(method)
+
+
+class CreateTest(unittest.TestCase):
+    def test_new_channels_are_private(self):
+        slack = CreateSlack()
+        channel, existing = create_channel.create(slack, "hivey")
+        self.assertEqual(slack.calls[0], ("conversations.create", {"name": "hivey", "is_private": True}))
+        self.assertTrue(channel["is_private"])
+        self.assertFalse(existing)
+
+    def test_missing_scope_says_how_to_add_it(self):
+        with self.assertRaisesRegex(RuntimeError, "groups:write.*Reinstall"):
+            create_channel.create(CreateSlack(create_error="missing_scope"), "hivey")
+
+    def test_existing_private_channel_is_found_without_joining(self):
+        slack = CreateSlack("name_taken", {"id": "Cp", "name": "hivey", "is_private": True, "is_member": True})
+        channel, existing = create_channel.create(slack, "hivey")
+        self.assertEqual((channel["id"], existing), ("Cp", True))
+        self.assertIn("private_channel", slack.listed_types)
+        self.assertNotIn("conversations.join", [m for m, _ in slack.calls])
+
+    def test_existing_public_channel_is_joined(self):
+        slack = CreateSlack("name_taken", {"id": "Cq", "name": "hivey", "is_private": False, "is_member": False})
+        channel, existing = create_channel.create(slack, "hivey")
+        self.assertIn(("conversations.join", {"channel": "Cq"}), slack.calls)
+
+    def test_private_channel_the_bot_is_not_in_asks_for_an_invite(self):
+        slack = CreateSlack("name_taken", {"id": "Cr", "name": "hivey", "is_private": True, "is_member": False})
+        with self.assertRaisesRegex(RuntimeError, "invite @hivey"):
+            create_channel.create(slack, "hivey")
+
+
 if __name__ == "__main__":
     unittest.main()

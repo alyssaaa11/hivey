@@ -18,7 +18,9 @@
         "channels:manage",
         "channels:read",
         "chat:write",
-        "groups:history"
+        "groups:history",
+        "groups:read",
+        "groups:write"
       ]
     }
   },

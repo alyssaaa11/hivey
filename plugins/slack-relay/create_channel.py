@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Create (or find) a public Slack channel for a hivey swarm or agent; prints its id as JSON.
+"""Create (or find) a private Slack channel for a hivey swarm or agent; prints its id as JSON.
 
 usage: create_channel.py <name> [--purpose TEXT]
 
 Uses the relay's token (config.json token_command, or $SLACK_TOKEN; `hivey slack connect` sets
-it); needs channels:manage, plus channels:read and channels:join to find and join an existing
-channel. Run by `hivey slack add`, `hivey swarm launch --slack` and `hivey home setup --slack`.
+it); needs groups:write to create the channel private and invite people (only the people invited
+see it, not everyone who joins the workspace), groups:read and channels:read to find an existing
+one, and channels:join to join an existing public one. Run by `hivey slack add`, `hivey swarm launch --slack` and `hivey home setup --slack`.
 The user is invited, so the channel shows up in their Slack right away: config.json "invite"
 (Slack member ids; `hivey slack connect` sets it, else it's worked out once from the people in
 the channels the bot already shares with them).
-Output: {"ok": true, "channel_id": "C…", "name": "hivey", "existing": false, "invited": ["U…"]}
+Output: {"ok": true, "channel_id": "C…", "name": "hivey", "existing": false, "private": true,
+         "invited": ["U…"]}
+An existing public channel of that name is reused as it is ("private": false, with a note to change
+it to private in Slack: a bot cannot convert it).
 """
 import argparse
 import json
@@ -20,11 +24,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import relay  # noqa: E402  (same folder)
 
+CHANNEL_TYPES = "public_channel,private_channel"  # private: only the ones the bot is in
+MISSING_WRITE = ("Slack needs the groups:write scope to create private channels: add it to the hivey "
+                 "app under OAuth & Permissions → Bot Token Scopes, click Reinstall to Workspace, then "
+                 "run hivey slack connect --force")
+
 
 def find(slack, name):
     cursor = ""
     while True:
-        data = slack.call("conversations.list", http="GET", types="public_channel",
+        data = slack.call("conversations.list", http="GET", types=CHANNEL_TYPES,
                           exclude_archived="true", limit=1000, cursor=cursor)
         for channel in data.get("channels", []):
             if channel.get("name") == name:
@@ -42,7 +51,7 @@ def shared_people(slack):
     """Humans in the channels the bot is in, most shared first (the bot itself excluded)."""
     bot = slack.call("auth.test").get("user_id")
     counts = {}
-    data = slack.call("conversations.list", http="GET", types="public_channel",
+    data = slack.call("conversations.list", http="GET", types=CHANNEL_TYPES,
                       exclude_archived="true", limit=1000)
     for channel in data.get("channels", []):
         if not channel.get("is_member"):
@@ -85,6 +94,30 @@ def invite(slack, channel_id, people):
     return invited
 
 
+def create(slack, name):
+    """(channel, existing) for #name: created private, else the existing one (joined when public).
+    Raises RuntimeError with a message for the user."""
+    try:
+        return slack.call("conversations.create", name=name, is_private=True)["channel"], False
+    except RuntimeError as err:
+        if "missing_scope" in str(err):
+            raise RuntimeError(MISSING_WRITE) from err
+        if "name_taken" not in str(err):
+            raise
+    channel = find(slack, name)
+    if channel is None:
+        raise RuntimeError("name_taken (an archived channel, or a private one the bot is not in)")
+    if not channel.get("is_member"):
+        if channel.get("is_private"):
+            raise RuntimeError(f"#{name} is private and the bot is not in it: invite @hivey there")
+        # The relay reads the channel's history: the bot has to be in it.
+        try:
+            slack.call("conversations.join", channel=channel["id"])
+        except RuntimeError as err:
+            raise RuntimeError(f"cannot join #{name}: {err}") from err
+    return channel, True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("name")
@@ -101,24 +134,12 @@ def main():
                           "in a terminal"}))
         return 1
     slack = relay.Slack(token)
-    existing = False
     try:
-        channel = slack.call("conversations.create", name=args.name, is_private=False)["channel"]
+        channel, existing = create(slack, args.name)
     except RuntimeError as err:
-        if "name_taken" not in str(err):
-            print(json.dumps({"ok": False, "error": str(err)}))
-            return 1
-        channel, existing = find(slack, args.name), True
-        if channel is None:
-            print(json.dumps({"ok": False, "error": "name_taken (archived or private channel)"}))
-            return 1
-        if not channel.get("is_member"):
-            # The relay reads the channel's history: the bot has to be in it.
-            try:
-                slack.call("conversations.join", channel=channel["id"])
-            except RuntimeError as err:
-                print(json.dumps({"ok": False, "error": f"cannot join #{args.name}: {err}"}))
-                return 1
+        print(json.dumps({"ok": False, "error": str(err)}))
+        return 1
+    private = bool(channel.get("is_private", not existing))
     if args.purpose and not existing:
         try:
             slack.call("conversations.setPurpose", channel=channel["id"], purpose=args.purpose[:250])
@@ -126,7 +147,7 @@ def main():
             pass
     invited = invite(slack, channel["id"], invitees(slack, config))
     print(json.dumps({"ok": True, "channel_id": channel["id"], "name": args.name,
-                      "existing": existing, "invited": invited}))
+                      "existing": existing, "private": private, "invited": invited}))
     return 0
 
 

@@ -203,7 +203,8 @@ fn check(args: &[String]) -> Result<i32, String> {
     Ok(1)
 }
 
-/// Creates (or finds and joins) the public channel `#name`; returns its id.
+/// Creates the private channel `#name` (or finds and joins an existing one); returns its id.
+/// Private, so only the people invited see it, not everyone who joins the workspace.
 pub(super) fn create_channel(name: &str, purpose: &str) -> Result<String, String> {
     let output = script("create_channel.py")?
         .args([name, "--purpose", purpose])
@@ -214,10 +215,13 @@ pub(super) fn create_channel(name: &str, purpose: &str) -> Result<String, String
         Some(id) => {
             println!(
                 "Slack #{name}: {id}{}",
-                if reply["existing"] == true {
-                    " (existing)"
-                } else {
-                    " (created)"
+                match (reply["existing"] == true, reply["private"] == false) {
+                    (true, true) => {
+                        " (existing, public: everyone in the workspace can see it; make it \
+                         private in Slack → channel settings → Change to a private channel)"
+                    }
+                    (true, false) => " (existing, private)",
+                    (false, _) => " (created, private)",
                 }
             );
             Ok(id.to_string())
