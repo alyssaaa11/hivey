@@ -130,6 +130,10 @@ hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | sta
   People chatting with agents (Claude Code, Codex, Grok in a terminal; snapshot `interactive`, with one
   entry per session) go to **`agent-sessions.html`**: cost by agent and by day, the costliest sessions with
   their peak context (⚠️ over 300k tokens), length and first message, and tips to spend less.
+- **Open:** `hivey agent-map open` (hivey menu → agent map) opens `http://127.0.0.1:8754/latest/agent-map.html`
+  (the map first; the stats page when there is no map yet). With no report yet it builds the pages without
+  a model in seconds, opens them, then draws the map in the background (`first-run.json` stops a second
+  click from starting another build). If a stats page fails, the logs and sessions pages still publish.
 - **Refresh:** `hivey agent-map open` serves the pages from 127.0.0.1 (`serve.py`, port 8754 or any
   free one, in `~/.hivey/agent-map/server.json`; stops after 2 h unused) so the navbar's ↻ Refresh
   button works: it runs `agent_map.py refresh` (new scan into the latest report's pages, no model, a few

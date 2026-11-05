@@ -19,6 +19,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOME = Path.home()
@@ -546,7 +547,7 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
         enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), job_state)
     except Exception as e:  # the pages still work without hivey's layer
         log(folder, f"enhance failed: {e}")
-    if ok:
+    if ok or (folder / "agent-logs.html").is_file():  # a failed stats page still publishes logs and sessions
         tmp = REPORTS / ".latest-new"
         if tmp.is_symlink() or tmp.exists():
             tmp.unlink()
@@ -586,9 +587,11 @@ def refresh(scan, days: int, model: str) -> int:
 # ---------------------------------------------------------------- open
 
 def latest_report() -> Path | None:
-    if LATEST.exists() and (LATEST / "agent-stats.html").is_file():
+    def has_pages(p: Path) -> bool:
+        return (p / "agent-stats.html").is_file() or (p / "agent-logs.html").is_file()
+    if LATEST.exists() and has_pages(LATEST):
         return LATEST.resolve()
-    folders = sorted(p for p in REPORTS.glob("*-*-*-*") if (p / "agent-stats.html").is_file()) if REPORTS.is_dir() else []
+    folders = sorted(p for p in REPORTS.glob("*-*-*-*") if has_pages(p)) if REPORTS.is_dir() else []
     return folders[-1] if folders else None
 
 
@@ -598,25 +601,61 @@ def notify(text: str) -> None:
                        capture_output=True)
 
 
+PAGES = ("agent-map.html", "agent-stats.html", "agent-logs.html", "agent-sessions.html")  # the first one found opens
+FIRST_RUN = STATE / "first-run.json"
+
+
+def open_page(folder: Path) -> bool:
+    """Open the map (else the first page there is) from the local server, so Refresh works; the
+    navbar reaches the other pages. Without the server, the file itself."""
+    page = next((p for p in PAGES if (folder / p).is_file()), None)
+    if not page:
+        return False
+    import serve
+    port = serve.ensure()
+    rel = "latest" if LATEST.exists() and LATEST.resolve() == folder.resolve() else folder.name
+    target = f"http://127.0.0.1:{port}/{rel}/{page}" if port else str(folder / page)
+    p = subprocess.run(["open", target], capture_output=True, text=True)
+    if p.returncode:
+        notify(f"Could not open the agent map: {(p.stderr or '').strip()[:120]}")
+        return False
+    print(f"opened {target}")
+    return True
+
+
+def first_run_busy() -> bool:
+    try:
+        info = json.loads(FIRST_RUN.read_text())
+        os.kill(int(info["pid"]), 0)
+        return time.time() - info.get("started", 0) < 1800
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def open_latest(model: str) -> int:
     folder = latest_report()
     if folder:
-        import serve  # served from 127.0.0.1 so the pages' Refresh button works; else the files
-        port = serve.ensure()
-        base = f"http://127.0.0.1:{port}/{os.path.relpath(LATEST if LATEST.exists() else folder, REPORTS)}/" \
-            if port else None
-        for page in ("agent-stats.html", "agent-map.html", "agent-logs.html", "agent-sessions.html"):
-            if (folder / page).is_file():
-                subprocess.run(["open", base + page if base else str(folder / page)], capture_output=True)
-        print(f"opened {base or folder}")
+        return 0 if open_page(folder) else 1
+    # No report yet: the pages without a model first (seconds), open them, then the map in the background.
+    if first_run_busy():  # a second click while the first report is being built
+        notify("Your first agent map is still being built; it opens when ready.")
         return 0
-    # No report yet: build the first one in the background and open it when it is ready.
     REPORTS.mkdir(parents=True, exist_ok=True)
+    FIRST_RUN.write_text(json.dumps({"pid": os.getpid(), "started": time.time()}))
+    notify("Building your first agent map (a few seconds)…")
     with open(STATE / "first-run.log", "a") as fh:
-        subprocess.Popen([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "nightly", "--model", model, "--open"],
-                         stdout=fh, stderr=fh, stdin=subprocess.DEVNULL, start_new_session=True)
-    notify("Building your first agent map (a few minutes); it opens when ready.")
-    print("no report yet: building the first one in the background (log: ~/.hivey/agent-map/first-run.log)")
+        subprocess.run([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "refresh"], stdout=fh, stderr=fh,
+                       stdin=subprocess.DEVNULL, timeout=600)
+        folder = latest_report()
+        if folder:
+            open_page(folder)
+        # the map needs the model: drawn in the background; the page's Refresh (or reopening) shows it
+        bg = subprocess.Popen([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "nightly", "--model", model],
+                              stdout=fh, stderr=fh, stdin=subprocess.DEVNULL, start_new_session=True)
+    FIRST_RUN.write_text(json.dumps({"pid": bg.pid, "started": time.time()}))
+    if folder:
+        notify("Stats, logs and sessions are open; the map is being drawn (a few minutes).")
+    print("first report: pages built; the map is being drawn in the background (log: ~/.hivey/agent-map/first-run.log)")
     return 0
 
 

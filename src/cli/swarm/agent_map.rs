@@ -3,8 +3,8 @@
 //! skills); this command runs it, so the menu's "agent map" item and launchd can reach it.
 
 const HELP: &str = "\
-usage: hivey agent-map open              open the latest report (stats page + map); builds the
-                                         first one in the background when there is none
+usage: hivey agent-map open              open the latest map (its navbar has Stats, Logs, Sessions);
+                                         the first time, builds the pages in seconds, the map after
        hivey agent-map refresh           scan again into the latest report (free, no model); the
                                          pages' Refresh button does this
        hivey agent-map nightly [--model haiku] [--no-llm] [--open]
