@@ -22,7 +22,7 @@ STATE = Path.home() / ".hivey" / "agent-map"
 REPORTS = STATE / "reports"
 INFO = STATE / "server.json"
 SCRIPTS = Path(__file__).resolve().parent
-PREFERRED_PORT = 8754
+PREFERRED_PORT = 42817  # unregistered and below macOS's temporary-port range, so no other app picks it
 IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 MARK = b"hivey-agent-map"
@@ -40,11 +40,27 @@ def running() -> int | None:
         return None
 
 
+def port_free(port: int) -> bool:
+    import socket
+    with socket.socket() as sock:
+        try:
+            sock.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
+
 def ensure() -> int | None:
     """The running server's port, starting one in the background when there is none."""
     port = running()
-    if port:
+    if port and (port == PREFERRED_PORT or not port_free(PREFERRED_PORT)):
         return port
+    if port:  # an older server on another port while ours is free: replace it
+        try:
+            os.kill(int(json.loads(INFO.read_text())["pid"]), 15)
+            time.sleep(0.3)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
     STATE.mkdir(parents=True, exist_ok=True)
     with open(STATE / "server.log", "a") as fh:
         subprocess.Popen([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "serve"], stdin=subprocess.DEVNULL,
