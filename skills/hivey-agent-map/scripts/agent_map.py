@@ -563,6 +563,9 @@ def describe_markdown(path: Path) -> str:
         return ""
     fm = re.match(r"---\n(.*?)\n---", text, re.S)
     if fm:
+        m = re.search(r"^description:[ \t]*[>|]-?[ \t]*\n((?:[ \t]+.*\n?)+)", fm.group(1) + "\n", re.M)
+        if m:  # folded or literal block: the indented lines
+            return first_sentence(" ".join(l.strip() for l in m.group(1).splitlines()))
         m = re.search(r"^description:\s*\"?(.+?)\"?\s*$", fm.group(1), re.M)
         if m:
             return first_sentence(m.group(1))

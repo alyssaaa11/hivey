@@ -1,6 +1,14 @@
 ---
 name: hivey-grok
-description: Run tasks with xAI's Grok Build CLI (`grok`, installed at ~/.grok/bin/grok) headless through a bundled uv Python runner — research questions (web search, "what's X/Twitter saying about…", trend scans with source links), quick answers, structured JSON extraction, or coding work in a folder — then check the result and report cost. Also manages grok itself: models, sessions, resuming, login, usage limits, updates, config and docs. Use whenever the user says "grok", "ask Grok", "with Grok", "grok -p", wants a Grok/xAI second opinion, or wants a Grok-powered scan of X/Twitter discussion, even if they don't say "CLI". Not for the grok.com web app in Chrome (use grok-research / deep-research-duo) and not for calling the xAI API from code.
+description: >-
+  Run tasks with xAI's Grok Build CLI (`grok`, installed at ~/.grok/bin/grok) headless through a
+  bundled uv Python runner — research questions (web search, "what's X/Twitter saying about…", trend
+  scans with source links), quick answers, structured JSON extraction, or coding work in a folder —
+  then check the result and report cost. Also manages grok itself: models, sessions, resuming, login,
+  usage limits, updates, config and docs. Use whenever the user says "grok", "ask Grok", "with Grok",
+  "grok -p", wants a Grok/xAI second opinion, or wants a Grok-powered scan of X/Twitter discussion,
+  even if they don't say "CLI". Not for the grok.com web app in Chrome (use grok-research /
+  deep-research-duo) and not for calling the xAI API from code.
 ---
 
 > Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
