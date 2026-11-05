@@ -451,6 +451,15 @@ class Usage:
             agents.append({"agent": name, "last_active": seen.astimezone().isoformat(timespec="minutes") if seen else None,
                            **{k: round(v, 4) if isinstance(v, float) else v for k, v in tot.items()},
                            "models": [m for m, _ in models.most_common()], "providers": [p for p, _ in providers.most_common()]})
+        day_agent = collections.defaultdict(lambda: collections.defaultdict(blank))
+        for r in self.rows:
+            acc = day_agent[r[0]][r[1]]
+            for k, v in r[5].items():
+                acc[k] += v
+        daily_agents = {day: sorted(({"agent": a, "cost_usd": round(v["cost_usd"], 4), "calls": v["calls"],
+                                      "tokens": v["input"] + v["output"] + v["cache_read"] + v["cache_write"]}
+                                     for a, v in per.items()), key=lambda x: -x["cost_usd"])
+                        for day, per in sorted(day_agent.items())}
         daily = collections.defaultdict(dict)
         for (day, prov), tot in group(lambda r: (r[0], r[2])).items():
             daily[day][prov] = round(tot["cost_usd"], 4)
@@ -462,10 +471,111 @@ class Usage:
                        for k, v in group(lambda r: r[3]).items()},
             "kinds": {k: round(v["cost_usd"], 4) for k, v in group(lambda r: r[4]).items()},
             "daily_cost_by_provider": dict(sorted(daily.items())),
+            "daily_by_agent": daily_agents,
             "total_cost_usd": round(sum(r[5]["cost_usd"] for r in self.rows), 2),
             "total_tokens": sum(r[5]["input"] + r[5]["output"] + r[5]["cache_read"] + r[5]["cache_write"] for r in self.rows),
             "sources_without_tokens": ["antigravity (agy): no per-session token data on disk"],
         }
+
+
+# ---------------------------------------------------------------- descriptions
+
+DESCRIPTIONS = STATE / "descriptions.json"  # {node id: "what it does"}: written by the nightly model or you
+
+
+def first_sentence(text: str, limit: int = 170) -> str:
+    text = re.sub(r"`|\*\*|__|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", text)
+    text = " ".join(text.split())
+    m = re.match(r"(.+?[.!?])(\s|$)", text)
+    out = m.group(1) if m else text
+    return out if len(out) <= limit else out[: limit - 1].rsplit(" ", 1)[0] + "…"
+
+
+def describe_markdown(path: Path) -> str:
+    """A brief's mission (or its first real paragraph), or a SKILL.md description."""
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return ""
+    fm = re.match(r"---\n(.*?)\n---", text, re.S)
+    if fm:
+        m = re.search(r"^description:\s*\"?(.+?)\"?\s*$", fm.group(1), re.M)
+        if m:
+            return first_sentence(m.group(1))
+        text = text[fm.end():]
+    text = re.sub(r"<!-- BEGIN (GUIDELINES|GLOBAL[^>]*)-->.*?<!-- END (GUIDELINES|GLOBAL)[^>]*-->", "", text, flags=re.S)
+    text = re.sub(r"^# General guidelines.*?(?=^# (?!General))", "", text, flags=re.S | re.M)
+    m = re.search(r"^#{1,3}\s*(your mission|mission|purpose|what (this|it) does)\b.*?\n(.+?)(\n#|\Z)",
+                  text, re.I | re.M | re.S)
+    body = m.group(3) if m else text
+    if BOILERPLATE.search(body[:300]) and m is None:
+        return ""  # only the global guidelines: nothing about this agent
+    for para in re.split(r"\n\s*\n", body):
+        p = re.sub(r"^\s*(\d+\.|[-*])\s+", "", para.strip())  # a mission written as a list: its first item
+        if p and not p.startswith(("#", ">", "<!--", "|", "```")) and len(p) > 25 and not BOILERPLATE.search(p):
+            return first_sentence(p.split("\n")[0] if re.match(r"\s*(\d+\.|[-*])\s", para) else p)
+    return ""
+
+
+BOILERPLATE = re.compile(r"behavioral guidelines|general guidelines|think before coding|you are claude|"
+                         r"before implementing|state your assumptions|always end your final response|"
+                         r"^(you are|i am) (the )?[\w -]{1,30}( agent)?\.?$|"
+                         r"the user's (original )?request, verbatim|the user's words", re.I)
+
+
+def describe_script(path: Path) -> str:
+    """The module docstring or leading comment block of a script (not a function's docstring)."""
+    try:
+        lines = path.read_text(errors="replace")[:6000].splitlines()
+    except OSError:
+        return ""
+    i, comments = 0, []
+    while i < len(lines):
+        l = lines[i].strip()
+        if l.startswith("#!") or l.startswith("# ///") or (comments == [] and re.match(r"#\s*(requires-python|dependencies|\]|\[|\")", l)):
+            i += 1
+            continue
+        if l.startswith("#"):
+            text = l.lstrip("# ").strip()
+            if text and not text.startswith(("-*-", "///", "noqa")):
+                comments.append(text)
+            i += 1
+            continue
+        if not l:
+            i += 1
+            if comments:
+                break
+            continue
+        break
+    if i < len(lines) and re.match(r'^[rub]*("""|\'\'\')', lines[i].strip()):
+        q = lines[i].strip().lstrip("rub")[:3]
+        body = [lines[i].strip()[len(q) + (len(lines[i].strip()) - len(lines[i].strip().lstrip("rub"))):]]
+        j = i + 1
+        while j < len(lines) and q not in body[-1]:
+            body.append(lines[j].strip())
+            j += 1
+        text = " ".join(body).split(q)[0]
+        para = re.split(r"\s{2,}|\n\s*\n", text.strip())[0]
+        if para and not BOILERPLATE.search(para):
+            return first_sentence(para)
+    joined = " ".join(comments)
+    return first_sentence(joined) if len(joined) > 20 and not BOILERPLATE.search(joined) else ""
+
+
+def describe_job(j: dict) -> str:
+    for p in job_run_files(j["command"]):
+        pp = Path(p)
+        if pp.parent.name == "scripts" and (pp.parent.parent / "SKILL.md").is_file():
+            d = describe_markdown(pp.parent.parent / "SKILL.md")
+            if d:
+                return d
+        d = describe_script(pp)
+        if d:
+            return d
+    m = re.search(r'claude\b.*?-p\s+["\']/([\w-]+)', j["command"])
+    if m and (HOME / ".claude/skills" / m.group(1) / "SKILL.md").is_file():
+        return describe_markdown(HOME / ".claude/skills" / m.group(1) / "SKILL.md")
+    return ""
 
 
 # ---------------------------------------------------------------- links
@@ -655,6 +765,18 @@ def scan(days: int) -> dict:
     live = live_agents()
     usage = Usage(days).collect().summary()
     nodes, candidates = build_links(jobs, live)
+    overrides = load_json(DESCRIPTIONS, {})
+    for j in jobs:
+        j["description"] = overrides.get(j["id"]) or describe_job(j)
+    by_job = {j["id"]: j["description"] for j in jobs}
+    for n in nodes:
+        if n["id"] in overrides:
+            n["description"] = overrides[n["id"]]
+        elif n["type"] == "job":
+            n["description"] = by_job.get(n["id"], "")
+        elif n.get("dir"):
+            n["description"] = next((d for d in (describe_markdown(Path(n["dir"]) / f) for f in
+                                                 ("CLAUDE.md", "AGENTS.md", "README.md")) if d), "")
     for n in nodes:
         n.pop("paths", None)
         n.pop("run", None)
@@ -745,6 +867,8 @@ def main() -> int:
     nt.add_argument("--model", default="haiku")
     nt.add_argument("--no-llm", action="store_true", help="no model run: last night's map, unchanged")
     nt.add_argument("--open", action="store_true", help="open the report when done")
+    en = sub.add_parser("enhance", help="re-apply hivey's layer (navbar, colours, info) to a report")
+    en.add_argument("folder", nargs="?", default=str(STATE / "reports" / "latest"))
     op = sub.add_parser("open", help="open the latest report (builds the first one if there is none)")
     op.add_argument("--model", default="haiku")
     sc = sub.add_parser("schedule", help="the nightly launchd run: install | remove | status")
@@ -776,6 +900,12 @@ def main() -> int:
         if a.open:
             report.open_latest(a.model)
         return code
+    if a.cmd == "enhance":
+        import report, enhance
+        folder = Path(a.folder).expanduser().resolve()
+        enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), report.job_state)
+        print(f"enhanced {folder}")
+        return 0
     if a.cmd == "open":
         import report
         return report.open_latest(a.model)

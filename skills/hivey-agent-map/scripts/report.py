@@ -160,6 +160,30 @@ def write_stats(snap: dict, folder: Path) -> None:
         L.append("## How does the cost move day by day? {#daily}\n")
         L.append('@chart type=line data=daily.csv x=day y=cost_usd unit=USD title="Daily cost, all providers '
                  '(API-equivalent USD, estimated; today is partial)"\n')
+    per_day = u.get("daily_by_agent", {})
+    if per_day:
+        top5 = [a["agent"] for a in agents[:5]]
+        cols = [re.sub(r"[^\w-]", "_", a) for a in top5]
+        with open(folder / "daily_agents.csv", "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["day"] + cols)
+            for day, rows in per_day.items():
+                by = {r["agent"]: r["cost_usd"] for r in rows}
+                w.writerow([day[5:]] + [round(by.get(a, 0.0), 2) for a in top5])
+        L.append("## What ran each day? {#per-day}\n")
+        L.append(f'@chart type=bar data=daily_agents.csv x=day y={",".join(cols)} unit=USD '
+                 f'title="Cost per day of the top {len(top5)} agents (API-equivalent USD, estimated)"\n')
+        L.append("| Day | Cost | Tokens | Agents that day (top 3) |")
+        L.append("| --- | --- | --- | --- |")
+        days_cost = {d: sum(r["cost_usd"] for r in rows) for d, rows in per_day.items()}
+        peak = max(days_cost, key=days_cost.get)
+        for day, rows in per_day.items():
+            cost_d, tok_d = days_cost[day], sum(r["tokens"] for r in rows)
+            badge = " {bad:peak}" if day == peak and len(per_day) > 2 else ""
+            tops = ", ".join(f"{cell(r['agent'])} {money(r['cost_usd'])}" for r in rows[:3])
+            L.append(f"| {dt.date.fromisoformat(day):%a %d %b} | {money(cost_d)}{badge} | {mtok(tok_d)} | "
+                     f"{tops} (+{max(0, len(rows) - 3)} more) |")
+        L.append("")
 
     L.append("## How do the agents feed each other? {#map}\n")
     L.append("The full map is `agent-map.html` in this folder.\n")
@@ -268,7 +292,8 @@ def write_logs_page(snap: dict, folder: Path) -> None:
         if not j.get("log"):
             body.append("<p class=meta>this job writes no log file hivey can find.</p>")
         rows.append(f"<details class=row data-state='{emo}'><summary><span class=emo>{emo}</span>"
-                    f"<b>{e(j['name'])}</b><span class=sub>{e(words)}</span><span class=when>{e(last)}</span>"
+                    f"<span class=name><b>{e(j['name'])}</b><small class=desc>{e(j.get('description') or '')}</small></span>"
+                    f"<span class=sub>{e(words)}</span><span class=when>{e(last)}</span>"
                     f"<span class=issue>{e(issue[:110])}</span></summary>{details(body)}</details>")
     arows = []
     dormant = [n for n in names if n not in live and n not in usage and not logs.get(n)]
@@ -285,7 +310,9 @@ def write_logs_page(snap: dict, folder: Path) -> None:
                 f" · last active {e(u.get('last_active') or '?')} · {e(cost)}"
                 + (f" · {e(', '.join(u.get('models', [])[:2]))}" if u else "") + "</p>"]
         body += log_block(info) if info else ["<p class=meta>no <code>logs/</code> folder in this agent.</p>"]
-        arows.append(f"<details class=row><summary><span class=emo>{emo}</span><b>{e(name)}</b>"
+        adesc = next((n.get("description", "") for n in snap["nodes"] if n["type"] == "agent" and n["label"] == name), "")
+        arows.append(f"<details class=row><summary><span class=emo>{emo}</span>"
+                     f"<span class=name><b>{e(name)}</b><small class=desc>{e(adesc)}</small></span>"
                      f"<span class=sub>{e(words)}</span><span class=when>{e((u.get('last_active') or '')[:16].replace('T', ' '))}</span>"
                      f"<span class=issue>{e(cost)}</span></summary>{details(body)}</details>")
     if dormant:
@@ -306,9 +333,10 @@ nav a{{color:var(--accent);margin-right:18px;text-decoration:none;font-weight:60
 h1{{font-size:26px;margin:18px 0 4px}} h2{{font-size:19px;margin:34px 0 10px}}
 .lead{{color:var(--mute);margin:0 0 6px}} .counts{{font-size:17px;margin:10px 0 0}}
 .row{{border:1px solid var(--line);background:var(--card);border-radius:10px;margin:7px 0}}
-summary{{display:grid;grid-template-columns:30px minmax(150px,1.1fr) minmax(130px,.9fr) 150px minmax(0,2fr);gap:12px;align-items:center;padding:10px 14px;cursor:pointer;list-style:none}}
+summary{{display:grid;grid-template-columns:30px minmax(220px,2fr) minmax(120px,.8fr) 130px minmax(0,1.6fr);gap:12px;align-items:center;padding:10px 14px;cursor:pointer;list-style:none}}
 summary::-webkit-details-marker{{display:none}}
-.emo{{font-size:18px}} .sub,.when{{color:var(--mute);font-size:13px}} .issue{{font:12.5px ui-monospace,Menlo,monospace;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.emo{{font-size:18px}} .name{{min-width:0}} .name b{{display:block}}
+.desc{{display:block;color:var(--mute);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}} .sub,.when{{color:var(--mute);font-size:13px}} .issue{{font:12.5px ui-monospace,Menlo,monospace;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 details[open] summary{{border-bottom:1px solid var(--line)}} details>*:not(summary){{margin:10px 16px}}
 .meta{{color:var(--mute);font-size:13px}} code{{font:12.5px ui-monospace,Menlo,monospace;word-break:break-all}}
 .errs{{margin-top:0}} .errs li{{color:#d1242f}} @media (prefers-color-scheme:dark){{.errs li{{color:#ff7b72}}}}
@@ -317,7 +345,7 @@ pre{{background:var(--pre);border:1px solid var(--line);border-radius:8px;paddin
 @media (max-width:760px){{summary{{grid-template-columns:28px 1fr}} .sub,.when,.issue{{grid-column:2}}}}
 </style>
 <main>
-<nav><a href="agent-stats.html">Stats</a><a href="agent-map.html">Map</a><a class=on href="agent-logs.html">Logs</a></nav>
+<nav class=hv-top><a href="agent-stats.html">Stats</a><a href="agent-map.html">Map</a><a class=on href="agent-logs.html">Logs</a></nav>
 <h1>Did every job and agent run?</h1>
 <p class=lead>Scan of {e(snap['generated'][:16].replace('T', ' '))}. Click a row for its issues and the last lines of its log.</p>
 <p class=counts>Scheduled jobs: {summary}</p>
@@ -368,7 +396,14 @@ already built: do not touch stats.archify.md or agent-stats.html.
 2. Map: {map_task}
    Costs and status go in each node's sublabel (from usage.agents and jobs in snapshot.json); keep at most
    25 nodes on 5 stages x rows 0-4; refresh the numbers in the cards.
-3. Run: node {archify} finalize dataflow map.json agent-map.html --quality showcase --json --out-dir review-map-llm-1
+3. Descriptions: every node in snapshot.json has a "description" (what it does). For each job and agent
+   whose description is empty or does not say what it does (an instruction to the agent, "You are X"),
+   read its brief or script (first lines only) and write ONE plain sentence of at most 18 words into
+   ~/.hivey/agent-map/descriptions.json ({{"<node id>": "<sentence>"}}; keep the entries already there).
+   Then write map-meta.json in this folder: {{"nodes": {{"<map node id>": {{"refs": [<snapshot node ids
+   this box stands for>], "description": "<one sentence>"}}}}, "stages": {{"<stage label>": "<what this
+   column holds, one sentence>"}}}}. A box that folds several jobs lists all of them in refs.
+4. Run: node {archify} finalize dataflow map.json agent-map.html --quality showcase --json --out-dir review-map-llm-1
    If it fails, repair map.json and rerun with review-map-llm-2, -3 ... (at most 4 runs).
 Stop there and reply with one line: what changed."""
 
@@ -424,7 +459,8 @@ def run_llm(folder: Path, model: str, has_map: bool) -> bool:
     prompt = MAP_PROMPT.format(folder=folder, scripts=SCRIPTS, archify=archify, map_task=task)
     tools = ("Read,Write,Edit,Glob,Grep,Bash(python3:*),Bash(node:*),Bash(ls:*),Bash(cat:*),"
              "Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(sed -n:*),Bash(wc:*)")
-    cmd = [claude, "-p", prompt, "--model", model, "--allowedTools", tools, "--output-format", "text"]
+    cmd = [claude, "-p", prompt, "--model", model, "--allowedTools", tools, "--output-format", "text",
+           "--add-dir", str(STATE)]  # descriptions.json and links.json live there
     log(folder, f"updating the map with {model}")
     env = {**os.environ, "HIVEY_AGENT": "hivey-agent-map"}
     token = claude_token(folder)
@@ -477,6 +513,11 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
     else:
         log(folder, "map: ok" if (folder / "agent-map.html").is_file() else "map: none yet")
 
+    try:
+        import enhance
+        enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), job_state)
+    except Exception as e:  # the pages still work without hivey's layer
+        log(folder, f"enhance failed: {e}")
     if ok:
         tmp = REPORTS / ".latest-new"
         if tmp.is_symlink() or tmp.exists():

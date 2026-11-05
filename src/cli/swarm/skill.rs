@@ -177,6 +177,10 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 include_str!("../../../skills/hivey-agent-map/scripts/hivey_spend.py"),
             ),
             (
+                "scripts/enhance.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/enhance.py"),
+            ),
+            (
                 "scripts/report.py",
                 include_str!("../../../skills/hivey-agent-map/scripts/report.py"),
             ),

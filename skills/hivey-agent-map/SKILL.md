@@ -110,6 +110,17 @@ hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | sta
 
 - **hivey menu → agent map** runs `hivey agent-map open`: it opens `agent-stats.html`,
   `agent-map.html` and `agent-logs.html` from `~/.hivey/agent-map/reports/latest`.
+- **hivey's layer on the archify pages** (`enhance.py`, after finalize; `agent_map.py enhance [folder]`
+  re-applies it): a Stats · Map · Logs navbar on every page; map boxes coloured by spend (green: none →
+  red: the most, log scale, with a legend); a hover explanation on each column header; and in each box's
+  info card what it does, spend, tokens, calls, models and last run. Boxes are tied to snapshot nodes by
+  `map-meta.json` (`{"nodes": {"<box id>": {"refs": [...], "description": "…"}}, "stages": {...}}`,
+  written by the nightly model), else by label. A job counts only its own spend, not its agent's.
+- **Descriptions** ("what it does"): from a brief's mission, a skill's description or a script's module
+  docstring; the nightly model writes the missing or weak ones to `~/.hivey/agent-map/descriptions.json`
+  (kept, edit freely), which wins over the extracted ones. They show in the map's info cards and the run log.
+- **Per day:** the stats page charts the top agents' cost per day and lists each day's cost, tokens and
+  top agents (`usage.daily_by_agent` in the snapshot).
 - **`agent-logs.html`** (run log, written by code): every scheduled job with ✅ ran ok · ⚠️ errors in
   its log or a missed run (a launchd log older than its schedule allows) · ❌ non-zero exit or not
   loaded · ⏳ running · ❔ no log, its last run, the issue, and on click the error lines and last 40
