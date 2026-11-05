@@ -116,6 +116,7 @@ def write_sessions_page(snap: dict, folder: Path) -> None:
     NAV, NAV_CSS = enhance.nav("agent-sessions.html", snap.get('generated', '')), enhance.NAV_CSS
     page = f"""<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
+{enhance.FAVICON}
 <title>Interactive sessions · {e(snap.get('generated', '')[:16])}</title>
 <style>
 :root{{--bg:#fff;--fg:#1d2330;--mute:#667085;--line:#e4e7ec;--card:#f8f9fb;--accent:#2f6fec}}

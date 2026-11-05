@@ -337,6 +337,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
     NAV, NAV_CSS = enhance.nav("agent-logs.html", snap['generated']), enhance.NAV_CSS
     page = f"""<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
+{enhance.FAVICON}
 <title>Agent logs · {e(snap['generated'][:16])}</title>
 <style>
 :root{{--bg:#fff;--fg:#1d2330;--mute:#667085;--line:#e4e7ec;--card:#f8f9fb;--accent:#2f6fec;--pre:#f2f4f7}}

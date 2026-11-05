@@ -28,6 +28,11 @@ STAGE_HELP = {
     "outputs": "What leaves the system: posts, messages, published files.",
 }
 
+# The tab icon: hivey's logo (assets/logo.svg), embedded so the pages need no other file.
+FAVICON = ('<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,'
+           "%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' "
+           "fill='%239befc8'/%3E%3Cpath d='M10 9h7v9h6V9h7v23h-7V22h-6v10h-7z' fill='%23122319'/%3E%3C/svg%3E\">")
+
 NAV_CSS = """
 .hv-nav{position:relative;z-index:50;display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:flex-start;
   padding:6px 16px;font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -85,7 +90,8 @@ catch(e){clearInterval(tick);b.disabled=false;b.textContent='refresh failed: ser
 def inject(page: str, css: str, top: str, script: str = "") -> str:
     """Adds hivey's pieces, each wrapped in <!--hv--> markers so a rerun replaces them."""
     page = re.sub(r"<!--hv-->.*?<!--/hv-->", "", page, flags=re.S)
-    page = page.replace("</head>", f"<!--hv--><style>{css}</style><!--/hv--></head>", 1)
+    page = re.sub(r"<link\b[^>]*\brel=[\"']?(?:shortcut )?icon\b[^>]*>", "", page, flags=re.I)  # hivey's icon only
+    page = page.replace("</head>", f"<!--hv-->{FAVICON}<style>{css}</style><!--/hv--></head>", 1)
     m = re.search(r"<body[^>]*>", page)
     if m:
         page = page[: m.end()] + f"<!--hv-->{top}<!--/hv-->" + page[m.end():]
