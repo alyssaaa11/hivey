@@ -201,6 +201,12 @@ Normal messages are **delivered when the agent is idle**, never mid-task. Severa
 messages arrive together as one prompt. If an agent is blocked on a question, its messages are
 held and **the master is told once**. Everything is logged in `<root>/.swarm/bus.jsonl`.
 
+Claude agents (DeepSeek and Muse ones too, they run in Claude Code) get agent-to-agent
+messages through Claude Code's own inbox instead of typed text: they show up as a message
+from a teammate session, and Claude Code's `busy` status keeps hivey from typing into a turn
+that's still running. Your own messages are still typed, so they count as yours. Agents
+started before hivey 0.9.48 keep typed delivery until they're relaunched.
+
 **From Slack** (`#swarm-<slug>`): `@scout …` reaches that agent, `@all …` everyone, and a
 message with no mention goes to the master. Messages to and from the master are copied back
 to the channel. Set `"mirror": "all"` in the relay's `config.json` to see everything.

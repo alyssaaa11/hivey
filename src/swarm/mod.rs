@@ -6,6 +6,7 @@
 pub(crate) mod adapter;
 pub(crate) mod addons;
 pub(crate) mod bus;
+pub(crate) mod claude_peers;
 pub(crate) mod creators;
 pub(crate) mod engine;
 pub(crate) mod home;

@@ -116,6 +116,10 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 "scripts/swarm_tasks.py",
                 include_str!("../../../skills/hivey-swarm-creator/scripts/swarm_tasks.py"),
             ),
+            (
+                "scripts/swarm_gate.py",
+                include_str!("../../../skills/hivey-swarm-creator/scripts/swarm_gate.py"),
+            ),
         ],
     ),
     (

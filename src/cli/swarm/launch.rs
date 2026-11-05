@@ -35,6 +35,21 @@ never send them work without asking the user first, and don't disturb one that i
 const ADDON_ENTRYPOINT: &str = "relay";
 /// Workers stay silent; only the coordinator speaks (AGENTS Stop hook).
 const WORKER_ENV: (&str, &str) = ("AGENTS_TTS", "0");
+/// hivey: the helper subagents a Claude worker starts (general-purpose searches, log reading)
+/// run on Haiku. Settings win over the pane env, so an agent on DeepSeek or Muse keeps its
+/// route's model, and a value the user exported is kept.
+const SUBAGENT_MODEL_ENV: (&str, &str) = ("CLAUDE_CODE_SUBAGENT_MODEL", "haiku");
+
+/// The env every worker pane starts with.
+fn worker_env() -> Value {
+    let mut env = serde_json::Map::new();
+    env.insert(WORKER_ENV.0.into(), WORKER_ENV.1.into());
+    let (key, value) = SUBAGENT_MODEL_ENV;
+    if std::env::var_os(key).is_none() {
+        env.insert(key.into(), value.into());
+    }
+    Value::Object(env)
+}
 
 pub(super) const HELP: &str = "\
 usage: hivey swarm launch <root> --slug SLUG <agent>... [--channel ID] [--models a=sonnet,b=deepseek,c=muse]
@@ -555,7 +570,6 @@ fn move_to_own_space(opts: &Options, master: &str) -> Result<String, String> {
 }
 
 fn split(target: &str, direction: &str, cwd: &Path) -> Result<String, String> {
-    let (env_key, env_value) = WORKER_ENV;
     let result = api(
         "pane.split",
         json!({
@@ -563,7 +577,7 @@ fn split(target: &str, direction: &str, cwd: &Path) -> Result<String, String> {
             "direction": direction,
             "cwd": cwd,
             "focus": false,
-            "env": { env_key: env_value },
+            "env": worker_env(),
         }),
     )?;
     result["pane"]["pane_id"]
@@ -647,6 +661,14 @@ fn agent_args(opts: &Options, root: &Path, agent: &str) -> Vec<String> {
         if route.is_some() {
             model = Some(providers::LAUNCH_MODEL.to_string());
         }
+    }
+    // hivey: let the swarm post agent-to-agent messages to Claude's inbox socket instead of
+    // typing them (swarm::claude_peers). Only --settings, user or managed settings can accept.
+    if opts.kind(agent) == AgentKind::Claude && !args.iter().any(|arg| arg == "--settings") {
+        args.extend([
+            "--settings".to_string(),
+            crate::swarm::claude_peers::ACCEPT_SETTINGS.to_string(),
+        ]);
     }
     if let Some(model) = model {
         match args.iter().position(|arg| arg == "--model") {
@@ -1479,6 +1501,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(opts.addons.len(), 2);
+    }
+
+    #[test]
+    fn worker_panes_are_silent_and_put_helpers_on_haiku() {
+        let env = worker_env();
+        assert_eq!(env["AGENTS_TTS"], "0");
+        match std::env::var("CLAUDE_CODE_SUBAGENT_MODEL") {
+            Ok(_) => assert!(
+                env.get("CLAUDE_CODE_SUBAGENT_MODEL").is_none(),
+                "user's value kept"
+            ),
+            Err(_) => assert_eq!(env["CLAUDE_CODE_SUBAGENT_MODEL"], "haiku"),
+        }
     }
 
     #[test]

@@ -192,7 +192,16 @@ to the swarm root (`permissions.additionalDirectories`, plus `--vault` if the va
 elsewhere) and sets `AGENTS_TTS=0` so workers stay silent. **Code swarms:** make sure the repo
 (e.g. `<root>/app`) exists with at least one commit, then pass `--worktree <repo>` for each
 builder: it gets `<root>/<agent>/repo` on branch `swarm/<agent>`. Builders commit on their
-branch; the integrator merges into the main checkout and runs the checks there.
+branch; the integrator merges into the main checkout and runs the checks there. A fresh
+worktree has no gitignored files: if the builders need local config (an env file, keys), list
+those paths in the repo's `.worktreeinclude` (gitignore syntax, the file Claude Code's own
+worktrees read) before running `setup_agent.py`, and it copies them in.
+
+It also registers the **swarm done gate** in each agent's settings (Claude Code only; `--no-gate`
+leaves it out): when an agent tries to stop while it still owns an `in-progress` task, it is
+reminded once to `submit` it, set it `blocked` with a note, or say why it stays open. Each
+worker's helper subagents run on Haiku (`CLAUDE_CODE_SUBAGENT_MODEL`, set by `hivey swarm
+launch`; an agent on DeepSeek or Muse keeps its own model).
 
 Then install each agent's skills as `hivey skills guide` says (step 4 of the guide), and check
 `ls <root>/<agent>/.claude/skills`.
@@ -367,6 +376,14 @@ the owner → one revision → `submit` again. A task `blocked` after its last r
 that ended in ERROR, is yours: read the review and accept it (`set <ID> approved --as
 coordinator`), re-scope it, or give the owner a specific fix. If an owner disputes a defect, it
 tells you with evidence; you decide. Don't review deliverables yourself instead of the critics.
+
+**Big fan-out jobs: suggest a dynamic workflow.** For a job that needs many parallel reads with
+cross-checked results (audit every file for one issue, a migration across hundreds of files,
+research cross-checked across many sources), suggest the user run it as a Claude Code dynamic
+workflow: a script that runs up to dozens of subagents, verifies their findings against each
+other and returns one result, so it doesn't take a swarm agent's whole context. It starts only
+when the user opts in (their message says `ultracode` or "use a workflow"); never start one on
+your own. It uses much more quota, so suggest trying it on one folder first.
 
 **Too much talk.** If agents ping-pong, flood `@all` or Slack, tighten the swarm's limits
 (`hivey swarm comms <name> --preset quiet`, or one flag such as `--hourly-wakes 12` or

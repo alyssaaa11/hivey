@@ -14,6 +14,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 
 use super::bus::{self, Decision, Kind, Message, Presence, Record, Sender};
+use super::claude_peers;
 use super::model::{Comms, Role, Swarm, SwarmAgent};
 use crate::api::schema::{
     AgentInfo, AgentPromptParams, AgentStatus, EmptyParams, Method, PaneReportAgentSessionParams,
@@ -93,6 +94,10 @@ struct State {
     home_watch: super::home::Watch,
     /// Reopens addons (Slack relays, dashboards) once after a server restart.
     addons_restore: super::addons::Restore,
+    /// Claude Code's session registry by session id, refreshed every tick (claude_peers).
+    claude_peers: HashMap<String, claude_peers::Peer>,
+    /// Whether a Claude process (by pid) accepts inbox posts without approval.
+    inbox_accepts: HashMap<u32, bool>,
 }
 
 pub(crate) fn start(api_tx: ApiRequestSender) {
@@ -208,6 +213,14 @@ impl State {
         let Some(live) = self.live(agent) else {
             return Presence::Gone;
         };
+        // A Claude session that says it's busy is mid-turn, whatever the screen shows.
+        if self
+            .claude_peer(live)
+            .is_some_and(claude_peers::Peer::is_busy)
+            && matches!(live.status, AgentStatus::Idle | AgentStatus::Done)
+        {
+            return Presence::Busy;
+        }
         match live.status {
             AgentStatus::Idle | AgentStatus::Done => Presence::Idle {
                 idle_ms: live.since.elapsed().as_millis() as u64,
@@ -215,6 +228,35 @@ impl State {
             AgentStatus::Blocked => Presence::Blocked,
             AgentStatus::Working | AgentStatus::Unknown => Presence::Busy,
         }
+    }
+
+    /// Claude Code's registry entry for the session running in this pane.
+    fn claude_peer(&self, live: &Live) -> Option<&claude_peers::Peer> {
+        let (_, agent, session_id) = live.session.as_ref()?;
+        if agent != "claude" {
+            return None;
+        }
+        self.claude_peers.get(session_id)
+    }
+
+    /// The inbox socket to post `pending` to instead of typing it, when the agent is a Claude
+    /// session that accepts posts and no message is from the human (those are typed so they
+    /// keep the user's authority).
+    fn inbox_for(&mut self, agent: &SwarmAgent, pending: &[&Message]) -> Option<PathBuf> {
+        if pending.iter().any(|msg| msg.from == bus::HUMAN) {
+            return None;
+        }
+        let peer = self
+            .live(agent)
+            .and_then(|live| self.claude_peer(live))?
+            .clone();
+        let socket = peer.messaging_socket_path.clone()?;
+        let accepts = *self.inbox_accepts.entry(peer.pid).or_insert_with(|| {
+            claude_peers::user_settings_accept()
+                || claude_peers::command_line(peer.pid)
+                    .is_some_and(|line| claude_peers::args_accept(&line))
+        });
+        accepts.then_some(socket)
     }
 
     /// The (non-master, non-script) agent whose home folder `<root>/<agent>` contains `cwd`.
@@ -249,6 +291,22 @@ impl State {
                 })
                 .map(|agent| (swarm, agent))
         })
+    }
+
+    /// Re-reads Claude Code's session registry when a live pane runs Claude.
+    fn refresh_claude_peers(&mut self) {
+        let any_claude = self.live_by_pane.values().any(|live| {
+            live.session
+                .as_ref()
+                .is_some_and(|(_, agent, _)| agent == "claude")
+        });
+        self.claude_peers = if any_claude {
+            claude_peers::load()
+        } else {
+            HashMap::new()
+        };
+        let pids: HashSet<u32> = self.claude_peers.values().map(|peer| peer.pid).collect();
+        self.inbox_accepts.retain(|pid, _| pids.contains(pid));
     }
 
     fn update_live(&mut self, agents: Vec<AgentInfo>) {
@@ -435,6 +493,8 @@ struct Delivery {
     target: String,
     text: String,
     ids: Vec<String>,
+    /// Claude Code inbox socket to post to instead of typing (claude_peers).
+    inbox: Option<PathBuf>,
 }
 
 fn dispatch(api_tx: &ApiRequestSender, method: Method) -> Result<Value, String> {
@@ -485,6 +545,7 @@ fn tick(api_tx: &ApiRequestSender) {
         };
         let Some(agents) = agents else { return };
         state.update_live(agents);
+        state.refresh_claude_peers();
         let home_alive = state
             .swarms
             .iter()
@@ -511,6 +572,13 @@ fn tick(api_tx: &ApiRequestSender) {
     };
 
     for delivery in deliveries {
+        if post_to_inbox(&delivery) {
+            let Ok(mut state) = engine.state.lock() else {
+                return;
+            };
+            confirm_delivery(&mut state, &delivery);
+            continue;
+        }
         let prompt = Method::AgentPrompt(AgentPromptParams {
             target: delivery.target.clone(),
             text: delivery.text.clone(),
@@ -606,6 +674,7 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
                     target,
                     text: prompt_text(swarm, key, &pending),
                     ids: queue.iter().map(|msg| msg.id.clone()).collect(),
+                    inbox: None,
                 });
             }
             Decision::Escalate(reason) => {
@@ -628,7 +697,34 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
     for (swarm, agent, reason, msgs) in escalations {
         escalate(state, &swarm, &agent, reason, &msgs);
     }
+    for delivery in &mut deliveries {
+        let agent = state
+            .swarm(&delivery.slug)
+            .and_then(|swarm| swarm.agent(&delivery.key))
+            .cloned();
+        let pending = state
+            .queues
+            .get(&(delivery.slug.clone(), delivery.key.clone()))
+            .cloned()
+            .unwrap_or_default();
+        let pending: Vec<&Message> = pending.iter().collect();
+        delivery.inbox = agent.and_then(|agent| state.inbox_for(&agent, &pending));
+    }
     deliveries
+}
+
+/// Posts a delivery to its Claude inbox socket; false means type it instead.
+fn post_to_inbox(delivery: &Delivery) -> bool {
+    let Some(socket) = delivery.inbox.as_deref() else {
+        return false;
+    };
+    match claude_peers::post(socket, bus::HIVEY, &delivery.text) {
+        Ok(()) => true,
+        Err(err) => {
+            tracing::warn!(target = %delivery.target, %err, "hivey inbox post failed; typing it");
+            false
+        }
+    }
 }
 
 /// The digest, or a pointer to a file when it's too long to paste.
@@ -1926,6 +2022,116 @@ mod tests {
             "delivery is recorded"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Marks a live pane as running Claude session `session` with a registry entry.
+    fn as_claude(state: &mut State, name: &str, session: &str, status: &str, accepts: bool) {
+        let live = state.live_by_name.get_mut(name).unwrap();
+        live.session = Some(("herdr:claude".into(), "claude".into(), session.into()));
+        let pane = live.pane_id.clone();
+        let live = live.clone();
+        state.live_by_pane.insert(pane, live);
+        let peer: claude_peers::Peer = serde_json::from_value(json!({
+            "pid": 4242, "sessionId": session, "status": status, "startedAt": 1,
+            "messagingSocketPath": "/tmp/cc-socks/4242.sock"
+        }))
+        .unwrap();
+        state.claude_peers.insert(session.into(), peer);
+        state.inbox_accepts.insert(4242, accepts);
+    }
+
+    #[test]
+    fn a_claude_session_that_reports_busy_is_not_typed_into() {
+        let root = temp_swarm("busy");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![
+            info("busy-coordinator", "w1:p1", AgentStatus::Idle),
+            info("busy-scout", "w1:p2", AgentStatus::Idle),
+        ]);
+        // No Claude session in any pane: the registry isn't read and stale entries go.
+        state
+            .claude_peers
+            .insert("stale".into(), claude_peers::Peer::test_new("stale"));
+        state.refresh_claude_peers();
+        assert!(state.claude_peers.is_empty());
+        as_claude(&mut state, "busy-scout", "s-busy", "busy", false);
+        state.live_by_name.get_mut("busy-scout").unwrap().since -=
+            Duration::from_millis(bus::IDLE_SETTLE_MS);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "scout", "text": "go", "from_pane": "w1:p1"}),
+        )
+        .unwrap();
+        assert!(plan_deliveries(&mut state).is_empty(), "registry says busy");
+        state.claude_peers.get_mut("s-busy").unwrap().status = Some("idle".into());
+        assert_eq!(plan_deliveries(&mut state).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn agent_messages_go_to_the_claude_inbox_and_the_humans_are_typed() {
+        let root = temp_swarm("inbox");
+        let mut state = state_with(&[&root]);
+        state.update_live(vec![
+            info("inbox-coordinator", "w1:p1", AgentStatus::Idle),
+            info("inbox-scout", "w1:p2", AgentStatus::Idle),
+        ]);
+        as_claude(&mut state, "inbox-scout", "s-in", "idle", true);
+        state.live_by_name.get_mut("inbox-scout").unwrap().since -=
+            Duration::from_millis(bus::IDLE_SETTLE_MS);
+        let key = ("inbox".to_string(), "scout".to_string());
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "scout", "text": "from the master", "from_pane": "w1:p1"}),
+        )
+        .unwrap();
+        let deliveries = plan_deliveries(&mut state);
+        assert_eq!(
+            deliveries[0].inbox.as_deref(),
+            Some(Path::new("/tmp/cc-socks/4242.sock"))
+        );
+        confirm_delivery(&mut state, &deliveries[0]);
+        assert!(state.queues[&key].is_empty());
+
+        // From the human: typed, so it keeps the user's authority.
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "inbox/scout", "text": "from me"}),
+        )
+        .unwrap();
+        let deliveries = plan_deliveries(&mut state);
+        assert_eq!(deliveries.len(), 1);
+        assert_eq!(deliveries[0].inbox, None);
+        confirm_delivery(&mut state, &deliveries[0]);
+
+        // A session that would hold the post for approval is typed into too.
+        state.inbox_accepts.insert(4242, false);
+        run_op(
+            &mut state,
+            "msg.send",
+            &json!({"to": "scout", "text": "again", "from_pane": "w1:p1"}),
+        )
+        .unwrap();
+        assert_eq!(plan_deliveries(&mut state)[0].inbox, None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unreachable_inbox_falls_back_to_typing() {
+        let mut delivery = Delivery {
+            slug: "s".into(),
+            key: "a".into(),
+            target: "w1:p2".into(),
+            text: "hi".into(),
+            ids: vec![],
+            inbox: None,
+        };
+        assert!(!post_to_inbox(&delivery), "no inbox: type it");
+        delivery.inbox = Some(std::env::temp_dir().join("hivey-no-such-inbox.sock"));
+        assert!(!post_to_inbox(&delivery), "dead socket: type it");
     }
 
     #[test]

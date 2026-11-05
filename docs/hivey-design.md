@@ -225,7 +225,12 @@ Sender defaults to the calling pane's agent (from `HERDR_PANE_ID`); the user sen
 
 - **Batching**: queued messages are delivered as one digest prompt on idle (`[hivey · 3 messages] …`) → one turn, not three.
 - FYIs pending in an inbox are prepended to that agent's next delivered prompt.
-- Injection reuses herdr's existing `agent prompt` path (send text + submit).
+- Injection reuses herdr's existing `agent prompt` path (send text + submit). For Claude Code
+  agents, agent-to-agent digests go to the session's inbox socket instead (`swarm::claude_peers`:
+  found through `~/.claude/sessions/<pid>.json` by the pane's session id; agents launch with
+  `--settings '{"crossSessionInbound":"accept"}'`, without which a bypass-mode session holds
+  them for approval). Human messages stay typed so they keep the user's authority. A registry
+  status of `busy` also counts as working for delivery timing.
 - Every send/deliver/read is written to `bus.jsonl` and `events.jsonl`; pending deliveries survive a server restart.
 - **Cross-swarm**: `<slug>/<agent>` addresses another swarm. Only masters (and `human`) may send cross-swarm; workers ask their own master. `@masters` reaches every master. Cross-swarm messages are logged in both swarms' `bus.jsonl`.
 - Size cap per injected prompt (e.g. 4 KB); longer bodies are written to `.swarm/board/msg-<id>.md` and the prompt links to it.

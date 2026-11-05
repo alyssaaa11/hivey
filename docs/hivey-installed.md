@@ -48,7 +48,7 @@ In `~/.claude/skills/`, and `~/.codex/skills/` when Codex is set up (`hivey skil
 | `hivey-codex` | run a task with Codex headless (`codex exec`): models, sandbox, review, resume | now |
 | `hivey-agy` | run a task with Antigravity / Gemini (`agy`) headless; runner `scripts/agy_run.py` | now |
 | `hivey-grok` | run a task with Grok (`grok`) headless; runner `scripts/grok_run.py` | now |
-| `hivey-swarm-creator` | design a swarm with the user (each agent on Claude Code, Codex, Grok or agy), write the briefs, make the wiki, launch it; scripts: task board, house rules, agent setup | now |
+| `hivey-swarm-creator` | design a swarm with the user (each agent on Claude Code, Codex, Grok or agy), write the briefs, make the wiki, launch it; scripts: task board, house rules, agent setup, swarm done gate (Stop hook registered per agent) | now |
 | `hivey-agent-creator` | design one long-lived agent with the user (any of the four CLIs), write its brief, make its wiki, launch it; scripts: agent setup, done gate, resume context | now |
 
 Also installed globally: `find-skills` (skills.sh), which creators use to find skills an
