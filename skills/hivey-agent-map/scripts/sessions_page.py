@@ -113,7 +113,7 @@ def write_sessions_page(snap: dict, folder: Path) -> None:
     n_total = sessions[0]["count_total"] if sessions else 0
 
     import enhance
-    NAV, NAV_CSS = enhance.nav("agent-sessions.html", snap.get('generated', '')), enhance.NAV_CSS
+    NAV, NAV_CSS = enhance.nav("agent-sessions.html", snap.get('generated', ''), days), enhance.NAV_CSS
     page = f"""<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 {enhance.FAVICON}
@@ -145,7 +145,7 @@ td{{border-bottom:1px solid var(--line);padding:7px 8px;vertical-align:middle}}
 </style>
 <main>
 {NAV}
-<h1>Your interactive sessions, last {days} days</h1>
+<h1>Your interactive sessions, last {enhance.span(days)}</h1>
 <p class=lead>Chats with agents in a terminal (Claude Code, Codex, Grok), kept apart from the automated jobs on the map.
 Costs are API-equivalent: a Max plan is not billed per token, but these use up its limits.</p>
 <div class=kpis>

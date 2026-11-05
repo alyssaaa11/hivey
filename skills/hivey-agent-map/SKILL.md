@@ -139,6 +139,11 @@ hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | sta
   button works: it runs `agent_map.py refresh` (new scan into the latest report's pages, no model, a few
   seconds; the map keeps the night's boxes) and reloads. Only the served pages can trigger it (Origin
   check). Opened as plain files, the button says to open them from the hivey menu.
+- **24 hours / 7 days:** every report (nightly and Refresh) also holds the same four pages for the last
+  24 hours in `<report>/1d/` (`report.write_day_view`, a second scan with `days=1`); the navbar's
+  "24 h | 7 days" toggle opens the same page in the other window. The 24-hour map reuses the night's
+  boxes and flows (`day_spec` drops the 7-day dollar amounts and spend card the model wrote) and is
+  redrawn with archify; its colours, info cards and legend use the 24-hour numbers.
 - **Context window per agent** (`context_window.py`): the Sessions page shows each agent's window for its
   next session, 1M or the standard 200k (Claude Code compacts the session before it grows).
   `hivey agent-map context` lists every agent's window and peak; `hivey agent-map context <agent…> --set

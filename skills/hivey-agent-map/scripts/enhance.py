@@ -40,6 +40,8 @@ NAV_CSS = """
 .hv-nav a{color:inherit;opacity:.65;text-decoration:none;padding:4px 12px;border-radius:999px}
 .hv-nav a:hover{opacity:1;background:rgba(127,127,127,.14)}
 .hv-nav a.on{opacity:1;background:rgba(47,111,236,.16);color:#2f6fec}
+.hv-nav .hv-span{display:inline-flex;margin-left:12px;border:1px solid rgba(127,127,127,.3);border-radius:999px;padding:2px}
+.hv-nav .hv-span a{padding:2px 10px;font-weight:600;font-size:12px}
 .hv-nav .hv-when{margin-left:12px;opacity:.55;font-weight:400;font-size:12px;white-space:nowrap}
 .hv-nav .hv-refresh{margin-left:8px;font:600 12px/1.2 inherit;font-family:inherit;color:#2f6fec;cursor:pointer;
   background:rgba(47,111,236,.10);border:1px solid rgba(47,111,236,.35);border-radius:999px;padding:4px 11px}
@@ -67,12 +69,23 @@ svg text.hv-stage{cursor:help;text-decoration:underline dotted;text-underline-of
 """
 
 
-def nav(active: str, generated: str) -> str:
+def span(days: int) -> str:
+    """The window in words: "24 hours" or "7 days"."""
+    return "24 hours" if days == 1 else f"{days} days"
+
+
+DAY_DIR = "1d"  # each report's 24-hour pages live in <report>/1d/, the 7-day ones in <report>/
+
+
+def nav(active: str, generated: str, days: int = 7) -> str:
     links = [("agent-stats.html", "Stats"), ("agent-map.html", "Map"), ("agent-logs.html", "Logs"),
              ("agent-sessions.html", "Sessions")]
     items = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in links)
     when = html.escape(generated[:16].replace("T", " "))
-    return (f'<nav class="hv-nav">{items}<span class="hv-when">scan {when}</span>'
+    day = days == 1  # the toggle opens the same page in the other window
+    toggle = (f'<span class="hv-span"><a href="{active if day else DAY_DIR + "/" + active}"{" class=on" if day else ""}>24 h</a>'
+              f'<a href="{"../" + active if day else active}"{"" if day else " class=on"}>7 days</a></span>')
+    return (f'<nav class="hv-nav">{items}{toggle}<span class="hv-when">scan {when}</span>'
             '<button class="hv-refresh" type="button" title="Scan again now and reload (free: no model run)" '
             'onclick="hvRefresh(this)">↻ Refresh</button></nav>' + REFRESH_JS)
 
@@ -196,7 +209,7 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
 
 MAP_JS = r"""
 (function(){
-const D=__DATA__, STAGES=__STAGES__, DAYS=__DAYS__;
+const D=__DATA__, STAGES=__STAGES__, SPAN=__SPAN__;
 const fmt=v=>'$'+v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const tok=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e3?Math.round(n/1e3)+'k':String(n);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -211,7 +224,7 @@ document.querySelectorAll('g[data-node-id]').forEach(g=>{
     g.classList.add('hv-alert');
   }
   const t=g.querySelector(':scope > title');
-  if(t){t.textContent=[g.dataset.nodeLabel, d.desc, d.subject?(fmt(d.cost)+' in '+DAYS+' days · '+tok(d.tokens)+' tokens'+(d.models.length?' · '+d.models.join(', '):'')):''].filter(Boolean).concat((d.alerts||[]).map(a=>'⚠️ '+a.name+': '+a.words)).join('\n');}
+  if(t){t.textContent=[g.dataset.nodeLabel, d.desc, d.subject?(fmt(d.cost)+' in '+SPAN+' · '+tok(d.tokens)+' tokens'+(d.models.length?' · '+d.models.join(', '):'')):''].filter(Boolean).concat((d.alerts||[]).map(a=>'⚠️ '+a.name+': '+a.words)).join('\n');}
 });
 document.querySelectorAll('svg text').forEach(t=>{
   const m=/^\s*\d+\s*\/\s*(.+?)\s*$/.exec(t.textContent||''); if(!m) return;
@@ -233,7 +246,7 @@ function fill(meta){
   const rows=[];
   (d.alerts||[]).forEach(a=>rows.push(['⚠️ Problem', esc(a.name)+': '+esc(a.words)+' · <a href="agent-logs.html#'+a.anchor+'">open its log</a>']));
   if(d.subject){
-    rows.push(['Spend', fmt(d.cost)+' in '+DAYS+' days, automated runs only (API-equivalent)']);
+    rows.push(['Spend', fmt(d.cost)+' in '+SPAN+', automated runs only (API-equivalent)']);
     rows.push(['Tokens', tok(d.tokens)+' ('+tok(d.out)+' output) · '+d.calls.toLocaleString()+' calls']);
   }
   rows.push(['Models', d.models.length?'<span class="hv-models">'+d.models.map(m=>'<span>'+esc(m)+'</span>').join('')+'</span>':'none found']);
@@ -248,10 +261,10 @@ new MutationObserver(refill).observe(document.body,{childList:true,subtree:true,
 
 
 def enhance_folder(folder: Path, snap: dict, job_state) -> None:
-    generated = snap.get("generated", "")
+    generated, days = snap.get("generated", ""), snap.get("window_days", 7)
     stats = folder / "agent-stats.html"
     if stats.is_file():
-        stats.write_text(inject(stats.read_text(), NAV_CSS, nav("agent-stats.html", generated)))
+        stats.write_text(inject(stats.read_text(), NAV_CSS, nav("agent-stats.html", generated, days)))
     page, spec_path = folder / "agent-map.html", folder / "map.json"
     if page.is_file() and spec_path.is_file():
         spec = json.loads(spec_path.read_text())
@@ -263,9 +276,9 @@ def enhance_folder(folder: Path, snap: dict, job_state) -> None:
         stages = dict(STAGE_HELP)
         stages.update({k.lower(): v for k, v in (meta.get("stages") or {}).items()})
         script = (MAP_JS.replace("__DATA__", json.dumps(data)).replace("__STAGES__", json.dumps(stages))
-                  .replace("__DAYS__", json.dumps(snap.get("window_days", 7))))
-        legend = (f'<div class="hv-legend"><b>Spend, last {snap.get("window_days", 7)} days</b><div class="bar"></div>'
+                  .replace("__SPAN__", json.dumps(span(days))))
+        legend = (f'<div class="hv-legend"><b>Spend, last {span(days)}</b><div class="bar"></div>'
                   f'<div class="ends"><span>$0</span><span>{money(top)}</span></div>'
                   f'<div style="opacity:.65;margin-top:3px">click a box for what it does, tokens and models</div>'
                   f'<div style="opacity:.65">⚠️ its last run failed, was missed or logged errors</div></div>')
-        page.write_text(inject(page.read_text(), NAV_CSS + MAP_CSS, nav("agent-map.html", generated) + legend, script))
+        page.write_text(inject(page.read_text(), NAV_CSS + MAP_CSS, nav("agent-map.html", generated, days) + legend, script))

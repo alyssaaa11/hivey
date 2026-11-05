@@ -82,6 +82,7 @@ def write_stats(snap: dict, folder: Path) -> None:
 
     u = snap["usage"]
     days = snap["window_days"]
+    span = span_of(snap)
     total = u["total_cost_usd"] or 0.0
     agents = u["agents"]
     (folder / "snapshot.json").write_text(json.dumps(snap, indent=1, default=str))
@@ -109,12 +110,12 @@ def write_stats(snap: dict, folder: Path) -> None:
 
     L = []
     inter = snap.get("interactive", {})
-    L.append(f"# What ran on its own on this Mac in the last {days} days, and what did it cost? {{#agent-stats}}\n")
+    L.append(f"# What ran on its own on this Mac in the last {span}, and what did it cost? {{#agent-stats}}\n")
     if top:
         L.append(f"Your scheduled jobs, scripts and headless agents used about **{money(total)} of tokens** in "
-                 f"{days} days; **{cell(top['agent'])} used {money(top['cost_usd'])}** of it ({pct(top['cost_usd'])}).\n")
+                 f"{span}; **{cell(top['agent'])} used {money(top['cost_usd'])}** of it ({pct(top['cost_usd'])}).\n")
     else:
-        L.append(f"No automated token use was recorded in the last {days} days.\n")
+        L.append(f"No automated token use was recorded in the last {span}.\n")
     L.append(f"- Headless agent runs cost {money(headless)} and scripts' direct API calls {money(api)}; local "
              f"models (JEV, Whisper) cost nothing.")
     if inter.get("total_cost_usd"):
@@ -126,7 +127,7 @@ def write_stats(snap: dict, folder: Path) -> None:
     tally = ", ".join(f"{emo} {states.count(emo)}" for emo in ("✅", "⚠️", "❌", "⏳", "❔") if states.count(emo))
     L.append(f"- {len(jobs)} scheduled jobs ({n_cron} cron, {len(jobs) - n_cron} launchd): {tally}; "
              f"{len(snap['links_confirmed'])} links between them; {len(gaps)} with LLM calls not logged yet.\n")
-    L.append(f'@answer scope="last {days} days to {snap["generated"][:10]} · costs are list-price estimates · '
+    L.append(f'@answer scope="last {span} to {snap["generated"][:10]} · costs are list-price estimates · '
              f'Claude Code (Max) and Codex (Plus) are not billed per token"')
     L.append("@meta locale=en")
     L.append('@source scan title="hivey agent map snapshot (agent_map.py scan)" path=snapshot.json\n')
@@ -134,7 +135,7 @@ def write_stats(snap: dict, folder: Path) -> None:
     if agents:
         L.append("## Which agents spend the most? {#by-agent}\n")
         L.append(f'@chart type=bar data=agents.csv x=agent y=cost_usd unit=USD title="Cost by agent, '
-                 f'last {days} days (API-equivalent USD, estimated)"\n')
+                 f'last {span} (API-equivalent USD, estimated)"\n')
         L.append("| Agent | Cost | Calls | Tokens | Main model |")
         L.append("| --- | --- | --- | --- | --- |")
         for a in agents[:8]:
@@ -317,7 +318,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
         u = usage.get(name, {})
         iu = inter_usage.get(name, {})
         parts = ([f"automated ${u['cost_usd']:,.2f}"] if u else []) + ([f"chats ${iu['cost_usd']:,.2f}"] if iu else [])
-        cost = (" · ".join(parts) + f" in {snap['window_days']} days") if parts else "no token use"
+        cost = (" · ".join(parts) + f" in {span_of(snap)}") if parts else "no token use"
         body = [f"<p class=meta>{e(a['where'] if a else 'not open in hivey')} · {e(a.get('cwd', '') if a else '')}"
                 f" · last active {e((u or iu).get('last_active') or '?')} · {e(cost)}"
                 + (f" · {e(', '.join((u or iu).get('models', [])[:2]))}" if (u or iu) else "") + "</p>"]
@@ -334,7 +335,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
                      f"<p class=meta>{e(', '.join(dormant))}</p></details>")
     summary = " · ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda kv: ORDER.get(kv[0], 9)))
     import enhance
-    NAV, NAV_CSS = enhance.nav("agent-logs.html", snap['generated']), enhance.NAV_CSS
+    NAV, NAV_CSS = enhance.nav("agent-logs.html", snap['generated'], snap['window_days']), enhance.NAV_CSS
     page = f"""<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 {enhance.FAVICON}
@@ -510,6 +511,68 @@ def html_current(folder: Path, html: str, src: str) -> bool:
     return h.is_file() and s.is_file() and h.stat().st_mtime >= s.stat().st_mtime
 
 
+def span_of(snap: dict) -> str:
+    import enhance
+    return enhance.span(snap.get("window_days", 7))
+
+
+def write_day_view(scan, folder: Path) -> tuple[bool, str]:
+    """The same pages for the last 24 hours, in <folder>/1d/ (the navbar's "24 h" toggle). The map
+    keeps the boxes the night drew; its colours, info cards and legend use the 24-hour numbers."""
+    import enhance
+    import sessions_page
+    sub = folder / enhance.DAY_DIR
+    sub.mkdir(exist_ok=True)
+    snap = scan(1)
+    write_stats(snap, sub)
+    write_logs_page(snap, sub)
+    sessions_page.write_sessions_page(snap, sub)
+    ok, msg = finalize(sub, "explainer", "stats.archify.md", "agent-stats.html")
+    for name in ("map.json", "map-meta.json", "agent-map.html"):
+        if (sub / name).exists():
+            (sub / name).unlink()
+    if (folder / "map-meta.json").is_file():
+        shutil.copy2(folder / "map-meta.json", sub / "map-meta.json")
+    if (folder / "map.json").is_file():
+        (sub / "map.json").write_text(json.dumps(day_spec(json.loads((folder / "map.json").read_text())), indent=1))
+        good, why = finalize(sub, "dataflow", "map.json", "agent-map.html")
+        if not good and (folder / "agent-map.html").is_file():  # the 7-day drawing still beats no map
+            log(folder, f"24-hour map failed ({why}); using the 7-day drawing")
+            shutil.copy2(folder / "agent-map.html", sub / "agent-map.html")
+    enhance.enhance_folder(sub, snap, job_state)
+    return ok, msg
+
+
+MONEY = r"\$[\d,.]+k?"
+
+
+def day_spec(spec: dict) -> dict:
+    """The night's map for the 24-hour pages: same boxes and flows, without the 7-day dollar amounts
+    the model wrote into them (the colours and info cards carry the 24-hour numbers)."""
+    meta = dict(spec.get("meta") or {})
+    title = meta.get("title", "")
+    meta["title"] = re.sub(r"\(last \d+ days\)", "(last 24 hours)", title) if re.search(r"\(last \d+ days\)", title) \
+        else (title + " (last 24 hours)").strip()
+    nodes = []
+    for n in spec.get("nodes") or []:
+        n = dict(n)
+        if "sublabel" in n:
+            n["sublabel"] = re.sub(r"\s*·\s*" + MONEY + r"(?=\s*(·|$))", "", n["sublabel"]).strip(" ·")
+        if re.fullmatch(r"\s*" + MONEY + r"\s*", str(n.get("tag", ""))):
+            n.pop("tag")
+        nodes.append(n)
+    cards = [c for c in spec.get("cards") or [] if not re.search(r"last \d+ days|spend", str(c.get("title", "")), re.I)]
+    return {**spec, "meta": meta, "nodes": nodes, "cards": cards}
+
+
+def day_view(scan, folder: Path) -> None:
+    try:
+        ok, msg = write_day_view(scan, folder)
+        log(folder, f"24-hour pages: {'ok' if ok else 'stats page FAILED ' + msg}")
+    except Exception as e:  # the 7-day pages stand on their own
+        log(folder, f"24-hour pages failed: {e}")
+
+
 def nightly(scan, days: int, model: str, use_llm: bool) -> int:
     REPORTS.mkdir(parents=True, exist_ok=True)
     now = dt.datetime.now()
@@ -548,6 +611,7 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
         enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), job_state)
     except Exception as e:  # the pages still work without hivey's layer
         log(folder, f"enhance failed: {e}")
+    day_view(scan, folder)
     if ok or (folder / "agent-logs.html").is_file():  # a failed stats page still publishes logs and sessions
         tmp = REPORTS / ".latest-new"
         if tmp.is_symlink() or tmp.exists():
@@ -581,6 +645,7 @@ def refresh(scan, days: int, model: str) -> int:
         enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), job_state)
     except Exception as e:
         log(folder, f"enhance failed: {e}")
+    day_view(scan, folder)
     log(folder, f"refresh: {'ok' if ok else 'stats page FAILED ' + msg}")
     return 0 if ok else 1
 
