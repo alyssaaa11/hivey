@@ -338,6 +338,16 @@ if [ "$SETUP" = 1 ]; then
     echo "skipped: not a terminal (later: hivey pet choose)"
   fi
 
+  say "nightly agent monitoring (optional)"
+  if [ "$(uname -s)" != Darwin ]; then
+    echo "uses launchd: macOS only, skipped"
+  elif [ -t 0 ]; then
+    # Asked once (the answer is kept in ~/.hivey/agent-map/offer.json); `hivey update` asks too.
+    "$BIN" agent-map schedule offer || echo "not set up (later: hivey agent-map schedule install)"
+  else
+    echo "skipped: not a terminal (asked at the next hivey update, or: hivey agent-map schedule install)"
+  fi
+
   say "the hivey agent (~/.hivey/agent)"
   if command -v claude >/dev/null; then
     # Turned on for the default session; it starts with hivey. With Slack: channel #hivey.

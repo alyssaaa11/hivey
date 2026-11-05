@@ -159,6 +159,29 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
             include_str!("../../../skills/hivey-context7/SKILL.md"),
         )],
     ),
+    // What runs on this Mac (jobs, agents), its token cost, and how agents feed each other;
+    // hivey_spend.py is the spend log scripts call after each direct API call.
+    (
+        "hivey-agent-map",
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-agent-map/SKILL.md"),
+            ),
+            (
+                "scripts/agent_map.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/agent_map.py"),
+            ),
+            (
+                "scripts/hivey_spend.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/hivey_spend.py"),
+            ),
+            (
+                "scripts/report.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/report.py"),
+            ),
+        ],
+    ),
     // How to run each coding agent hivey supports besides Claude Code, headless.
     (
         "hivey-codex",

@@ -32,6 +32,9 @@ for Codex, Grok and agy** below when the agent isn't on Claude Code.
   prompt or message, never ask for one in chat, and never read `.env` files.
 - **Docs:** look up any library, framework, API or CLI with the `hivey-context7` skill first
   (current docs in seconds), before a web search or your memory.
+- **Spend:** a script you write that calls an LLM API directly (not through Claude Code, Codex
+  or Grok CLI) logs each call with `hivey_spend.record(response, agent="<agent name>")` from
+  `~/.claude/skills/hivey-agent-map/scripts/hivey_spend.py`, so the agent map counts its cost.
 - Ask before anything destructive or outward-facing (deleting data, publishing, sending
   email or posts, spending money). Draft first, then ask.
 - Commit your work in this folder; never push.

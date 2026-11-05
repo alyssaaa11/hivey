@@ -19,6 +19,12 @@ one message (or let the task board and files speak). Your swarm's limits: `hivey
 For any library, framework, SDK, API, CLI or cloud service, look the docs up with the
 `hivey-context7` skill before a web search or your memory.
 
+# Spend log
+
+A script that calls an LLM API directly (not through Claude Code, Codex or Grok CLI) logs each
+call with `hivey_spend.record(response, agent="<agent name>")` from
+`~/.claude/skills/hivey-agent-map/scripts/hivey_spend.py`, so the agent map counts its cost.
+
 # Safety and secrets
 
 Agents run with permissions pre-approved; hivey's safety hooks (`hivey safety`, on by default)

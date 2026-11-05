@@ -7,6 +7,7 @@ use std::io::{BufRead, Write};
 use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
+mod agent_map;
 mod comms;
 mod directory;
 mod home;
@@ -21,6 +22,7 @@ mod skill;
 mod skills;
 mod slack;
 mod voice;
+pub(super) use agent_map::run as run_agent_map_command;
 pub(super) use home::run as run_home_command;
 pub(super) use installed::run as run_installed_command;
 pub(super) use migrate::run as run_migrate_command;

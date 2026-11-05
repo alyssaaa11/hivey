@@ -59,6 +59,8 @@ install_and_handoff() {
   else
     "$BIN" skill install --no-migrate | grep -v "up to date" || true
   fi
+  # Asked once, the first update that has it: nightly agent monitoring (silent without a terminal).
+  "$BIN" agent-map schedule offer || true
   local sessions
   sessions=$("$BIN" session list 2>/dev/null | awk '$2 == "running" {print $1}')
   [ "$quiet" = 1 ] && [ -n "$sessions" ] && echo "  handing off running sessions (agents keep running)…"

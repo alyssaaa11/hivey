@@ -32,6 +32,9 @@ that genuinely don't apply (e.g. the wiki when the user said no); don't leave pl
   market report`).
 - Look up library, API, CLI and cloud docs with the `hivey-context7` skill first, before a web
   search or your memory.
+- A script you write that calls an LLM API directly (not through Claude Code, Codex or Grok CLI)
+  logs each call with `hivey_spend.record(response, agent="<agent name>")` from
+  `~/.claude/skills/hivey-agent-map/scripts/hivey_spend.py`, so the agent map counts its cost.
 - Style Obsidian notes with callouts: `> [!tip] Title` then `> content`. Types: note, tip,
   warning, danger, info, example, quote.
 - When you create a new skill, offer to publish it with skylls (`skylls push <skill folder>

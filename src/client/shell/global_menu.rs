@@ -8,7 +8,12 @@ pub(super) enum ClientGlobalMenuAction {
     Pets,
     /// hivey: quiet mode on/off (no voice, no sounds, Slack posts held)
     Quiet,
+    /// hivey: open the latest agent map report (`hivey agent-map open`)
+    AgentMap,
 }
+
+/// hivey: the agent map reads launchd and opens its pages with `open`, so macOS only.
+pub(super) const AGENT_MAP_SUPPORTED: bool = cfg!(target_os = "macos");
 
 pub(super) fn global_menu_attention(snapshot: &ClientShellSnapshot) -> bool {
     snapshot.update_available.is_some() || snapshot.integration_updates_available
@@ -63,6 +68,9 @@ pub(super) fn global_menu_items(
         },
         ClientGlobalMenuAction::Quiet,
     ));
+    if AGENT_MAP_SUPPORTED {
+        items.push(("agent map", ClientGlobalMenuAction::AgentMap));
+    }
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));
     }
@@ -134,6 +142,12 @@ impl ClientShellState {
             ClientGlobalMenuAction::Pets => {
                 self.open_settings_overlay();
                 self.select_settings_section(ClientSettingsSection::Pets, outcome);
+            }
+            ClientGlobalMenuAction::AgentMap => {
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "agent-map".to_string(),
+                    "open".to_string(),
+                ]))
             }
             ClientGlobalMenuAction::Quiet => {}
         }

@@ -114,6 +114,16 @@ For any library, framework, SDK, API, CLI or cloud service, look the docs up wit
 Every agent and swarm you help create gets the same rule in its brief.
 <!-- /hivey section: docs -->
 
+<!-- hivey section: spend -->
+## Agent map and spend
+
+What runs on this computer, what each agent costs and how agents feed each other: the
+`hivey-agent-map` skill (scan, stats, archify graph). Any script you write, or help an agent
+write, that calls an LLM API directly (not through Claude Code, Codex or Grok CLI) logs each call
+with `hivey_spend.record(response, agent="<name>")` from
+`~/.claude/skills/hivey-agent-map/scripts/hivey_spend.py`, so its spend shows up in the map.
+<!-- /hivey section: spend -->
+
 ## Notes
 
 Keep useful facts about the user's setup (projects, recurring requests, where things live) in
