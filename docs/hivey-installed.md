@@ -129,7 +129,7 @@ connectors, their own) are not hivey's and are never touched.
 |---|---|
 | `~/.config/hivey/` | `config.toml` (sidebar, keys), plugins, sessions, logs |
 | `~/.hivey/` | the hivey agent (`agent/CLAUDE.md`, its wiki `agent/hivey-wiki/`), settings, Slack token, voice, wiki look (`wiki.json`), OpenRouter key command (`openrouter.json`, for `deepseek` agents), local model server log (`logs/muse-server.log`, for `muse` agents), `old/` |
-| `~/.hivey/agent-map/` | agent map: `snapshot.json`, confirmed `links.json`, `reports/<date>/` (stats page, map and run log with each job's and agent's status and logs, the 30 newest; `reports/latest`), `nightly.log`, `offer.json` (the nightly-monitoring answer), `config.json` (the command that reads the `claude setup-token` token; never the token); spend log `~/.hivey/spend/ledger.jsonl` |
+| `~/.hivey/agent-map/` | agent map: `snapshot.json`, confirmed `links.json`, `reports/<date>/` (stats page and map of automated work, run log with each job's and agent's status and logs, Sessions page with interactive chat costs, the 30 newest; `reports/latest`), `nightly.log`, `offer.json` (the nightly-monitoring answer), `config.json` (the command that reads the `claude setup-token` token; never the token); spend log `~/.hivey/spend/ledger.jsonl` |
 | `~/Library/LaunchAgents/com.hivey.agent-map.plist` | the nightly agent map run (macOS), only when you say yes: asked once at install or the first `hivey update` that has it; `hivey agent-map schedule install\|remove\|status` |
 | `~/.local/state/hivey/` | which version is installed |
 | `<agent or swarm folder>/<name>-wiki/` | each agent's or swarm's wiki, made when it is created |

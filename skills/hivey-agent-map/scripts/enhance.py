@@ -58,7 +58,8 @@ svg text.hv-stage{cursor:help;text-decoration:underline dotted;text-underline-of
 
 
 def nav(active: str, generated: str) -> str:
-    links = [("agent-stats.html", "Stats"), ("agent-map.html", "Map"), ("agent-logs.html", "Logs")]
+    links = [("agent-stats.html", "Stats"), ("agent-map.html", "Map"), ("agent-logs.html", "Logs"),
+             ("agent-sessions.html", "Sessions")]
     items = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in links)
     return f'<nav class="hv-nav">{items}<span class="hv-when">scan {html.escape(generated[:16].replace("T", " "))}</span></nav>'
 
@@ -116,7 +117,7 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
                 if cand in jobs_by_name:
                     refs.append(jobs_by_name[cand]["id"])
                     break
-        names, desc, states = [], m.get("description", ""), []
+        names, desc, states, code_models = [], m.get("description", ""), [], []
         for ref in refs:
             if overrides.get(ref) and not desc:
                 desc = overrides[ref]
@@ -129,6 +130,8 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
                 emo, words = job_state(j)
                 states.append(f"{emo} {words} · {(j.get('last_run') or j.get('log_modified') or '?').replace('T', ' ')}")
             sn = snodes.get(ref)
+            if sn:
+                code_models += [m for m in (sn.get("llm_api") or {}).get("models", []) if m not in code_models]
             if sn:
                 names.append(sn["label"])
                 desc = desc or sn.get("description", "")
@@ -144,8 +147,12 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
                 tot["out"] += a["output"]
                 tot["calls"] += a["calls"]
                 models += [model_name(x) for x in a["models"] if model_name(x) not in models]
+        # models seen in its code (also local ones that log no tokens), then the ones with recorded tokens
+        for mname in models:
+            if not any(mname.split()[0].lower() in c.lower() for c in code_models):
+                code_models.append(mname)
         out[n["id"]] = {"refs": refs, "desc": desc, "cost": round(tot["cost"], 2), "tokens": tot["tokens"],
-                        "out": tot["out"], "calls": tot["calls"], "models": models[:4], "states": states[:3],
+                        "out": tot["out"], "calls": tot["calls"], "models": code_models[:5], "states": states[:3],
                         "subject": bool(refs) and n.get("type") != "database"}
     spend = [d["cost"] for d in out.values() if d["subject"]]
     top = max(spend, default=0.0)
@@ -184,10 +191,10 @@ function fill(meta){
   const d=D[current]; if(!d) return;
   const rows=[];
   if(d.subject){
-    rows.push(['Spend', fmt(d.cost)+' in '+DAYS+' days (API-equivalent)']);
+    rows.push(['Spend', fmt(d.cost)+' in '+DAYS+' days, automated runs only (API-equivalent)']);
     rows.push(['Tokens', tok(d.tokens)+' ('+tok(d.out)+' output) · '+d.calls.toLocaleString()+' calls']);
-    rows.push(['Models', d.models.length?'<span class="hv-models">'+d.models.map(m=>'<span>'+esc(m)+'</span>').join('')+'</span>':'no LLM calls recorded']);
   }
+  rows.push(['Models', d.models.length?'<span class="hv-models">'+d.models.map(m=>'<span>'+esc(m)+'</span>').join('')+'</span>':'none found']);
   d.states.forEach(s=>rows.push(['Last run', esc(s)]));
   const div=document.createElement('div'); div.className='hv-info';
   div.innerHTML=(d.desc?'<p class="hv-desc">'+esc(d.desc)+'</p>':'')+(rows.length?'<dl>'+rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+r[1]+'</dd>').join('')+'</dl>':'');

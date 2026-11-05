@@ -96,9 +96,8 @@ def write_stats(snap: dict, folder: Path) -> None:
             w.writerow([a["agent"], round(a["cost_usd"], 2)])
 
     kinds = u["kinds"]
-    interactive = sum(v for k, v in kinds.items() if "interactive" in k)
     headless = sum(v for k, v in kinds.items() if "headless" in k)
-    api = total - interactive - headless
+    api = total - headless
     models = sorted(u["models"].items(), key=lambda kv: -kv[1]["cost_usd"])
     jobs = snap["jobs"]
     failing = [j for j in jobs if job_state(j)[0] == "❌"]
@@ -108,21 +107,24 @@ def write_stats(snap: dict, folder: Path) -> None:
     pct = lambda v: f"{100 * v / total:.0f}%" if total else "0%"
 
     L = []
-    L.append(f"# What ran on this Mac in the last {days} days, and what did it cost? {{#agent-stats}}\n")
+    inter = snap.get("interactive", {})
+    L.append(f"# What ran on its own on this Mac in the last {days} days, and what did it cost? {{#agent-stats}}\n")
     if top:
-        L.append(f"Your agents used about **{money(total)} of API-equivalent tokens** in {days} days; "
-                 f"**{cell(top['agent'])} used {money(top['cost_usd'])}** of it ({pct(top['cost_usd'])}).\n")
+        L.append(f"Your scheduled jobs, scripts and headless agents used about **{money(total)} of tokens** in "
+                 f"{days} days; **{cell(top['agent'])} used {money(top['cost_usd'])}** of it ({pct(top['cost_usd'])}).\n")
     else:
-        L.append(f"No token use was recorded in the last {days} days.\n")
-    L.append(f"- {pct(interactive)} of the cost is interactive Claude Code ({money(interactive)}); "
-             f"headless runs cost {money(headless)} and direct API calls {money(api)}.")
+        L.append(f"No automated token use was recorded in the last {days} days.\n")
+    L.append(f"- Headless agent runs cost {money(headless)} and scripts' direct API calls {money(api)}; local "
+             f"models (JEV, Whisper) cost nothing.")
+    if inter.get("total_cost_usd"):
+        L.append(f"- Your interactive sessions are not counted here: {money(inter['total_cost_usd'])} in "
+                 f"{(inter.get('sessions') or [{}])[0].get('count_total', 0)} sessions, on the Sessions page (`agent-sessions.html`).")
     if models:
         L.append("- " + "; ".join(f"{cell(model_name(m))} {money(v['cost_usd'])}" for m, v in models[:3]) + ".")
     states = [job_state(j)[0] for j in jobs]
     tally = ", ".join(f"{emo} {states.count(emo)}" for emo in ("✅", "⚠️", "❌", "⏳", "❔") if states.count(emo))
-    L.append(f"- {len(jobs)} scheduled jobs ({n_cron} cron, {len(jobs) - n_cron} launchd): {tally}.")
-    L.append(f"- {len(snap['links_confirmed'])} confirmed links between jobs and agents; "
-             f"{len(gaps)} with LLM calls not logged yet.\n")
+    L.append(f"- {len(jobs)} scheduled jobs ({n_cron} cron, {len(jobs) - n_cron} launchd): {tally}; "
+             f"{len(snap['links_confirmed'])} links between them; {len(gaps)} with LLM calls not logged yet.\n")
     L.append(f'@answer scope="last {days} days to {snap["generated"][:10]} · costs are list-price estimates · '
              f'Claude Code (Max) and Codex (Plus) are not billed per token"')
     L.append("@meta locale=en")
@@ -257,6 +259,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
     e = html.escape
     jobs = sorted(snap["jobs"], key=lambda j: (ORDER.get(job_state(j)[0], 9), j["name"]))
     usage = {a["agent"]: a for a in snap["usage"]["agents"]}
+    inter_usage = {a["agent"]: a for a in (snap.get("interactive") or {}).get("agents", [])}
     logs = snap.get("agent_logs", {})
     live: dict[str, dict] = {}
     for a in snap["live_agents"]:
@@ -264,7 +267,8 @@ def write_logs_page(snap: dict, folder: Path) -> None:
         if not cur or ORDER.get(AGENT_STATE.get(a["status"], ("⚪",))[0], 9) < ORDER.get(AGENT_STATE.get(cur["status"], ("⚪",))[0], 9):
             live[a["agent"]] = a
     names = sorted(set(live) | {n["label"] for n in snap["nodes"] if n["type"] == "agent"}
-                   | {a for a in usage if usage[a]["cost_usd"] >= 0.5})
+                   | {a for a in usage if usage[a]["cost_usd"] >= 0.5}
+                   | {a for a in inter_usage if inter_usage[a]["cost_usd"] >= 0.5})
 
     def details(body: list[str]) -> str:
         return "".join(body)
@@ -296,7 +300,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
                     f"<span class=sub>{e(words)}</span><span class=when>{e(last)}</span>"
                     f"<span class=issue>{e(issue[:110])}</span></summary>{details(body)}</details>")
     arows = []
-    dormant = [n for n in names if n not in live and n not in usage and not logs.get(n)]
+    dormant = [n for n in names if n not in live and n not in usage and n not in inter_usage and not logs.get(n)]
     names = [n for n in names if n not in dormant]
     for name in sorted(names, key=lambda n: (ORDER.get(AGENT_STATE.get(live.get(n, {}).get("status", "gone"), ("⚫",))[0], 9), n)):
         a = live.get(name)
@@ -305,15 +309,17 @@ def write_logs_page(snap: dict, folder: Path) -> None:
         if info.get("errors") and emo in ("⚪", "✅", "⚫"):
             emo, words = "⚠️", words + ", errors in its log"
         u = usage.get(name, {})
-        cost = f"${u['cost_usd']:,.2f} in {snap['window_days']} days" if u else "no token use"
+        iu = inter_usage.get(name, {})
+        parts = ([f"automated ${u['cost_usd']:,.2f}"] if u else []) + ([f"chats ${iu['cost_usd']:,.2f}"] if iu else [])
+        cost = (" · ".join(parts) + f" in {snap['window_days']} days") if parts else "no token use"
         body = [f"<p class=meta>{e(a['where'] if a else 'not open in hivey')} · {e(a.get('cwd', '') if a else '')}"
-                f" · last active {e(u.get('last_active') or '?')} · {e(cost)}"
-                + (f" · {e(', '.join(u.get('models', [])[:2]))}" if u else "") + "</p>"]
+                f" · last active {e((u or iu).get('last_active') or '?')} · {e(cost)}"
+                + (f" · {e(', '.join((u or iu).get('models', [])[:2]))}" if (u or iu) else "") + "</p>"]
         body += log_block(info) if info else ["<p class=meta>no <code>logs/</code> folder in this agent.</p>"]
         adesc = next((n.get("description", "") for n in snap["nodes"] if n["type"] == "agent" and n["label"] == name), "")
         arows.append(f"<details class=row><summary><span class=emo>{emo}</span>"
                      f"<span class=name><b>{e(name)}</b><small class=desc>{e(adesc)}</small></span>"
-                     f"<span class=sub>{e(words)}</span><span class=when>{e((u.get('last_active') or '')[:16].replace('T', ' '))}</span>"
+                     f"<span class=sub>{e(words)}</span><span class=when>{e(((u or iu).get('last_active') or '')[:16].replace('T', ' '))}</span>"
                      f"<span class=issue>{e(cost)}</span></summary>{details(body)}</details>")
     if dormant:
         arows.append(f"<details class=row><summary><span class=emo>⚫</span><b>{len(dormant)} dormant agents</b>"
@@ -345,7 +351,7 @@ pre{{background:var(--pre);border:1px solid var(--line);border-radius:8px;paddin
 @media (max-width:760px){{summary{{grid-template-columns:28px 1fr}} .sub,.when,.issue{{grid-column:2}}}}
 </style>
 <main>
-<nav class=hv-top><a href="agent-stats.html">Stats</a><a href="agent-map.html">Map</a><a class=on href="agent-logs.html">Logs</a></nav>
+<nav class=hv-top><a href="agent-stats.html">Stats</a><a href="agent-map.html">Map</a><a class=on href="agent-logs.html">Logs</a><a href="agent-sessions.html">Sessions</a></nav>
 <h1>Did every job and agent run?</h1>
 <p class=lead>Scan of {e(snap['generated'][:16].replace('T', ' '))}. Click a row for its issues and the last lines of its log.</p>
 <p class=counts>Scheduled jobs: {summary}</p>
@@ -394,8 +400,14 @@ already built: do not touch stats.archify.md or agent-stats.html.
    python3 -I {scripts}/agent_map.py link <from-id> <to-id> --via "<what flows>" --evidence "<file:line>"
    Skip anything unclear or coincidental. Then rerun: python3 -I {scripts}/agent_map.py scan --out snapshot.json
 2. Map: {map_task}
-   Costs and status go in each node's sublabel (from usage.agents and jobs in snapshot.json); keep at most
-   25 nodes on 5 stages x rows 0-4; refresh the numbers in the cards.
+   The map shows AUTOMATED work only: scheduled jobs, scripts and headless agents, the data they pass
+   to each other, and the models each one uses (any model: JEV, Claude, DeepSeek, Grok, Codex, Whisper;
+   nodes[].llm_api.models in snapshot.json). People chatting with agents (interactive sessions) are on
+   another page: never show their spend; drop an agent that has no automated runs and no data links,
+   and keep a consumer agent (one a job feeds) without its interactive cost. Each node's sublabel holds
+   its schedule or role, its models and its automated cost when it has one ("cron 04:15 · Grok + Sonnet ·
+   $0.40"); spend is usage.agents (automated only). Keep at most 25 nodes on 5 stages x rows 0-4;
+   refresh the numbers in the cards (automated spend, models in use, needs attention).
 3. Descriptions: every node in snapshot.json has a "description" (what it does). For each job and agent
    whose description is empty or does not say what it does (an instruction to the agent, "You are X"),
    read its brief or script (first lines only) and write ONE plain sentence of at most 18 words into
@@ -494,6 +506,8 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
     (STATE / "snapshot.json").write_text(json.dumps(snap, indent=1, default=str))
     write_stats(snap, folder)
     write_logs_page(snap, folder)
+    import sessions_page
+    sessions_page.write_sessions_page(snap, folder)
     ok, msg = finalize(folder, "explainer", "stats.archify.md", "agent-stats.html")
     log(folder, f"stats page: {'ok' if ok else 'FAILED ' + msg}")
 
@@ -549,7 +563,7 @@ def notify(text: str) -> None:
 def open_latest(model: str) -> int:
     folder = latest_report()
     if folder:
-        for page in ("agent-stats.html", "agent-map.html", "agent-logs.html"):
+        for page in ("agent-stats.html", "agent-map.html", "agent-logs.html", "agent-sessions.html"):
             if (folder / page).is_file():
                 subprocess.run(["open", str(folder / page)], capture_output=True)
         print(f"opened {folder}")

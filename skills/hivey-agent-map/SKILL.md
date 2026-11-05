@@ -119,6 +119,14 @@ hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | sta
 - **Descriptions** ("what it does"): from a brief's mission, a skill's description or a script's module
   docstring; the nightly model writes the missing or weak ones to `~/.hivey/agent-map/descriptions.json`
   (kept, edit freely), which wins over the extracted ones. They show in the map's info cards and the run log.
+- **Automated vs interactive:** the map, the stats page and map colours count AUTOMATED work only
+  (scheduled jobs, scripts, headless `claude -p` / `codex exec`, scripts' API calls; snapshot `usage`).
+  People chatting with agents (Claude Code, Codex, Grok in a terminal; snapshot `interactive`, with one
+  entry per session) go to **`agent-sessions.html`**: cost by agent and by day, the costliest sessions with
+  their peak context (⚠️ over 300k tokens), length and first message, and tips to spend less.
+- **Models per job:** the scan reads each job's code for the models it uses, local ones included
+  (`nodes[].llm_api.models`: JEV-9B local or Jev on OpenRouter, Claude Opus/Sonnet/Haiku, Grok, DeepSeek,
+  Gemini, OpenAI/Codex, Muse, Whisper, Parakeet); the map's info card lists them next to recorded spend.
 - **Per day:** the stats page charts the top agents' cost per day and lists each day's cost, tokens and
   top agents (`usage.daily_by_agent` in the snapshot).
 - **`agent-logs.html`** (run log, written by code): every scheduled job with ✅ ran ok · ⚠️ errors in

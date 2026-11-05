@@ -304,19 +304,44 @@ def blank():
     return {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "cost_usd": 0.0, "calls": 0}
 
 
+def is_interactive(kind: str) -> bool:
+    """A person chatting with an agent (Claude Code, Codex or Grok in a terminal), not an automated run
+    (scheduled job, headless `claude -p` / `codex exec`, a script's API call)."""
+    return kind.endswith("interactive")
+
+
 class Usage:
     def __init__(self, days: int):
         self.cutoff = since(days)
         self.table = prices()
         self.rows = []  # (day, agent, provider, model, kind, usage dict)
-        self.last_seen: dict[str, dt.datetime] = {}
+        self.last_seen: dict[tuple, dt.datetime] = {}
+        self.sessions: dict[str, dict] = {}  # interactive sessions, one entry each
+        self.prompts: dict[str, str] = {}  # session id → its first prompt
 
-    def add(self, ts, agent, provider, model, kind, inp=0, out=0, read=0, write=0, cost_usd=None, calls=1):
+    def add(self, ts, agent, provider, model, kind, inp=0, out=0, read=0, write=0, cost_usd=None, calls=1,
+            session=None):
         if ts is None or ts < self.cutoff:
             return
         c = cost(model, inp, out, read, write, self.table) if cost_usd is None else cost_usd
-        if ts > self.last_seen.get(agent, ts.min.replace(tzinfo=dt.timezone.utc)):
-            self.last_seen[agent] = ts
+        if session and is_interactive(kind):
+            se = self.sessions.setdefault(session, {
+                "session": session, "agent": agent, "tool": kind.split()[0], "start": ts, "end": ts,
+                "cost_usd": 0.0, "calls": 0, "tokens": 0, "output": 0, "max_context": 0, "models": []})
+            se.setdefault("agents", [])
+            if agent not in se["agents"]:
+                se["agents"].append(agent)  # a session can move between folders
+            se["start"], se["end"] = min(se["start"], ts), max(se["end"], ts)
+            se["cost_usd"] += c
+            se["calls"] += calls
+            se["tokens"] += inp + out + read + write
+            se["output"] += out
+            se["max_context"] = max(se["max_context"], inp + read + write)
+            if model and model not in se["models"]:
+                se["models"].append(model)
+        key = (agent, is_interactive(kind))
+        if ts > self.last_seen.get(key, ts.min.replace(tzinfo=dt.timezone.utc)):
+            self.last_seen[key] = ts
         self.rows.append((ts.astimezone().date().isoformat(), agent, provider, model or "?", kind,
                           {"input": inp, "output": out, "cache_read": read, "cache_write": write,
                            "cost_usd": c, "calls": calls}))
@@ -334,6 +359,8 @@ class Usage:
             with fh:
                 for line in fh:
                     if '"usage"' not in line:
+                        if '"type":"user"' in line:
+                            self.first_prompt(line)
                         continue
                     try:
                         d = json.loads(line)
@@ -353,7 +380,24 @@ class Usage:
                     kind = "headless" if d.get("entrypoint") in ("sdk-cli", "sdk-ts", "sdk-py") else "interactive"
                     self.add(parse_ts(d.get("timestamp", "")), agent_of(d.get("cwd")), provider, model,
                              f"claude-code {kind}", u.get("input_tokens", 0) or 0, u.get("output_tokens", 0) or 0,
-                             u.get("cache_read_input_tokens", 0) or 0, u.get("cache_creation_input_tokens", 0) or 0)
+                             u.get("cache_read_input_tokens", 0) or 0, u.get("cache_creation_input_tokens", 0) or 0,
+                             session=d.get("sessionId"))
+
+    def first_prompt(self, line: str) -> None:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            return
+        sid = d.get("sessionId")
+        if not sid or sid in self.prompts or d.get("isMeta"):
+            return
+        c = (d.get("message") or {}).get("content")
+        if isinstance(c, list):
+            c = " ".join(x.get("text", "") for x in c if isinstance(x, dict) and x.get("type") == "text")
+        if isinstance(c, str):
+            c = " ".join(c.split())
+            if c and not c.startswith(("<", "Caveat:", "[Request interrupted")):
+                self.prompts[sid] = c[:160]
 
     def codex(self):
         cutoff_epoch = self.cutoff.timestamp()
@@ -370,7 +414,7 @@ class Usage:
                     text = Path(f).read_text(errors="replace")
                 except OSError:
                     continue
-            cwd, model, last, ts = None, "", None, None
+            cwd, model, last, ts, origin, sid = None, "", None, None, "", None
             for line in text.splitlines():
                 if '"session_meta"' in line or '"turn_context"' in line or '"token_count"' in line:
                     try:
@@ -380,6 +424,8 @@ class Usage:
                     p = d.get("payload") or {}
                     if d.get("type") == "session_meta":
                         cwd = p.get("cwd")
+                        origin = str(p.get("originator", ""))
+                        sid = p.get("id")
                     elif d.get("type") == "turn_context":
                         model = p.get("model") or model
                         cwd = p.get("cwd") or cwd
@@ -388,9 +434,10 @@ class Usage:
                         ts = parse_ts(d.get("timestamp", ""))
             if last:
                 cached = last.get("cached_input_tokens", 0) or 0
-                self.add(ts, agent_of(cwd), "openai", model or "codex", "codex",
+                self.add(ts, agent_of(cwd), "openai", model or "codex",
+                         "codex headless" if "exec" in origin else "codex interactive",
                          (last.get("input_tokens", 0) or 0) - cached, last.get("output_tokens", 0) or 0, cached,
-                         last.get("cache_write_input_tokens", 0) or 0)
+                         last.get("cache_write_input_tokens", 0) or 0, session=sid)
 
     def grok(self):
         for f in glob.glob(str(HOME / ".grok/sessions/*/*/usage.json")):
@@ -398,10 +445,12 @@ class Usage:
             s = d.get("session") or {}
             folder = Path(f).parent.parent.name.replace("%2F", "/")
             ticks = s.get("costUsdTicks")
+            kind = "grok headless" if folder.startswith(("/tmp", "/private/tmp")) else "grok interactive"
             self.add(parse_ts(d.get("updatedAt", "")), agent_of(folder), "xai", s.get("primaryModelId", "grok"),
-                     "grok cli", s.get("inputTokens", 0) - s.get("cachedReadTokens", 0), s.get("outputTokens", 0),
+                     kind, s.get("inputTokens", 0) - s.get("cachedReadTokens", 0), s.get("outputTokens", 0),
                      s.get("cachedReadTokens", 0), s.get("cacheCreationTokens", 0),
-                     cost_usd=ticks / 1e10 if ticks is not None else None, calls=s.get("modelCalls", 1))
+                     cost_usd=ticks / 1e10 if ticks is not None else None, calls=s.get("modelCalls", 1),
+                     session=d.get("sessionId"))
 
     def ledgers(self):
         for path, provider_default in ((GUARD_LEDGER, "anthropic"), (SPEND_LOG, None)):
@@ -430,10 +479,13 @@ class Usage:
                 print(f"warning: {step.__name__}: {e}", file=sys.stderr)
         return self
 
-    def summary(self) -> dict:
+    def summary(self, interactive: bool = False) -> dict:
+        """Automated runs (default) or interactive sessions only."""
+        rows = [r for r in self.rows if is_interactive(r[4]) == interactive]
+
         def group(keyf):
             g = collections.defaultdict(blank)
-            for row in self.rows:
+            for row in rows:
                 acc = g[keyf(row)]
                 for k, v in row[5].items():
                     acc[k] += v
@@ -443,16 +495,16 @@ class Usage:
         for name, tot in sorted(by_agent.items(), key=lambda kv: -kv[1]["cost_usd"]):
             models = collections.Counter()
             providers = collections.Counter()
-            for r in self.rows:
+            for r in rows:
                 if r[1] == name:
                     models[r[3]] += r[5]["cost_usd"] + 1e-12
                     providers[r[2]] += r[5]["cost_usd"] + 1e-12
-            seen = self.last_seen.get(name)
+            seen = self.last_seen.get((name, interactive))
             agents.append({"agent": name, "last_active": seen.astimezone().isoformat(timespec="minutes") if seen else None,
                            **{k: round(v, 4) if isinstance(v, float) else v for k, v in tot.items()},
                            "models": [m for m, _ in models.most_common()], "providers": [p for p, _ in providers.most_common()]})
         day_agent = collections.defaultdict(lambda: collections.defaultdict(blank))
-        for r in self.rows:
+        for r in rows:
             acc = day_agent[r[0]][r[1]]
             for k, v in r[5].items():
                 acc[k] += v
@@ -472,10 +524,22 @@ class Usage:
             "kinds": {k: round(v["cost_usd"], 4) for k, v in group(lambda r: r[4]).items()},
             "daily_cost_by_provider": dict(sorted(daily.items())),
             "daily_by_agent": daily_agents,
-            "total_cost_usd": round(sum(r[5]["cost_usd"] for r in self.rows), 2),
-            "total_tokens": sum(r[5]["input"] + r[5]["output"] + r[5]["cache_read"] + r[5]["cache_write"] for r in self.rows),
+            "total_cost_usd": round(sum(r[5]["cost_usd"] for r in rows), 2),
+            "total_tokens": sum(r[5]["input"] + r[5]["output"] + r[5]["cache_read"] + r[5]["cache_write"] for r in rows),
             "sources_without_tokens": ["antigravity (agy): no per-session token data on disk"],
+            **({"sessions": self.session_list()} if interactive else {}),
         }
+
+    def session_list(self, limit: int = 500) -> list[dict]:
+        out = []
+        for se in sorted(self.sessions.values(), key=lambda x: -x["cost_usd"])[:limit]:
+            out.append({**se, "start": se["start"].astimezone().isoformat(timespec="minutes"),
+                        "end": se["end"].astimezone().isoformat(timespec="minutes"),
+                        "hours": round((se["end"] - se["start"]).total_seconds() / 3600, 1),
+                        "cost_usd": round(se["cost_usd"], 2), "prompt": self.prompts.get(se["session"], ""),
+                        "count_total": len(self.sessions)})
+        return out
+
 
 
 # ---------------------------------------------------------------- descriptions
@@ -651,6 +715,34 @@ API_MARKERS = {
 }
 
 
+MODEL_PATTERNS = [  # (regex over a script's code, the model name shown)
+    (r"jev \(openrouter\)|openrouter[^\n]{0,80}\bjev\b|\bjev\b[^\n]{0,80}openrouter", "Jev (OpenRouter)"),
+    (r"\bJEV[-_ ]?9B\b|jev-server|127\.0\.0\.1:8090|localhost:8090|JEV_BACKEND", "JEV-9B (local)"),
+    (r"claude-opus-\d|--model[= ]+[\"']?opus\b", "Claude Opus"),
+    (r"claude-sonnet-\d|--model[= ]+[\"']?sonnet\b", "Claude Sonnet"),
+    (r"claude-haiku-\d|--model[= ]+[\"']?haiku\b", "Claude Haiku"),
+    (r"\bgrok-\d[\w.-]*", "Grok"),
+    (r"\bdeepseek[\w./-]*", "DeepSeek"),
+    (r"\bgemini-[\d.]+[\w.-]*", "Gemini"),
+    (r"\bgpt-[\d.]+[\w.-]*|\bcodex exec\b", "OpenAI / Codex"),
+    (r"\bmuse[-_ ]glimmer|muse-glimmer", "Muse Glimmer (local)"),
+    (r"\bwhisper\b|mlx[_-]whisper", "Whisper (local)"),
+    (r"\bparakeet\b", "Parakeet (local)"),
+]
+
+
+def models_in(text: str) -> list[str]:
+    found = []
+    for rx, name in MODEL_PATTERNS:
+        if re.search(rx, text, re.I) and name not in found:
+            found.append(name)
+    if "JEV-9B (local)" in found and "Jev (OpenRouter)" in found:
+        pass  # both backends: local first, hosted as fallback
+    if any(n.startswith("Claude ") for n in found) or not re.search(r"\bclaude\b", text):
+        return found
+    return found + ["Claude"] if re.search(API_MARKERS["claude-cli"], text) else found
+
+
 def run_files(paths: list[str]) -> list[Path]:
     """The files a node actually runs: its referenced scripts, the local modules they import and the
     scripts they call (one level). Agents (folders): their scripts folder."""
@@ -679,7 +771,7 @@ def run_files(paths: list[str]) -> list[Path]:
 def api_usage(paths: list[str], command: str = "") -> dict:
     """Which LLM APIs a node's code calls, and which of those already log their spend
     (hivey_spend logs any provider; claude-api-guard only Anthropic; claude -p is in the transcripts)."""
-    providers, logged_by, files = set(), set(), []
+    providers, logged_by, files, models = set(), set(), [], models_in(command)
     if re.search(API_MARKERS["claude-cli"], command):
         providers.add("claude-cli")
         files.append("(job command)")
@@ -692,14 +784,15 @@ def api_usage(paths: list[str], command: str = "") -> dict:
         if hit:
             providers |= hit
             files.append(short(str(f)))
+        models += [m for m in models_in(text) if m not in models]
         if "hivey_spend" in text:
             logged_by.add("all")
         if re.search(r"claude[-_]api[-_]guard", text):
             logged_by.add("anthropic")
-    if not providers:
+    if not providers and not models:
         return {}
     unlogged = sorted(p for p in providers if p != "claude-cli" and "all" not in logged_by and p not in logged_by)
-    return {"providers": sorted(providers), "unlogged": unlogged, "files": files[:6]}
+    return {"providers": sorted(providers), "unlogged": unlogged, "files": files[:6], "models": models}
 
 
 def job_run_files(command: str) -> list[str]:
@@ -733,6 +826,8 @@ def build_links(jobs: list[dict], live: list[dict]) -> tuple[list[dict], dict]:
         nodes.setdefault(nid, {"id": nid, "label": a["agent"], "type": "agent", "agent": a["agent"], "paths": []})
     for n in nodes.values():
         u = api_usage(n["run"], n["command"]) if n["type"] == "job" else api_usage(n["paths"])
+        if u and "hivey-agent-map" in n.get("command", ""):
+            u["models"] = ["Claude Haiku"]  # this map's own run (its code names every model it prices)
         if u:
             n["llm_api"] = u
     touches: dict[str, list[tuple[str, str]]] = collections.defaultdict(list)
@@ -763,7 +858,8 @@ def build_links(jobs: list[dict], live: list[dict]) -> tuple[list[dict], dict]:
 def scan(days: int) -> dict:
     jobs = cron_jobs() + launchd_jobs()
     live = live_agents()
-    usage = Usage(days).collect().summary()
+    collected = Usage(days).collect()
+    usage, interactive = collected.summary(), collected.summary(interactive=True)
     nodes, candidates = build_links(jobs, live)
     overrides = load_json(DESCRIPTIONS, {})
     for j in jobs:
@@ -787,7 +883,8 @@ def scan(days: int) -> dict:
         "jobs": jobs,
         "live_agents": live,
         "agent_logs": agent_logs(),
-        "usage": usage,
+        "usage": usage,  # automated runs only: scheduled jobs, headless runs, scripts' API calls
+        "interactive": interactive,  # people chatting with agents: the Sessions page
         "nodes": nodes,
         "links_confirmed": load_json(LINKS, []),
         "links_candidates": candidates,
