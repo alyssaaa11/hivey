@@ -59,10 +59,13 @@ def write_sessions_page(snap: dict, folder: Path) -> None:
         pa = per_agent[a["agent"]]
         tok = a["input"] + a["output"] + a["cache_read"] + a["cache_write"]
         warn = " ⚠️" if pa["long"] else ""
+        win = a.get("window") or ""
+        win_cell = (f'<span class="win {"big" if win == "1M" else "std"}">{"1M" if win == "1M" else "200k"}</span>'
+                    if win else '<span class=dim>—</span>')
         arows.append(
             f"<tr><td><b>{e(a['agent'])}</b></td><td class=num>{pa['n']}</td>"
             f"<td class=cost>{bar(a['cost_usd'], top_agent)}<span>{money(a['cost_usd'])}</span></td>"
-            f"<td class=num>{mtok(tok)}</td><td class=num>{mtok(pa['peak'])}{warn}</td>"
+            f"<td class=num>{mtok(tok)}</td><td class=num>{mtok(pa['peak'])}{warn}</td><td>{win_cell}</td>"
             f"<td>{e(', '.join(model_name(m) for m in a['models'][:2]))}</td>"
             f"<td class=dim>{e((a.get('last_active') or '')[:16].replace('T', ' '))}</td></tr>")
 
@@ -93,6 +96,14 @@ def write_sessions_page(snap: dict, folder: Path) -> None:
         tips.append(f"<li><b>{long_n} sessions grew past {LONG_CONTEXT // 1000}k tokens of context</b> and cost "
                     f"{money(long_cost)} ({100 * long_cost / total:.0f}% of the total): every reply re-reads the whole "
                     f"session. Start a new session per task (<code>/clear</code>) and <code>/compact</code> a long one.</li>")
+    big = [a["agent"] for a in agents if a.get("window") == "1M" and per_agent[a["agent"]]["long"]]
+    if big:
+        names = " ".join(big[:8])
+        tips.append(f"<li><b>{len(big)} agents with long sessions still get the 1M window</b> ({e(', '.join(big[:8]))}). "
+                    "The standard window (200k) makes Claude Code compact the session before it grows, so replies "
+                    f"re-read far less: <code>hivey agent-map context {e(names)} --set standard</code>. "
+                    "Give one agent the large window back with <code>--set 1M</code>. It applies from the agent's next "
+                    "start; <code>hivey agent-map context</code> lists every agent's window and peak.</li>")
     if day_long:
         tips.append(f"<li><b>{day_long} sessions stayed open 12 hours or more.</b> After a pause the cached context "
                     "expires and is written again in full, which costs more than reading it.</li>")
@@ -101,6 +112,8 @@ def write_sessions_page(snap: dict, folder: Path) -> None:
                     "reviews and diagrams cost half on Sonnet (<code>/model sonnet</code>).</li>")
     n_total = sessions[0]["count_total"] if sessions else 0
 
+    import enhance
+    NAV, NAV_CSS = enhance.nav("agent-sessions.html", snap.get('generated', '')), enhance.NAV_CSS
     page = f"""<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>Interactive sessions · {e(snap.get('generated', '')[:16])}</title>
@@ -109,7 +122,7 @@ def write_sessions_page(snap: dict, folder: Path) -> None:
 @media (prefers-color-scheme:dark){{:root{{--bg:#0d1117;--fg:#e6edf3;--mute:#8b949e;--line:#30363d;--card:#161b22;--accent:#79a8ff}}}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
 main{{max-width:1180px;margin:0 auto;padding:28px 24px 60px}}
-nav a{{color:var(--accent);margin-right:18px;text-decoration:none;font-weight:600}} nav a.on{{color:var(--fg)}}
+{NAV_CSS}
 h1{{font-size:26px;margin:18px 0 4px}} h2{{font-size:19px;margin:34px 0 10px}}
 .lead{{color:var(--mute);margin:0 0 14px}}
 .kpis{{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}}
@@ -125,10 +138,12 @@ td{{border-bottom:1px solid var(--line);padding:7px 8px;vertical-align:middle}}
 .prompt{{max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--mute);font-size:13px}}
 .tips{{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 18px}}
 .tips li{{margin:8px 0}} code{{font:12.5px ui-monospace,Menlo,monospace}}
+.win{{font-size:12px;font-weight:600;padding:1px 7px;border-radius:9px;white-space:nowrap}}
+.win.big{{background:color-mix(in srgb,hsl(30,90%,55%) 22%,transparent)}} .win.std{{background:color-mix(in srgb,hsl(130,55%,45%) 20%,transparent)}}
 .note{{color:var(--mute);font-size:13px;margin-top:30px}}
 </style>
 <main>
-<nav><a href="agent-stats.html">Stats</a><a href="agent-map.html">Map</a><a href="agent-logs.html">Logs</a><a class=on href="agent-sessions.html">Sessions</a></nav>
+{NAV}
 <h1>Your interactive sessions, last {days} days</h1>
 <p class=lead>Chats with agents in a terminal (Claude Code, Codex, Grok), kept apart from the automated jobs on the map.
 Costs are API-equivalent: a Max plan is not billed per token, but these use up its limits.</p>
@@ -140,14 +155,15 @@ Costs are API-equivalent: a Max plan is not billed per token, but these use up i
 </div>
 {f'<h2>How to spend less</h2><ul class=tips>{"".join(tips)}</ul>' if tips else ''}
 <h2>By agent</h2>
-<table><tr><th>Agent</th><th class=num>Sessions</th><th>Cost</th><th class=num>Tokens</th><th class=num>Peak context</th><th>Models</th><th>Last active</th></tr>
-{''.join(arows) or '<tr><td colspan=7>No interactive sessions in this window.</td></tr>'}</table>
+<table><tr><th>Agent</th><th class=num>Sessions</th><th>Cost</th><th class=num>Tokens</th><th class=num>Peak context</th><th title="context window of this agent's next session">Window</th><th>Models</th><th>Last active</th></tr>
+{''.join(arows) or '<tr><td colspan=8>No interactive sessions in this window.</td></tr>'}</table>
 <h2>By day</h2>
 <table><tr><th>Day</th><th>Cost</th><th class=num>Tokens</th><th>Agents that day (top 3)</th></tr>{''.join(drows)}</table>
 <h2>Costliest sessions</h2>
 <table><tr><th class=num>Cost</th><th>Agent</th><th>When</th><th class=num>Calls</th><th class=num>Peak context</th><th>Models</th><th>First message</th></tr>
 {''.join(srows)}</table>
-<p class=note>⚠️ peak context over {LONG_CONTEXT // 1000}k tokens. From the Claude Code, Codex and Grok session files on this
+<p class=note>⚠️ peak context over {LONG_CONTEXT // 1000}k tokens. Window: the context size this agent's next session
+gets (1M, or the standard 200k that compacts early), from its folder's <code>.claude/settings.json</code>. From the Claude Code, Codex and Grok session files on this
 Mac; Claude Code keeps 15 days of them. Scan {e(snap.get('generated', '')[:16].replace('T', ' '))}.</p>
 </main></html>"""
     (folder / "agent-sessions.html").write_text(page)

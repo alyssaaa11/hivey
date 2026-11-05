@@ -526,7 +526,7 @@ class Usage:
             "daily_by_agent": daily_agents,
             "total_cost_usd": round(sum(r[5]["cost_usd"] for r in rows), 2),
             "total_tokens": sum(r[5]["input"] + r[5]["output"] + r[5]["cache_read"] + r[5]["cache_write"] for r in rows),
-            "sources_without_tokens": ["antigravity (agy): no per-session token data on disk"],
+            "sources_without_tokens": [],  # filled by scan() when something actually runs agy
             **({"sessions": self.session_list()} if interactive else {}),
         }
 
@@ -624,6 +624,29 @@ def describe_script(path: Path) -> str:
             return first_sentence(para)
     joined = " ".join(comments)
     return first_sentence(joined) if len(joined) > 20 and not BOILERPLATE.search(joined) else ""
+
+
+WEAK_START = re.compile(r"^(you\b|your\b|own\b|goal\b|job:|example\b|since\b|wrapper\b|always\b|never\b|"
+                        r"this (file|folder|repo)\b|#|-|\d)", re.I)
+
+
+def weak_description(text: str) -> bool:
+    """True when a description doesn't plainly say what the thing does: empty, cut off, copied from a
+    brief ("You are…", "Own the…"), a stray list number, too short or too long."""
+    t = (text or "").strip()
+    return (len(t) < 25 or len(t) > 170 or t.endswith(("…", "...", ":")) or bool(WEAK_START.match(t))
+            or bool(re.search(r"(:|\s)\d+\.$", t)))
+
+
+def descriptions_to_write(jobs: list, nodes: list, live: list) -> list:
+    active = {a["agent"] for a in live}
+    seen = collections.Counter(j.get("description", "") for j in jobs)
+    out = [j["id"] for j in jobs if weak_description(j.get("description", "")) or seen[j.get("description", "")] > 1]
+    for n in nodes:  # agents: the active ones and those with scheduled work (the dormant are folded away)
+        if n["type"] != "job" and weak_description(n.get("description", "")) and (
+                n["label"] in active or any(j.get("agent") == n["label"] for j in jobs)):
+            out.append(n["id"])
+    return out
 
 
 def describe_job(j: dict) -> str:
@@ -860,7 +883,16 @@ def scan(days: int) -> dict:
     live = live_agents()
     collected = Usage(days).collect()
     usage, interactive = collected.summary(), collected.summary(interactive=True)
+    import context_window
+    for a in interactive.get("agents", []):  # which window each agent's chats get (Sessions page)
+        folder = context_window.folder_of(a["agent"])
+        a["folder"] = str(folder) if folder else ""
+        a["window"] = context_window.window(folder) if folder else ""
     nodes, candidates = build_links(jobs, live)
+    # Antigravity keeps no token data on disk: say so only when a job or a hivey agent runs it
+    if any(re.search(r"(^|[\s/;&|])agy(\s|$)", j.get("command", "")) for j in jobs) or \
+            any(a.get("cli") == "agy" for a in live):
+        usage["sources_without_tokens"] = ["antigravity (agy): no per-session token data on disk"]
     overrides = load_json(DESCRIPTIONS, {})
     for j in jobs:
         j["description"] = overrides.get(j["id"]) or describe_job(j)
@@ -888,6 +920,8 @@ def scan(days: int) -> dict:
         "nodes": nodes,
         "links_confirmed": load_json(LINKS, []),
         "links_candidates": candidates,
+        # ids whose description the nightly model should rewrite: weak, or the same text as another job's
+        "descriptions_to_write": descriptions_to_write(jobs, nodes, live),
         "notes": [
             "Costs are API-list-price estimates; Claude Code (Max) and Codex (Plus) usage is API-equivalent, not billed.",
             "Claude Code transcripts older than the weekly purge (15 days) are gone; longer windows undercount.",
@@ -940,6 +974,34 @@ def print_stats(snap: dict) -> None:
         print(f"  {st['resource']}{owner}: " + ", ".join(dict.fromkeys(n['id'] for n in st['nodes'])))
 
 
+def context_cmd(agents: list, size: str | None) -> int:
+    import context_window as cw
+    snap = load_json(STATE / "snapshot.json", {})
+    peaks = {}
+    for sess in (snap.get("interactive") or {}).get("sessions", []):
+        for name in sess.get("agents") or [sess["agent"]]:
+            peaks[name] = max(peaks.get(name, 0), sess.get("max_context", 0))
+    if not agents:
+        if size:
+            print("name the agents to change, e.g.: hivey agent-map context superintel x-content --set standard")
+            return 2
+        agents = sorted(peaks, key=lambda n: -peaks[n])
+    code = 0
+    for name in agents:
+        folder = Path(name).expanduser() if "/" in name and Path(name).expanduser().is_dir() else cw.folder_of(name)
+        if not folder:
+            print(f"{name}: no folder found")
+            code = 1
+            continue
+        if size:
+            now = cw.set_window(folder, cw.LARGE if size.lower() == "1m" else cw.STANDARD)
+            print(f"{name}: {now} (from its next start; a running session keeps its window)")
+        else:
+            peak = peaks.get(name, 0)
+            print(f"{name:28} {cw.window(folder):9} peak {peak // 1000}k  {short(str(folder))}")
+    return code
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -974,6 +1036,12 @@ def main() -> int:
                                       'e.g. "envsave get es_…" ("" = the normal claude login)')
     sc.add_argument("--at", default="06:30", help="HH:MM, local time (default 06:30, after the night's jobs)")
     sc.add_argument("--model", default="haiku")
+    rf = sub.add_parser("refresh", help="new scan into the latest report's pages, no model (the Refresh button)")
+    rf.add_argument("--days", type=int, default=7)
+    sub.add_parser("serve", help="serve the report pages on 127.0.0.1 (`open` starts it)")
+    cx = sub.add_parser("context", help="context window per agent: list, or set standard | 1M")
+    cx.add_argument("agents", nargs="*", help="agent names (as on the Sessions page) or folders")
+    cx.add_argument("--set", choices=["standard", "1M", "1m"], help="standard = 200k, compacts early; 1M = large")
     lk = sub.add_parser("link")
     lk.add_argument("src")
     lk.add_argument("dst")
@@ -1019,6 +1087,14 @@ def main() -> int:
                              a.cost, a.kind, a.note)
         print(json.dumps(entry))
         return 0 if entry else 1
+    if a.cmd == "refresh":
+        import report
+        return report.refresh(scan, a.days, "haiku")
+    if a.cmd == "serve":
+        import serve
+        return serve.serve()
+    if a.cmd == "context":
+        return context_cmd(a.agents, a.set)
     if a.cmd == "link":
         links = [l for l in load_json(LINKS, []) if not (l["from"] == a.src and l["to"] == a.dst)]
         if not a.remove:

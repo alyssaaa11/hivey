@@ -188,6 +188,14 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 "scripts/sessions_page.py",
                 include_str!("../../../skills/hivey-agent-map/scripts/sessions_page.py"),
             ),
+            (
+                "scripts/context_window.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/context_window.py"),
+            ),
+            (
+                "scripts/serve.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/serve.py"),
+            ),
         ],
     ),
     // How to run each coding agent hivey supports besides Claude Code, headless.

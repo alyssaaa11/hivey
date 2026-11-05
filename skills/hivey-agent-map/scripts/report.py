@@ -251,6 +251,11 @@ def job_state(j: dict) -> tuple[str, str]:
 
 AGENT_STATE = {"working": ("🟢", "working"), "running": ("🟢", "running"), "blocked": ("🔴", "blocked, needs you"),
                "idle": ("⚪", "idle"), "done": ("✅", "done"), "gone": ("⚫", "not running")}
+def job_anchor(job_id: str) -> str:
+    """The logs page anchor of a job (the map links to it)."""
+    return "job-" + re.sub(r"[^a-z0-9]+", "-", job_id.lower()).strip("-")
+
+
 ORDER = {"❌": 0, "⚠️": 1, "🔴": 1, "⏳": 2, "🟢": 2, "❔": 3, "⚪": 4, "✅": 4, "⚫": 5}
 
 
@@ -295,7 +300,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
                 f"<p class=meta>command <code>{e(j['command'][:400])}</code></p>"] + log_block(j)
         if not j.get("log"):
             body.append("<p class=meta>this job writes no log file hivey can find.</p>")
-        rows.append(f"<details class=row data-state='{emo}'><summary><span class=emo>{emo}</span>"
+        rows.append(f"<details class=row id='{job_anchor(j['id'])}' data-state='{emo}'><summary><span class=emo>{emo}</span>"
                     f"<span class=name><b>{e(j['name'])}</b><small class=desc>{e(j.get('description') or '')}</small></span>"
                     f"<span class=sub>{e(words)}</span><span class=when>{e(last)}</span>"
                     f"<span class=issue>{e(issue[:110])}</span></summary>{details(body)}</details>")
@@ -327,6 +332,8 @@ def write_logs_page(snap: dict, folder: Path) -> None:
                      f"<span class=issue>{e(', '.join(dormant[:8]))}…</span></summary>"
                      f"<p class=meta>{e(', '.join(dormant))}</p></details>")
     summary = " · ".join(f"{k} {v}" for k, v in sorted(counts.items(), key=lambda kv: ORDER.get(kv[0], 9)))
+    import enhance
+    NAV, NAV_CSS = enhance.nav("agent-logs.html", snap['generated']), enhance.NAV_CSS
     page = f"""<!doctype html><html lang=en><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>Agent logs · {e(snap['generated'][:16])}</title>
@@ -335,7 +342,7 @@ def write_logs_page(snap: dict, folder: Path) -> None:
 @media (prefers-color-scheme:dark){{:root{{--bg:#0d1117;--fg:#e6edf3;--mute:#8b949e;--line:#30363d;--card:#161b22;--accent:#79a8ff;--pre:#0b0f14}}}}
 body{{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
 main{{max-width:1180px;margin:0 auto;padding:28px 24px 60px}}
-nav a{{color:var(--accent);margin-right:18px;text-decoration:none;font-weight:600}} nav a.on{{color:var(--fg)}}
+{NAV_CSS}
 h1{{font-size:26px;margin:18px 0 4px}} h2{{font-size:19px;margin:34px 0 10px}}
 .lead{{color:var(--mute);margin:0 0 6px}} .counts{{font-size:17px;margin:10px 0 0}}
 .row{{border:1px solid var(--line);background:var(--card);border-radius:10px;margin:7px 0}}
@@ -351,7 +358,7 @@ pre{{background:var(--pre);border:1px solid var(--line);border-radius:8px;paddin
 @media (max-width:760px){{summary{{grid-template-columns:28px 1fr}} .sub,.when,.issue{{grid-column:2}}}}
 </style>
 <main>
-<nav class=hv-top><a href="agent-stats.html">Stats</a><a href="agent-map.html">Map</a><a class=on href="agent-logs.html">Logs</a><a href="agent-sessions.html">Sessions</a></nav>
+{NAV}
 <h1>Did every job and agent run?</h1>
 <p class=lead>Scan of {e(snap['generated'][:16].replace('T', ' '))}. Click a row for its issues and the last lines of its log.</p>
 <p class=counts>Scheduled jobs: {summary}</p>
@@ -362,7 +369,10 @@ pre{{background:var(--pre);border:1px solid var(--line);border-radius:8px;paddin
 <p class=legend>✅ ran ok · ⚠️ errors in its log or a missed run · ❌ failed (non-zero exit) or not loaded · ⏳ running ·
 ❔ no log · 🟢 working · 🔴 blocked, needs you · ⚪ idle · ⚫ not running. "Issues" are the error lines among the
 last 40 lines of each log, so an old error can show until the log moves on.</p>
-</main></html>"""
+</main>
+<script>(function(){{const open=()=>{{const d=location.hash&&document.getElementById(location.hash.slice(1));
+if(d&&d.tagName==='DETAILS'){{d.open=true;d.scrollIntoView({{block:'start'}});}}}};open();addEventListener('hashchange',open);}})();</script>
+</html>"""
     (folder / "agent-logs.html").write_text(page)
 
 
@@ -408,10 +418,14 @@ already built: do not touch stats.archify.md or agent-stats.html.
    its schedule or role, its models and its automated cost when it has one ("cron 04:15 · Grok + Sonnet ·
    $0.40"); spend is usage.agents (automated only). Keep at most 25 nodes on 5 stages x rows 0-4;
    refresh the numbers in the cards (automated spend, models in use, needs attention).
-3. Descriptions: every node in snapshot.json has a "description" (what it does). For each job and agent
-   whose description is empty or does not say what it does (an instruction to the agent, "You are X"),
-   read its brief or script (first lines only) and write ONE plain sentence of at most 18 words into
-   ~/.hivey/agent-map/descriptions.json ({{"<node id>": "<sentence>"}}; keep the entries already there).
+3. Descriptions: every node in snapshot.json has a "description" (what it does). snapshot.json
+   "descriptions_to_write" lists the ids whose description is empty, cut off, copied from a brief
+   ("You are X", "Own the…") or shared with another job. For each, read its brief, script or command
+   (first lines only) and write ONE plain sentence into ~/.hivey/agent-map/descriptions.json
+   ({{"<node id>": "<sentence>"}}; keep the entries already there). Rules: 8 to 18 words; start with a
+   verb ("Ranks…", "Downloads…", "Paper-trades…"); say what it does and what it produces or where;
+   no "you", no dates, no ids, no trailing "…"; different jobs get different sentences (say what
+   sets each apart, e.g. "places the orders" vs "writes the report").
    Then write map-meta.json in this folder: {{"nodes": {{"<map node id>": {{"refs": [<snapshot node ids
    this box stands for>], "description": "<one sentence>"}}}}, "stages": {{"<stage label>": "<what this
    column holds, one sentence>"}}}}. A box that folds several jobs lists all of them in refs.
@@ -545,6 +559,30 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
     return 0 if ok else 1
 
 
+def refresh(scan, days: int, model: str) -> int:
+    """The Refresh button: a new scan rewrites the latest report's pages in place (stats, run log,
+    sessions, the map's colours and info cards). No model run, so it is free; the map's boxes stay
+    as the night drew them. With no report yet it builds one (also without a model)."""
+    folder = latest_report()
+    if not folder:
+        return nightly(scan, days, model, False)
+    log(folder, f"refresh: scan, last {days} days")
+    snap = scan(days)
+    (STATE / "snapshot.json").write_text(json.dumps(snap, indent=1, default=str))
+    write_stats(snap, folder)
+    write_logs_page(snap, folder)
+    import sessions_page
+    sessions_page.write_sessions_page(snap, folder)
+    ok, msg = finalize(folder, "explainer", "stats.archify.md", "agent-stats.html")
+    try:
+        import enhance
+        enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), job_state)
+    except Exception as e:
+        log(folder, f"enhance failed: {e}")
+    log(folder, f"refresh: {'ok' if ok else 'stats page FAILED ' + msg}")
+    return 0 if ok else 1
+
+
 # ---------------------------------------------------------------- open
 
 def latest_report() -> Path | None:
@@ -563,10 +601,14 @@ def notify(text: str) -> None:
 def open_latest(model: str) -> int:
     folder = latest_report()
     if folder:
+        import serve  # served from 127.0.0.1 so the pages' Refresh button works; else the files
+        port = serve.ensure()
+        base = f"http://127.0.0.1:{port}/{os.path.relpath(LATEST if LATEST.exists() else folder, REPORTS)}/" \
+            if port else None
         for page in ("agent-stats.html", "agent-map.html", "agent-logs.html", "agent-sessions.html"):
             if (folder / page).is_file():
-                subprocess.run(["open", str(folder / page)], capture_output=True)
-        print(f"opened {folder}")
+                subprocess.run(["open", base + page if base else str(folder / page)], capture_output=True)
+        print(f"opened {base or folder}")
         return 0
     # No report yet: build the first one in the background and open it when it is ready.
     REPORTS.mkdir(parents=True, exist_ok=True)

@@ -117,13 +117,29 @@ hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | sta
   `map-meta.json` (`{"nodes": {"<box id>": {"refs": [...], "description": "…"}}, "stages": {...}}`,
   written by the nightly model), else by label. A job counts only its own spend, not its agent's.
 - **Descriptions** ("what it does"): from a brief's mission, a skill's description or a script's module
-  docstring; the nightly model writes the missing or weak ones to `~/.hivey/agent-map/descriptions.json`
-  (kept, edit freely), which wins over the extracted ones. They show in the map's info cards and the run log.
+  docstring; the scan lists the weak ones in snapshot `descriptions_to_write` (empty, cut off with "…",
+  copied from a brief like "You are X" / "Own the…", or shared by two jobs) and the nightly model writes
+  a sentence for each (8–18 words, starts with a verb, says what it does and produces) to
+  `~/.hivey/agent-map/descriptions.json` (kept, edit freely), which wins over the extracted ones. They
+  show in the map's info cards and the run log.
+- **Failing boxes:** a box whose job failed (❌), missed its run or logged errors (⚠️) gets ⚠️ after its
+  label and a dashed outline; its info card has a "⚠️ Problem" row linking to that job in
+  `agent-logs.html#job-<id>` (the logs page opens the row). Data stores are never flagged.
 - **Automated vs interactive:** the map, the stats page and map colours count AUTOMATED work only
   (scheduled jobs, scripts, headless `claude -p` / `codex exec`, scripts' API calls; snapshot `usage`).
   People chatting with agents (Claude Code, Codex, Grok in a terminal; snapshot `interactive`, with one
   entry per session) go to **`agent-sessions.html`**: cost by agent and by day, the costliest sessions with
   their peak context (⚠️ over 300k tokens), length and first message, and tips to spend less.
+- **Refresh:** `hivey agent-map open` serves the pages from 127.0.0.1 (`serve.py`, port 8754 or any
+  free one, in `~/.hivey/agent-map/server.json`; stops after 2 h unused) so the navbar's ↻ Refresh
+  button works: it runs `agent_map.py refresh` (new scan into the latest report's pages, no model, a few
+  seconds; the map keeps the night's boxes) and reloads. Only the served pages can trigger it (Origin
+  check). Opened as plain files, the button says to open them from the hivey menu.
+- **Context window per agent** (`context_window.py`): the Sessions page shows each agent's window for its
+  next session, 1M or the standard 200k (Claude Code compacts the session before it grows).
+  `hivey agent-map context` lists every agent's window and peak; `hivey agent-map context <agent…> --set
+  standard|1M` writes `CLAUDE_CODE_DISABLE_1M_CONTEXT` into that agent's `.claude/settings.json` (old
+  file copied to `~/.hivey/old/`). A running session keeps its window until it restarts.
 - **Models per job:** the scan reads each job's code for the models it uses, local ones included
   (`nodes[].llm_api.models`: JEV-9B local or Jev on OpenRouter, Claude Opus/Sonnet/Haiku, Grok, DeepSeek,
   Gemini, OpenAI/Codex, Muse, Whisper, Parakeet); the map's info card lists them next to recorded spend.
@@ -184,6 +200,6 @@ the final message (or the last chunk carrying usage).
   as `{"model-substring": [in, out, cache_read, cache_write]}` per million tokens). Claude Code on a
   Max plan and Codex on Plus are not billed per token: call their cost "API-equivalent". Grok CLI and
   OpenRouter report real cost, used as is.
-- Antigravity (`agy`) keeps no token data on disk: it shows as running, not as spend.
+- Antigravity (`agy`) keeps no token data on disk: it shows as running, not as spend (the stats page notes it only when a job or hivey agent runs agy).
 - Codex sessions are zstd-compressed; without `zstd` on PATH they are skipped.
 - Read-only: the scan never edits jobs, plists or scripts.

@@ -29,13 +29,16 @@ STAGE_HELP = {
 }
 
 NAV_CSS = """
-.hv-nav{position:relative;z-index:50;display:flex;gap:4px;align-items:center;justify-content:center;
-  padding:6px 10px;font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+.hv-nav{position:relative;z-index:50;display:flex;flex-wrap:wrap;gap:4px;align-items:center;justify-content:flex-start;
+  padding:6px 16px;font:600 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   border-bottom:1px solid rgba(127,127,127,.25);background:rgba(127,127,127,.06)}
 .hv-nav a{color:inherit;opacity:.65;text-decoration:none;padding:4px 12px;border-radius:999px}
 .hv-nav a:hover{opacity:1;background:rgba(127,127,127,.14)}
 .hv-nav a.on{opacity:1;background:rgba(47,111,236,.16);color:#2f6fec}
-.hv-nav .hv-when{margin-left:12px;opacity:.5;font-weight:400;font-size:12px}
+.hv-nav .hv-when{margin-left:12px;opacity:.55;font-weight:400;font-size:12px;white-space:nowrap}
+.hv-nav .hv-refresh{margin-left:8px;font:600 12px/1.2 inherit;font-family:inherit;color:#2f6fec;cursor:pointer;
+  background:rgba(47,111,236,.10);border:1px solid rgba(47,111,236,.35);border-radius:999px;padding:4px 11px}
+.hv-nav .hv-refresh:hover{background:rgba(47,111,236,.18)} .hv-nav .hv-refresh:disabled{opacity:.6;cursor:wait}
 """
 
 MAP_CSS = """
@@ -50,6 +53,8 @@ html[data-theme="dark"] .hv-legend{background:rgba(22,27,34,.92);color:#e6edf3}
 .hv-info{margin-top:.7rem;padding-top:.6rem;border-top:1px solid rgba(127,127,127,.25);font-size:.78rem;line-height:1.45}
 .hv-info .hv-desc{margin:0 0 .5rem;font-size:.85rem}
 .hv-info dl{display:grid;grid-template-columns:auto 1fr;gap:.18rem .7rem;margin:0}
+.hv-alert > rect:not(.c-mask){stroke-dasharray:5 3;stroke-width:2.2px}
+.hv-info a{color:inherit;text-decoration:underline}
 .hv-info dt{opacity:.6}.hv-info dd{margin:0;font-variant-numeric:tabular-nums}
 .hv-info .hv-models{display:flex;flex-wrap:wrap;gap:.25rem}
 .hv-info .hv-models span{padding:.05rem .4rem;border:1px solid rgba(127,127,127,.35);border-radius:999px;font-size:.7rem}
@@ -61,7 +66,20 @@ def nav(active: str, generated: str) -> str:
     links = [("agent-stats.html", "Stats"), ("agent-map.html", "Map"), ("agent-logs.html", "Logs"),
              ("agent-sessions.html", "Sessions")]
     items = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in links)
-    return f'<nav class="hv-nav">{items}<span class="hv-when">scan {html.escape(generated[:16].replace("T", " "))}</span></nav>'
+    when = html.escape(generated[:16].replace("T", " "))
+    return (f'<nav class="hv-nav">{items}<span class="hv-when">scan {when}</span>'
+            '<button class="hv-refresh" type="button" title="Scan again now and reload (free: no model run)" '
+            'onclick="hvRefresh(this)">↻ Refresh</button></nav>' + REFRESH_JS)
+
+
+# The Refresh button: the pages are served by `hivey agent-map open` (serve.py) on 127.0.0.1,
+# which reruns the scan on POST /hv-refresh. Opened as plain files, it says how to get there.
+REFRESH_JS = """<script>async function hvRefresh(b){
+if(location.protocol==='file:'){b.textContent='open from the hivey menu → agent map to refresh';return;}
+b.disabled=true;const t0=Date.now();const tick=setInterval(()=>{b.textContent='↻ Scanning… '+Math.round((Date.now()-t0)/1000)+'s';},500);
+try{const r=await fetch('/hv-refresh',{method:'POST'});const j=await r.json();clearInterval(tick);
+if(j.ok){location.reload();}else{b.disabled=false;b.textContent='refresh failed';b.title=j.error||'';}}
+catch(e){clearInterval(tick);b.disabled=false;b.textContent='refresh failed: server not running (reopen from the hivey menu)';}}</script>"""
 
 
 def inject(page: str, css: str, top: str, script: str = "") -> str:
@@ -91,6 +109,11 @@ def model_name(m: str) -> str:
     return (f"{k.group(1).title()} {k.group(2)}" + (f".{k.group(3)}" if k.group(3) else "")) if k else m
 
 
+def job_anchor(job_id: str) -> str:
+    """The logs page anchor of a job (same as report.job_anchor)."""
+    return "job-" + re.sub(r"[^a-z0-9]+", "-", job_id.lower()).strip("-")
+
+
 def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
     usage = {a["agent"]: a for a in snap["usage"]["agents"]}
     try:  # what the nightly model (or you) wrote since the scan wins
@@ -117,7 +140,7 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
                 if cand in jobs_by_name:
                     refs.append(jobs_by_name[cand]["id"])
                     break
-        names, desc, states, code_models = [], m.get("description", ""), [], []
+        names, desc, states, code_models, alerts = [], m.get("description", ""), [], [], []
         for ref in refs:
             if overrides.get(ref) and not desc:
                 desc = overrides[ref]
@@ -129,6 +152,8 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
                 desc = desc or j.get("description", "")
                 emo, words = job_state(j)
                 states.append(f"{emo} {words} · {(j.get('last_run') or j.get('log_modified') or '?').replace('T', ' ')}")
+                if emo in ("❌", "⚠️"):  # failed, missed or errors in its log: flag the box
+                    alerts.append({"name": j["name"], "words": words, "anchor": job_anchor(j["id"])})
             sn = snodes.get(ref)
             if sn:
                 code_models += [m for m in (sn.get("llm_api") or {}).get("models", []) if m not in code_models]
@@ -152,7 +177,7 @@ def node_data(snap: dict, spec: dict, meta: dict, job_state) -> dict:
             if not any(mname.split()[0].lower() in c.lower() for c in code_models):
                 code_models.append(mname)
         out[n["id"]] = {"refs": refs, "desc": desc, "cost": round(tot["cost"], 2), "tokens": tot["tokens"],
-                        "out": tot["out"], "calls": tot["calls"], "models": code_models[:5], "states": states[:3],
+                        "out": tot["out"], "calls": tot["calls"], "models": code_models[:5], "states": states[:3], "alerts": alerts if n.get("type") != "database" else [],
                         "subject": bool(refs) and n.get("type") != "database"}
     spend = [d["cost"] for d in out.values() if d["subject"]]
     top = max(spend, default=0.0)
@@ -173,8 +198,14 @@ document.querySelectorAll('g[data-node-id]').forEach(g=>{
   const d=D[g.dataset.nodeId]; if(!d) return;
   if(d.hue!=null){g.querySelectorAll(':scope > rect:not(.c-mask)').forEach(r=>{
     r.style.fill='hsla('+d.hue+',75%,50%,.18)'; r.style.stroke='hsl('+d.hue+',68%,42%)';});}
+  if(d.alerts&&d.alerts.length){
+    const lab=g.querySelector(':scope > text[data-node-label]');
+    if(lab&&!lab.querySelector('.hv-warn')){const w=document.createElementNS('http://www.w3.org/2000/svg','tspan');
+      w.setAttribute('class','hv-warn'); w.textContent=' ⚠️'; lab.appendChild(w);}
+    g.classList.add('hv-alert');
+  }
   const t=g.querySelector(':scope > title');
-  if(t){t.textContent=[g.dataset.nodeLabel, d.desc, d.subject?(fmt(d.cost)+' in '+DAYS+' days · '+tok(d.tokens)+' tokens'+(d.models.length?' · '+d.models.join(', '):'')):''].filter(Boolean).join('\n');}
+  if(t){t.textContent=[g.dataset.nodeLabel, d.desc, d.subject?(fmt(d.cost)+' in '+DAYS+' days · '+tok(d.tokens)+' tokens'+(d.models.length?' · '+d.models.join(', '):'')):''].filter(Boolean).concat((d.alerts||[]).map(a=>'⚠️ '+a.name+': '+a.words)).join('\n');}
 });
 document.querySelectorAll('svg text').forEach(t=>{
   const m=/^\s*\d+\s*\/\s*(.+?)\s*$/.exec(t.textContent||''); if(!m) return;
@@ -184,24 +215,28 @@ document.querySelectorAll('svg text').forEach(t=>{
   t.style.pointerEvents='auto';
 });
 let current=null;
-const pick=e=>{const g=e.target.closest&&e.target.closest('g[data-node-id]'); if(g) current=g.dataset.nodeId;};
+const refill=()=>document.querySelectorAll('.semantic-passport-meta').forEach(fill);
+const pick=e=>{const g=e.target.closest&&e.target.closest('g[data-node-id]'); if(g){current=g.dataset.nodeId; setTimeout(refill,0); requestAnimationFrame(refill);}};
 document.addEventListener('pointerdown',pick,true); document.addEventListener('focusin',pick,true);
 function fill(meta){
-  const box=meta.parentElement; if(!box||box.querySelector('.hv-info')) return;
+  const box=meta.parentElement; if(!box) return;
+  const old=box.querySelector('.hv-info');
+  if(old&&old.dataset.node===current) return;  // the card is reused for every box: refill on a new pick
+  if(old) old.remove();
   const d=D[current]; if(!d) return;
   const rows=[];
+  (d.alerts||[]).forEach(a=>rows.push(['⚠️ Problem', esc(a.name)+': '+esc(a.words)+' · <a href="agent-logs.html#'+a.anchor+'">open its log</a>']));
   if(d.subject){
     rows.push(['Spend', fmt(d.cost)+' in '+DAYS+' days, automated runs only (API-equivalent)']);
     rows.push(['Tokens', tok(d.tokens)+' ('+tok(d.out)+' output) · '+d.calls.toLocaleString()+' calls']);
   }
   rows.push(['Models', d.models.length?'<span class="hv-models">'+d.models.map(m=>'<span>'+esc(m)+'</span>').join('')+'</span>':'none found']);
   d.states.forEach(s=>rows.push(['Last run', esc(s)]));
-  const div=document.createElement('div'); div.className='hv-info';
+  const div=document.createElement('div'); div.className='hv-info'; div.dataset.node=current;
   div.innerHTML=(d.desc?'<p class="hv-desc">'+esc(d.desc)+'</p>':'')+(rows.length?'<dl>'+rows.map(r=>'<dt>'+r[0]+'</dt><dd>'+r[1]+'</dd>').join('')+'</dl>':'');
   meta.insertAdjacentElement('afterend',div);
 }
-new MutationObserver(()=>document.querySelectorAll('.semantic-passport-meta').forEach(fill))
-  .observe(document.body,{childList:true,subtree:true});
+new MutationObserver(refill).observe(document.body,{childList:true,subtree:true,characterData:true});
 })();
 """
 
@@ -225,5 +260,6 @@ def enhance_folder(folder: Path, snap: dict, job_state) -> None:
                   .replace("__DAYS__", json.dumps(snap.get("window_days", 7))))
         legend = (f'<div class="hv-legend"><b>Spend, last {snap.get("window_days", 7)} days</b><div class="bar"></div>'
                   f'<div class="ends"><span>$0</span><span>{money(top)}</span></div>'
-                  f'<div style="opacity:.65;margin-top:3px">click a box for what it does, tokens and models</div></div>')
+                  f'<div style="opacity:.65;margin-top:3px">click a box for what it does, tokens and models</div>'
+                  f'<div style="opacity:.65">⚠️ its last run failed, was missed or logged errors</div></div>')
         page.write_text(inject(page.read_text(), NAV_CSS + MAP_CSS, nav("agent-map.html", generated) + legend, script))

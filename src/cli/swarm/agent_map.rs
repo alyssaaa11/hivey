@@ -5,12 +5,16 @@
 const HELP: &str = "\
 usage: hivey agent-map open              open the latest report (stats page + map); builds the
                                          first one in the background when there is none
+       hivey agent-map refresh           scan again into the latest report (free, no model); the
+                                         pages' Refresh button does this
        hivey agent-map nightly [--model haiku] [--no-llm] [--open]
                                          scan, stats page, map update with a cheap model
        hivey agent-map schedule [install|remove|status|offer] [--at 06:30] [--model haiku]
                                          the nightly launchd run (com.hivey.agent-map)
        hivey agent-map schedule token --command \"envsave get es_…\"
                                          long-lived Claude login (claude setup-token) for the run
+       hivey agent-map context [AGENT…] [--set standard|1M]
+                                         each agent's context window (list), or set it
        hivey agent-map stats|scan|link|log …   see `hivey agent-map --help-script`
   Reports: ~/.hivey/agent-map/reports/latest. Also in the hivey menu → agent map.";
 
