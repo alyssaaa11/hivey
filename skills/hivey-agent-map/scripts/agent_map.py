@@ -103,11 +103,29 @@ def log_path(command: str) -> str | None:
 
 
 def _is_err(line: str) -> bool:
+    # "N Failed downloads:" is yfinance warning about delisted tickers, not a failed run
     return bool(re.search(r"error|traceback|exception|failed|fatal", line, re.I)
-                and not re.search(r"\b0 failed|failed:? 0\b|0 errors?\b|errors?:? 0\b|rerun picks", line, re.I))
+                and not re.search(r"\b0 failed|failed:? 0\b|0 errors?\b|errors?:? 0\b|rerun picks|failed downloads?:",
+                                  line, re.I))
 
 
-def log_info(path: str | None) -> dict:
+# the first and last line of an uncaught Python traceback; an uncaught one always exits non-zero
+CRASH_RE = re.compile(r"^\s*(Traceback \(most recent call last\)|[\w.]+(Error|Exception|Interrupt|Exit)\b)")
+
+
+def last_exit(name: str) -> int | None:
+    """Exit code of a cron-catchup job's latest finished run (from ~/logs/cron-catchup/<name>.log)."""
+    f = HOME / "logs" / "cron-catchup" / f"{name}.log"
+    try:
+        with open(f, "rb") as fh:
+            fh.seek(max(0, f.stat().st_size - 2000))
+            codes = re.findall(r"finished \S+ \S+ exit (-?\d+)", fh.read().decode("utf-8", "replace"))
+        return int(codes[-1]) if codes else None
+    except OSError:
+        return None
+
+
+def log_info(path: str | None, exit_code: int | None = None) -> dict:
     if not path or not os.path.isfile(path):
         return {}
     st = os.stat(path)
@@ -122,6 +140,8 @@ def log_info(path: str | None) -> dict:
         ok = re.compile(r"\b(success(ful(ly)?)?|succeeded|finished|completed?|done|wrote|all ok)\b", re.I)
         last_ok = max((i for i, l in enumerate(tail) if ok.search(l) and not _is_err(l)), default=-1)
         errs = [l.strip() for l in tail[last_ok + 1:] if _is_err(l)]
+        if exit_code == 0:  # the latest run exited 0, so any traceback still in the tail is from an earlier run
+            errs = [l for l in errs if not CRASH_RE.match(l)]
         if errs:
             info["last_error"] = errs[-1][:200]
             info["errors"] = list(dict.fromkeys(e[:200] for e in errs))[-5:]
@@ -161,10 +181,14 @@ def cron_jobs() -> list[dict]:
                 catchup[parts[0]] = (parts[1], parts[2])
     for name, (sched, cmd) in catchup.items():
         st = catchup_status.get(name, {})
+        rc = last_exit(name)
+        state = st.get("state", "?")
+        if rc and state == "ok":  # ran on time but failed: show the exit code, not "ran ok"
+            state = f"exit {rc}"
         jobs.append({
             "id": f"cron:{name}", "name": name, "kind": "cron (cron-catchup)", "schedule": sched,
-            "command": cmd, "agent": job_agent(cmd), "status": st.get("state", "?"),
-            "last_run": st.get("last_run"), **log_info(log_path(cmd)),
+            "command": cmd, "agent": job_agent(cmd), "status": state,
+            "last_run": st.get("last_run"), **log_info(log_path(cmd), rc),
         })
     for line in sh(["crontab", "-l"]).splitlines():
         s = line.strip()
