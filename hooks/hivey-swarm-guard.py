@@ -15,7 +15,9 @@ read, edit or search (exit 2, the reason goes back to the agent):
   would reach those folders.
 
 Shared parts stay open: the swarm root's own files, the task board in `.swarm/`, the wiki and
-the agent's own home. A path another agent or the human sent to this agent in a message (a
+the agent's own home. The wiki is read-only for workers: only the coordinator writes it, so one
+worker's mistake doesn't become every agent's "truth" and parallel writers don't clobber
+`index.md`. A worker may write only its own report folder `<vault>/raw/reports/<agent>/`. A path another agent or the human sent to this agent in a message (a
 hand-off, a deliverable to review) is allowed, file or whole folder.
 
 Nothing happens outside swarms, for the master (it works in the root), for solo agents, or when
@@ -37,6 +39,11 @@ NOT_WORKERS = {"master", "coordinator", "script"}
 WALKERS = {"rg", "find", "fd", "tree", "ag", "ack", "tar", "zip", "rsync"}
 # Commands that walk a tree only with -r / -R / --recursive.
 MAYBE_WALKERS = {"grep", "egrep", "fgrep", "ls", "cp", "du", "chmod", "chown"}
+# Commands that change the files they name (a wiki write when one is in the wiki).
+WRITERS = {"tee", "mv", "cp", "rm", "rmdir", "touch", "mkdir", "ln", "truncate", "dd",
+           "install", "rsync", "unlink", "shred", "chmod", "chown"}
+# Commands that write their files only with -i (in-place edit).
+IN_PLACE = {"sed", "perl", "gsed"}
 # Commands whose words are text, not paths to open.
 TALKERS = {"hivey", "herdr", "echo", "printf"}
 PATH_LIKE = re.compile(r"[~\w.$/{}*?-]*/[~\w.$/{}*?-]*")
@@ -83,6 +90,7 @@ class Swarm:
         self.home = real(os.path.join(self.root, me))
         self.swarm_dir = os.path.join(self.root, ".swarm")
         self.handoffs = []
+        self.vaults = find_vaults(self.root)
 
     def load_handoffs(self):
         """Paths named in messages to this agent: hand-offs it may open."""
@@ -131,6 +139,21 @@ class Swarm:
                 return f"{path} is another agent's message"
         return None
 
+    def write_blocked(self, path):
+        """Why this worker may not write `path` (a real path) in the swarm wiki, or None."""
+        for vault in self.vaults:
+            if not inside(path, vault):
+                continue
+            reports = os.path.join(vault, "raw", "reports", self.me)
+            if inside(path, reports):
+                return None
+            return (
+                f"{path} is in the swarm wiki, which only the coordinator writes (it checks "
+                f"findings before they become everyone's memory). Write your report to "
+                f"{reports}/ and tell the coordinator; it ingests it"
+            )
+        return None
+
     def walk_blocked(self, base):
         """Why searching the tree under `base` (a real path) is not allowed, or None."""
         reason = self.blocked(base)
@@ -145,6 +168,21 @@ class Swarm:
                 "folder instead (your home, the shared outputs, .swarm/TASKS.md or the wiki)"
             )
         return None
+
+
+def find_vaults(root):
+    """The swarm's wiki vaults: `<root>/<name>-wiki` (or an older `<root>/obsidian`) with a
+    CLAUDE.md, as real paths."""
+    try:
+        names = os.listdir(root)
+    except OSError:
+        return []
+    return [
+        real(os.path.join(root, name))
+        for name in names
+        if (name.endswith("-wiki") or name == "obsidian")
+        and os.path.isfile(os.path.join(root, name, "CLAUDE.md"))
+    ]
 
 
 def expand(word, cwd):
@@ -225,8 +263,42 @@ def path_words(word, cwd):
     return paths
 
 
+def redirect_targets(words):
+    """The words a shell line redirects output into (`> file`, `>> file`, `&> file`)."""
+    return [
+        words[i + 1]
+        for i, word in enumerate(words[:-1])
+        if word and set(word) <= set(";&|()<>") and ">" in word
+    ]
+
+
+def bash_write_blocked(swarm, words, commands, cwd):
+    """Why this shell line would write the swarm wiki, or None."""
+    targets = list(redirect_targets(words))
+    for parts in commands:
+        name, args = program(parts)
+        plain = [a for a in args if not a.startswith("-")]
+        if name in ("cp", "install", "rsync") and plain:
+            targets.append(plain[-1])  # only the destination is written
+        elif name in WRITERS:
+            targets.extend(plain)
+        elif name in IN_PLACE and any(a.startswith("-i") or a == "--in-place" or
+                                       a.startswith("--in-place=") for a in args):
+            targets.extend(plain)
+    for word in targets:
+        for path in path_words(word, cwd):
+            reason = swarm.write_blocked(path)
+            if reason:
+                return reason
+    return None
+
+
 def check_bash(swarm, command, cwd):
-    _, commands = words_of(command)
+    words, commands = words_of(command)
+    if swarm.vaults:
+        reason = bash_write_blocked(swarm, words, commands, cwd)
+        if reason:
+            return reason
     for words in commands:
         name, args = program(words)
         # Messages and printed text name agents and paths without opening them.
@@ -264,7 +336,14 @@ def check(swarm, tool, data, cwd):
         return check_bash(swarm, data.get("command", ""), cwd)
     if tool in ("Read", "Edit", "MultiEdit", "Write", "NotebookEdit"):
         path = data.get("file_path") or data.get("notebook_path")
-        return swarm.blocked(expand(path, cwd)) if path else None
+        if not path:
+            return None
+        path = expand(path, cwd)
+        if tool != "Read":
+            reason = swarm.write_blocked(path)
+            if reason:
+                return reason
+        return swarm.blocked(path)
     if tool in ("Grep", "Glob"):
         base = expand(data.get("path") or cwd, cwd)
         pattern = data.get("pattern", "") if tool == "Glob" else ""

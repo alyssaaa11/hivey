@@ -33,6 +33,11 @@ format its log uses, follow it; do not impose another layout.
 2. **Read `<vault>/CLAUDE.md`**: it defines the lint workflow (checks, what counts as stale, coverage gaps). Follow it.
 3. Walk every file under `<vault>/wiki/` (and `index.md`). Use Grep for the wiki-link inventory
    (`\[\[([^\]]+)\]\]`) and for the page-format fields the vault requires.
-4. Report a numbered list: the issue, the affected page(s), a suggested fix. Do **not** auto-fix.
-5. Append a `lint` line to the vault's `log.md` in its own format (`Findings: N contradictions, M orphans, ...`).
+4. Whatever the vault's own rules say, also check the claim labels: important claims with no
+   `verified` / `hypothesis` / `decision` label, `verified` claims with no source, and
+   hypotheses that other pages cite as fact (one agent's unchecked claim spreading). Grep for
+   key-shaped strings too (`sk-`, `ghp_`, `xox`, `AKIA`, `-----BEGIN`): a secret in a page is a
+   finding of its own, listed first.
+5. Report a numbered list: the issue, the affected page(s), a suggested fix. Do **not** auto-fix.
+6. Append a `lint` line to the vault's `log.md` in its own format (`Findings: N contradictions, M orphans, ...`).
    Offer to file the findings as a page; do not assume.

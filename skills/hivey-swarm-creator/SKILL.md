@@ -259,6 +259,10 @@ user again. If the vault already exists (a resumed swarm), reuse it. Shape it fo
 - In the vault's CLAUDE.md add the swarm rule: *only the coordinator writes `wiki/`; it ingests
   agent reports from `raw/reports/` without waiting to discuss them, because the swarm runs
   unattended.* Agents writing `index.md`/`log.md` in parallel would clobber each other.
+  hivey's swarm guard enforces it: a worker's write anywhere in the vault except its own
+  `raw/reports/<agent>/` is blocked. Add too: *a worker's finding enters the wiki as a
+  **hypothesis** until it is checked (a fresh review, a test, a second source); only then does
+  it become **verified**, with that check as its source.*
 
 Then initialize the memory: `wiki/swarm-overview.md` (the user's request, goal, roster, Slack
 channel, root, hand-off chain), `wiki/agents/<agent>.md` per agent (role, owns, deliverables,

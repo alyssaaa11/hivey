@@ -159,6 +159,51 @@ class SwarmGuard(unittest.TestCase):
                   "text": f"Review notes in {self.root}/critic/out/"})
         self.assertIsNone(self.check("builder", "Read", {"file_path": "../critic/out/review.md"}))
 
+    # --- the wiki: read by everyone, written by the coordinator ------------------------------
+
+    def make_vault(self):
+        vault = self.root / "demo-wiki"
+        for folder in ("wiki", "raw/reports/builder", "raw/reports/critic"):
+            (vault / folder).mkdir(parents=True)
+        (vault / "CLAUDE.md").write_text("rules")
+        (vault / "index.md").write_text("index")
+        (vault / "wiki" / "plan.md").write_text("plan")
+        return vault
+
+    def test_workers_read_the_wiki_but_do_not_write_it(self):
+        self.make_vault()
+        for path in ("../demo-wiki/index.md", "../demo-wiki/wiki/plan.md"):
+            self.assertIsNone(self.check("builder", "Read", {"file_path": path}), path)
+            for tool in ("Edit", "Write", "MultiEdit"):
+                self.assertIsNotNone(self.check("builder", tool, {"file_path": path}), (tool, path))
+        self.assertIsNone(self.bash("builder", "cat ../demo-wiki/wiki/plan.md"))
+        self.assertIsNone(self.bash("builder", "cp ../demo-wiki/wiki/plan.md out/plan.md"))
+        for command in [
+            "echo x >> ../demo-wiki/log.md",
+            "echo x > ../demo-wiki/wiki/new.md",
+            "printf 'x' | tee ../demo-wiki/wiki/plan.md",
+            "sed -i '' s/a/b/ ../demo-wiki/wiki/plan.md",
+            "rm ../demo-wiki/wiki/plan.md",
+            "mv out/x.md ../demo-wiki/wiki/x.md",
+            "cp out/api.md ../demo-wiki/wiki/",
+            "touch ../demo-wiki/wiki/a.md",
+            "echo x > ../demo-wiki/raw/reports/critic/fake.md",
+        ]:
+            reason = self.bash("builder", command)
+            self.assertIsNotNone(reason, command)
+            self.assertIn("raw/reports/builder", reason)
+
+    def test_workers_write_their_own_reports(self):
+        self.make_vault()
+        report = "../demo-wiki/raw/reports/builder/done.md"
+        self.assertIsNone(self.check("builder", "Write", {"file_path": report}))
+        self.assertIsNone(self.bash("builder", f"echo done > {report}"))
+        self.assertIsNone(self.bash("builder", "cp out/api.md ../demo-wiki/raw/reports/builder/"))
+
+    def test_the_coordinator_writes_the_wiki(self):
+        self.make_vault()
+        self.assertIsNone(guard.find_swarm([str(self.root)]), "the master is not guarded")
+
     # --- the hook as Claude Code runs it ----------------------------------------------------
 
     def run_hook(self, event, env_extra=None, project=None):

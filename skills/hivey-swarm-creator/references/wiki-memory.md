@@ -15,6 +15,9 @@ Only the coordinator writes `wiki/`; agents write reports to `raw/reports/<agent
     the builder's feature choice, a fresh review's issue with a design decision), link them both ways
     with `[[wiki-links]]`. Where they contradict, record it in a `> [!warning]` callout on both
     pages and in `lessons/`.
+  - Label each claim: a worker's finding is a **hypothesis** until a fresh review, a test or a
+    second source checks it; then **verified** with that check cited. Plans and choices are
+    **decisions** (who, why). This keeps one agent's mistake from becoming the swarm's truth.
   - Every page cites its source report(s). Update `wiki/agents/<agent>.md` (status,
     deliverables, report links, the pages its work fed), then `index.md` and `log.md`.
 - **When an agent sends FINISHED, ingest its final report before anything else.** A worker only

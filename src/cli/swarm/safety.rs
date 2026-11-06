@@ -7,6 +7,11 @@
 //! - `hivey-swarm-guard.py` (PreToolUse): keeps swarm workers out of each other's folders, so
 //!   they don't anchor on their teammates' plans. Always registered; it does nothing outside a
 //!   swarm worker's folder, and a swarm turns it off with `"isolation": false` in its manifest.
+//!   Workers may not write the swarm wiki (only the coordinator does), except their own
+//!   `raw/reports/<agent>/`.
+//! - `hivey-wiki-guard.py` (PreToolUse): writes into a wiki vault are scanned for secrets (when
+//!   the safety switch is on) and take a short per-page lease, so two agents can't overwrite
+//!   each other's edits. Always registered; it does nothing outside a vault.
 //!
 //! The hooks go to `~/.claude/hooks/hivey-*` and are registered in `~/.claude/settings.json`,
 //! edited in place (the user's other settings, order and formatting are kept). The hooks they
@@ -45,6 +50,10 @@ const HOOKS: &[(&str, &str)] = &[
         "hivey-swarm-guard.py",
         include_str!("../../../hooks/hivey-swarm-guard.py"),
     ),
+    (
+        "hivey-wiki-guard.py",
+        include_str!("../../../hooks/hivey-wiki-guard.py"),
+    ),
 ];
 
 /// Tools the safety hook checks besides Bash.
@@ -52,6 +61,9 @@ const FILE_TOOLS: &str = "Edit|MultiEdit|Write|NotebookEdit|Read";
 
 /// Tools the swarm guard checks: everything that can open or search a path.
 const GUARD_TOOLS: &str = "Bash|Read|Edit|MultiEdit|Write|NotebookEdit|Grep|Glob";
+
+/// Tools the wiki guard checks: everything that can write a file.
+const WIKI_TOOLS: &str = "Bash|Edit|MultiEdit|Write|NotebookEdit";
 
 /// Older hooks the hivey ones replace: unregistered (any command that mentions them) and
 /// their files moved to ~/.hivey/old/.claude/hooks/.
@@ -259,6 +271,7 @@ fn register(content: &str, hooks_dir: &Path, safety_on: bool) -> io::Result<Stri
         add("PreToolUse", Some(FILE_TOOLS), &["hivey-safety.py"]);
     }
     add("PreToolUse", Some(GUARD_TOOLS), &["hivey-swarm-guard.py"]);
+    add("PreToolUse", Some(WIKI_TOOLS), &["hivey-wiki-guard.py"]);
     add("Stop", None, &["hivey-agent-stop.py"]);
     let after = root.to_serde_value();
     if after == before && !content.trim().is_empty() {
@@ -330,6 +343,12 @@ mod tests {
             1
         );
         assert_eq!(
+            pre.iter()
+                .filter(|c| c.contains("hivey-wiki-guard.py"))
+                .count(),
+            1
+        );
+        assert_eq!(
             commands(&settings, "Stop"),
             vec![r#"python3 "/h/.claude/hooks/hivey-agent-stop.py""#.to_string()]
         );
@@ -352,7 +371,8 @@ mod tests {
             pre,
             vec![
                 "my-own-check".to_string(),
-                r#"python3 "/h/.claude/hooks/hivey-swarm-guard.py""#.to_string()
+                r#"python3 "/h/.claude/hooks/hivey-swarm-guard.py""#.to_string(),
+                r#"python3 "/h/.claude/hooks/hivey-wiki-guard.py""#.to_string()
             ]
         );
         assert_eq!(commands(&off, "Stop").len(), 1);
@@ -361,7 +381,7 @@ mod tests {
     #[test]
     fn starts_from_no_settings() {
         let out = register("", Path::new("/h/.claude/hooks"), true).expect("empty");
-        assert_eq!(commands(&value(&out), "PreToolUse").len(), 4);
+        assert_eq!(commands(&value(&out), "PreToolUse").len(), 5);
     }
 
     #[test]

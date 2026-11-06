@@ -242,6 +242,21 @@ Use Obsidian callouts when warranted (`> [!warning] Title`); types: `note`, `tip
   a `lessons/` (or equivalent) page.
 - A claim without a source is marked `> [!info] Unverified` and flagged at the next lint.
 
+## Claim labels
+
+Label every important claim so a later reader (another agent, a fresh session) knows what it
+can trust; one agent's mistake must not become everyone's "truth":
+
+- **verified**: checked, with its source: `verified: X (source: raw/… / file:line / command
+  and output / URL)`.
+- **hypothesis**: believed but not checked; never build on it as if it were fact. What one
+  agent reported and nobody checked is a hypothesis.
+- **decision**: a choice, with who made it and why: `decision: X (user, 2026-05-12)`.
+
+When a hypothesis is checked, relabel it, or delete it if it was wrong, instead of appending a
+correction next to it, so the page never says two conflicting things. Before relying on an old
+`verified`, re-check its source: a stale "verified" looks safe and isn't.
+
 ## Question answering
 
 1. Read `index.md` first to find relevant pages.
@@ -254,7 +269,8 @@ Use Obsidian callouts when warranted (`> [!warning] Title`); types: `note`, `tip
 
 When asked to lint or audit, look for: contradictions between pages, stale claims newer
 sources superseded, orphan pages (no inbound links), concepts in 3+ pages without their own
-page, cross-reference gaps, format compliance (Summary / Sources / Last updated)
+page, cross-reference gaps, important claims without a label, `verified` claims without a
+source, hypotheses that other pages treat as fact, format compliance (Summary / Sources / Last updated)
 {{, source-coverage gaps if applicable}}. Report a numbered list with suggested fixes; do not
 auto-fix, discuss first.
 
@@ -282,6 +298,10 @@ Every entry in `log.md` starts with a parseable prefix:
 
 - **Never** modify anything in `raw/`.
 - **Never** put live config, runnable code, or current operational state in the wiki.
+- **Never** write secrets (keys, tokens, passwords): write the envsave ID or the variable name.
+  hivey's wiki guard blocks writes that look like a secret.
+- If a write is blocked because another agent is editing the page, wait, re-read the page, then
+  apply your change.
 - **Always** update `index.md` and `log.md` after any wiki write.
 - Page filenames: lowercase-hyphenated.
 - {{If applicable: measured data wins over wiki narrative; when they disagree, update the
@@ -325,5 +345,10 @@ When to touch it:
 5. When you'd otherwise write a report: write it as a wiki page instead.
 
 Hard rules: never modify `{{vault}}/raw/`; no live config or operational state in the wiki;
-always update `index.md` and `log.md` after a wiki write; filenames lowercase-hyphenated.
+always update `index.md` and `log.md` after a wiki write; filenames lowercase-hyphenated;
+label claims verified / hypothesis / decision; never write secrets.
 ```
+
+For a **swarm worker** (not the coordinator), replace "pages you write" and the "When to touch
+it" list with: *the wiki is read-only for you (hivey blocks writes); write your reports to
+`{{vault}}/raw/reports/<agent>/` and tell the coordinator, which checks and files them.*

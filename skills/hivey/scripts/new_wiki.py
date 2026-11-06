@@ -45,6 +45,18 @@ write what they learn, so knowledge survives restarts and new sessions.
 3. New finding or decision: add it to the right page (create one if none fits), add the page
    to `index.md`, and a line to `log.md`.
 4. Prefer updating a page over creating a near-duplicate. Cite the `raw/` file a fact came from.
+5. Label every important claim, so a later reader knows what to trust:
+   - **verified**: checked, with its source (a `raw/` file, file:line, command and output, URL);
+   - **hypothesis**: believed but not checked yet; never build on it as if it were fact;
+   - **decision**: a choice someone made, with who and why.
+   A claim one agent reported but nobody checked is a hypothesis. When a hypothesis is checked,
+   relabel it (or remove it if wrong) instead of adding a correction next to it.
+
+## Safety
+- Never write secrets (keys, tokens, passwords) into the wiki: write the envsave ID or the
+  variable name. hivey's wiki guard blocks writes that look like a secret.
+- If a write is blocked because another agent is editing the page, wait, re-read the page,
+  then apply your change.
 """
 
 MEMORY = """
