@@ -102,6 +102,11 @@ def log_path(command: str) -> str | None:
     return os.path.expanduser(m.group(1)) if m else None
 
 
+def _is_err(line: str) -> bool:
+    return bool(re.search(r"error|traceback|exception|failed|fatal", line, re.I)
+                and not re.search(r"\b0 failed|failed:? 0\b|0 errors?\b|errors?:? 0\b|rerun picks", line, re.I))
+
+
 def log_info(path: str | None) -> dict:
     if not path or not os.path.isfile(path):
         return {}
@@ -112,9 +117,11 @@ def log_info(path: str | None) -> dict:
             f.seek(max(0, st.st_size - 6000))
             tail = f.read().decode("utf-8", "replace").splitlines()[-40:]
         tail = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]|\r", "", l)[:300] for l in tail]
-        errs = [l.strip() for l in tail
-                if re.search(r"error|traceback|exception|failed|fatal", l, re.I)
-                and not re.search(r"\b0 failed|failed:? 0\b|0 errors?\b|errors?:? 0\b|rerun picks", l, re.I)]
+        # logs are appended run after run: an error from an earlier run that a later run's success line
+        # follows is history, not a current problem (a Baserow timeout stayed flagged after good runs)
+        ok = re.compile(r"\b(success(ful(ly)?)?|succeeded|finished|completed?|done|wrote|all ok)\b", re.I)
+        last_ok = max((i for i, l in enumerate(tail) if ok.search(l) and not _is_err(l)), default=-1)
+        errs = [l.strip() for l in tail[last_ok + 1:] if _is_err(l)]
         if errs:
             info["last_error"] = errs[-1][:200]
             info["errors"] = list(dict.fromkeys(e[:200] for e in errs))[-5:]
