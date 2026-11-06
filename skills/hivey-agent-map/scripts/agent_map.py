@@ -8,10 +8,10 @@
                                                  add one entry to the spend log
     agent_map.py link  FROM TO --via WHAT [--evidence TEXT] [--remove]
                                                  confirm (or remove) a link between two nodes
-    agent_map.py nightly [--model haiku] [--no-llm] [--open]
+    agent_map.py nightly [--model sonnet] [--no-llm] [--open]
                                                  a full report in ~/.hivey/agent-map/reports/<date>/
     agent_map.py open                            open the latest report (hivey menu → agent map)
-    agent_map.py schedule [install|remove|status|offer] [--at 06:30] [--model haiku]
+    agent_map.py schedule [install|remove|status|offer] [--at 06:30] [--model sonnet]
     agent_map.py schedule token --command "envsave get es_…"   long-lived Claude login for the run
                                                  the nightly launchd run (com.hivey.agent-map)
 
@@ -1057,19 +1057,19 @@ def main() -> int:
     lg.add_argument("--note")
     nt = sub.add_parser("nightly", help="scan, stats page, map update with a cheap model, reports/latest")
     nt.add_argument("--days", type=int, default=7)
-    nt.add_argument("--model", default="haiku")
+    nt.add_argument("--model", default="sonnet")
     nt.add_argument("--no-llm", action="store_true", help="no model run: last night's map, unchanged")
     nt.add_argument("--open", action="store_true", help="open the report when done")
     en = sub.add_parser("enhance", help="re-apply hivey's layer (navbar, colours, info) to a report")
     en.add_argument("folder", nargs="?", default=str(STATE / "reports" / "latest"))
     op = sub.add_parser("open", help="open the latest report (builds the first one if there is none)")
-    op.add_argument("--model", default="haiku")
+    op.add_argument("--model", default="sonnet")
     sc = sub.add_parser("schedule", help="the nightly launchd run: install | remove | status")
     sc.add_argument("action", choices=["install", "remove", "status", "offer", "token"], nargs="?", default="status")
     sc.add_argument("--command", help='token: the command printing the `claude setup-token` token, '
                                       'e.g. "envsave get es_…" ("" = the normal claude login)')
     sc.add_argument("--at", default="06:30", help="HH:MM, local time (default 06:30, after the night's jobs)")
-    sc.add_argument("--model", default="haiku")
+    sc.add_argument("--model", default="sonnet")
     rf = sub.add_parser("refresh", help="new scan into the latest report's pages, no model (the Refresh button)")
     rf.add_argument("--days", type=int, default=7)
     sub.add_parser("serve", help="serve the report pages on 127.0.0.1 (`open` starts it)")
@@ -1123,7 +1123,7 @@ def main() -> int:
         return 0 if entry else 1
     if a.cmd == "refresh":
         import report
-        return report.refresh(scan, a.days, "haiku")
+        return report.refresh(scan, a.days, "sonnet")
     if a.cmd == "serve":
         import serve
         return serve.serve()

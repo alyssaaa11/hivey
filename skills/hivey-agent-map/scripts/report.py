@@ -418,7 +418,8 @@ already built: do not touch stats.archify.md or agent-stats.html.
    nodes[].llm_api.models in snapshot.json). People chatting with agents (interactive sessions) are on
    another page: never show their spend; drop an agent that has no automated runs and no data links,
    and keep a consumer agent (one a job feeds) without its interactive cost. Each node's sublabel holds
-   its schedule or role, its models and its automated cost when it has one ("cron 04:15 · Grok + Sonnet ·
+   its schedule with its start time (a box folding several jobs shows the earliest: "cron from 00:30")
+   or its role, its models and its automated cost when it has one ("cron 04:15 · Grok + Sonnet ·
    $0.40"); spend is usage.agents (automated only). Keep at most 25 nodes on 5 stages x rows 0-4;
    refresh the numbers in the cards (automated spend, models in use, needs attention).
 3. Descriptions: every node in snapshot.json has a "description" (what it does). snapshot.json
@@ -565,6 +566,96 @@ def day_spec(spec: dict) -> dict:
     return {**spec, "meta": meta, "nodes": nodes, "cards": cards}
 
 
+DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+
+
+def job_start(schedule: str) -> tuple[str, str] | None:
+    """(HH:MM, the schedule's words for one job) from a cron line or a launchd description, or None
+    when the job has no fixed start time (hourly, every N s, always on, at login, on demand)."""
+    s = (schedule or "").strip()
+    f = s.split()
+    if len(f) == 5:  # cron: minute hour day-of-month month day-of-week
+        mm, hh = (re.split(r"[,-]", x)[0] for x in f[:2])
+        if not (mm.isdigit() and hh.isdigit()):
+            return None
+        t = f"{int(hh):02d}:{int(mm):02d}"
+        if f[4].isdigit():
+            return t, f"{DAYS[int(f[4]) % 7]} {t}"
+        if f[2].isdigit():
+            return t, f"day {f[2]} {t}"
+        return t, t
+    m = re.search(r"(\d\d):(\d\d)", s)
+    if not m:
+        return None
+    return m.group(0), re.sub(r"^daily\s+", "", s)
+
+
+def start_time_labels(spec: dict, meta: dict, snap: dict) -> dict[str, list[str]]:
+    """Every scheduled box on the map shows when it starts. The model writes the sublabels and leaves
+    the time out of folded boxes ("11 trading jobs") and of agents run by jobs; the scan knows each
+    job's schedule, so a box without a time gets its job's time, or "from <earliest>" when it stands
+    for several jobs. Data stores get none. Returns {box id: sublabels to try, longest first}: when a
+    box is too narrow, the model names go before the cost and the errors."""
+    jobs = {j["id"]: j for j in snap.get("jobs") or [] if j.get("id")}
+    owned: dict[str, list[str]] = {}
+    for b in (snap.get("links_candidates") or {}).get("belongs_to") or []:
+        owned.setdefault(b.get("agent", ""), []).append(b.get("job", ""))
+    out = {}
+    for n in spec.get("nodes") or []:
+        sub = str(n.get("sublabel", ""))
+        if n.get("type") == "database" or re.search(r"\b\d\d:\d\d\b", sub):
+            continue
+        refs = ((meta.get("nodes") or {}).get(n.get("id")) or {}).get("refs") or []
+        ids = [r for r in refs if r in jobs] or [j for r in refs for j in owned.get(r, []) if j in jobs]
+        starts = [s for s in (job_start(jobs[j].get("schedule", "")) for j in dict.fromkeys(ids)) if s]
+        if not starts:
+            continue
+        when = starts[0][1] if len(starts) == 1 else "from " + min(t for t, _ in starts)
+        m = re.match(r"(cron|launchd|nightly|daily|weekly|\d+ jobs)\b", sub)
+        first = (sub[:m.end()] + " " + when + sub[m.end():]) if m else " · ".join(x for x in (when, sub) if x)
+        parts = [x.strip() for x in first.split("·")]
+        tries = [first]
+        while len(parts) > 1:
+            keep = lambda x: re.search(r"\$|error|exit|fail", x, re.I)
+            drop = next((i for i in range(len(parts) - 1, 0, -1) if not keep(parts[i])), len(parts) - 1)
+            parts.pop(drop)
+            tries.append(" · ".join(parts))
+        out[str(n.get("id"))] = tries
+    return out
+
+
+def place_start_times(folder: Path) -> None:
+    """Put the start times on the map (start_time_labels) and redraw it. A box the drawing rejects as
+    too narrow tries its next, shorter sublabel; when nothing fits, the night's map stays as it was."""
+    spec_path, meta_path, snap_path = folder / "map.json", folder / "map-meta.json", folder / "snapshot.json"
+    try:
+        original = spec_path.read_text()
+        spec, meta, snap = json.loads(original), json.loads(meta_path.read_text()), json.loads(snap_path.read_text())
+    except (OSError, ValueError):
+        return
+    tries = start_time_labels(spec, meta, snap)
+    if not tries:
+        return
+    step = dict.fromkeys(tries, 0)
+    for _ in range(8):
+        for n in spec.get("nodes") or []:
+            if n.get("id") in step:
+                n["sublabel"] = tries[n["id"]][step[n["id"]]]
+        spec_path.write_text(json.dumps(spec, indent=1))
+        good, why = finalize(folder, "dataflow", "map.json", "agent-map.html")
+        if good:
+            log(folder, f"map start times: {len(step)} boxes")
+            return
+        bad = [i for i in re.findall(r'node "([^"]+)"', why) if i in step]
+        if not bad or any(step[i] + 1 >= len(tries[i]) for i in bad):
+            break
+        for i in bad:
+            step[i] += 1
+    log(folder, f"map start times did not fit ({why}); map unchanged")
+    spec_path.write_text(original)
+    finalize(folder, "dataflow", "map.json", "agent-map.html")
+
+
 def day_view(scan, folder: Path) -> None:
     try:
         ok, msg = write_day_view(scan, folder)
@@ -605,6 +696,8 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
         log(folder, f"map: {'ok' if good else 'FAILED ' + why}")
     else:
         log(folder, "map: ok" if (folder / "agent-map.html").is_file() else "map: none yet")
+    if (folder / "agent-map.html").is_file():
+        place_start_times(folder)
 
     try:
         import enhance
@@ -640,6 +733,7 @@ def refresh(scan, days: int, model: str) -> int:
     import sessions_page
     sessions_page.write_sessions_page(snap, folder)
     ok, msg = finalize(folder, "explainer", "stats.archify.md", "agent-stats.html")
+    place_start_times(folder)
     try:
         import enhance
         enhance.enhance_folder(folder, json.loads((folder / "snapshot.json").read_text()), job_state)
@@ -733,6 +827,15 @@ OFFER = STATE / "offer.json"
 def offer(hour: int, minute: int, model: str) -> int:
     """Asked once, by install.sh and `hivey update`: set up the nightly run? The answer is kept in
     offer.json so it is never asked again; with no terminal nothing is asked (asked next time)."""
+    if sys.platform == "darwin" and PLIST.is_file():  # nights set up with Haiku move to Sonnet, same time:
+        try:                                             # Haiku did not follow the map rules well
+            with open(PLIST, "rb") as fh:
+                d = plistlib.load(fh)
+            if d.get("ProgramArguments", [])[-2:] == ["--model", "haiku"]:
+                cal = d.get("StartCalendarInterval", {})
+                return schedule("install", cal.get("Hour", hour), cal.get("Minute", minute), "sonnet")
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            pass
     if sys.platform != "darwin" or PLIST.is_file() or OFFER.is_file() or not sys.stdin.isatty():
         return 0  # not a person at a terminal (remote or scripted update): asked next time
     try:
@@ -744,7 +847,7 @@ def offer(hour: int, minute: int, model: str) -> int:
             "\nhivey can watch this computer every night: scheduled jobs (cron, launchd), agents and\n"
             "swarms, token use and estimated cost per agent and provider, failing jobs, and how\n"
             "agents feed each other. The report opens from the hivey menu → agent map.\n"
-            f"It runs at {hour:02}:{minute:02} with Claude {model} (a few cents a night).\n"
+            f"It runs at {hour:02}:{minute:02} with Claude {model} (well under a dollar a night).\n"
             "Set up the nightly agent monitoring? [Y/n] ")
         tty.flush()
         answer = tty.readline().strip().lower()

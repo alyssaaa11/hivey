@@ -104,8 +104,8 @@ surprising link). If archify is missing, give the stats as Markdown tables and t
 
 ```bash
 hivey agent-map open                      # the latest report; builds the first one when none exists
-hivey agent-map nightly [--model haiku]   # a full report now (also: --no-llm, --open)
-hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | status
+hivey agent-map nightly [--model sonnet]   # a full report now (also: --no-llm, --open)
+hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | status
 ```
 
 - **hivey menu → agent map** runs `hivey agent-map open`: it opens `agent-stats.html`,
@@ -162,7 +162,7 @@ hivey agent-map schedule install [--at 06:30] [--model haiku]   # | remove | sta
   why a job or agent is not working, read its entry in `snapshot.json` (`jobs[].errors`, `tail`,
   `agent_logs`) or open this page, then the full log it names.
 - **`nightly`** (`report.py`): scan → stats page written and finalized by code (no LLM) → last night's
-  `map.json` copied in → one `claude -p --model haiku` run (in the report folder, limited tools) that
+  `map.json` copied in → one `claude -p --model sonnet` run (in the report folder, limited tools) that
   confirms new links and updates the map → if the model fails or breaks the map, last night's map is
   rendered unchanged. `reports/latest` moves only when the stats page passed; the 30 newest reports
   are kept. About 2 minutes and $0.03 with Haiku. Log: `nightly.log` and `llm.log` in the report.

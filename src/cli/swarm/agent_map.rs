@@ -7,9 +7,9 @@ usage: hivey agent-map open              open the latest map (its navbar has Sta
                                          the first time, builds the pages in seconds, the map after
        hivey agent-map refresh           scan again into the latest report (free, no model); the
                                          pages' Refresh button does this
-       hivey agent-map nightly [--model haiku] [--no-llm] [--open]
+       hivey agent-map nightly [--model sonnet] [--no-llm] [--open]
                                          scan, stats page, map update with a cheap model
-       hivey agent-map schedule [install|remove|status|offer] [--at 06:30] [--model haiku]
+       hivey agent-map schedule [install|remove|status|offer] [--at 06:30] [--model sonnet]
                                          the nightly launchd run (com.hivey.agent-map)
        hivey agent-map schedule token --command \"envsave get es_…\"
                                          long-lived Claude login (claude setup-token) for the run
