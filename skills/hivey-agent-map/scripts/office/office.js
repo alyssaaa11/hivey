@@ -287,6 +287,12 @@ function openDrawer(a) {
       ${(s.done || []).length ? `<dt>Achieved</dt><dd>${s.done.map(d => '✓ ' + esc(d)).join('<br>')}</dd>` : ''}
       ${s.next ? `<dt>Next</dt><dd>→ ${esc(s.next)}</dd>` : ''}
       ${a.about ? `<dt>About</dt><dd>${esc(a.about)}</dd>` : ''}
+      ${a.wiki ? `<dt>📚 Wiki</dt><dd class="wiki">
+        <div class="wiki-head"><a href="#" data-wiki="" title="Open its index in Obsidian">${esc(a.wiki.short)}</a> <span class="meta">${a.wiki.pages} pages${a.wiki.vault ? '' : ' · not an Obsidian vault yet'}</span></div>
+        ${(a.wiki.recent || []).length ? `<div class="meta wiki-sub">Newest pages and reports</div>` + a.wiki.recent.map(r => `<a href="#" class="wiki-page" data-wiki="${esc(r.path)}" title="${esc(r.path)}: open in Obsidian">
+          <span class="wt">${/report|daily|brief/i.test(r.path) ? '📊' : '📄'} ${esc(r.title)}</span><span class="meta">${esc(r.folder || '')}${r.folder ? ' · ' : ''}${ago(r.at)}</span></a>`).join('') : ''}
+        ${(a.wiki.log || []).length ? `<div class="meta wiki-sub">Latest log entries</div>` + a.wiki.log.map(l => `<div class="wiki-log"><span class="meta">${esc(l.date)}</span> ${esc(l.what)}</div>`).join('') : ''}
+      </dd>` : ''}
       ${a.team?.length ? `<dt>Swarm team</dt><dd>${a.team.map(m => `${st(m.status).emoji} ${esc(m.name)} <span class="meta">${esc(m.role)}</span>`).join('<br>')}</dd>` : ''}
       ${a.last_prompt ? `<dt>Your last prompt</dt><dd>${esc(a.last_prompt)}</dd>` : ''}
       ${a.recap ? `<dt>Session recap</dt><dd>${esc(a.recap)}</dd>` : ''}
@@ -306,6 +312,14 @@ function openDrawer(a) {
   office.markSelected();
 }
 function wireDrawer(a) {
+  $('#drawer').querySelectorAll('[data-wiki]').forEach(l => l.onclick = async e => {
+    e.preventDefault(); e.stopPropagation();
+    try {
+      const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, action: 'wiki', path: l.dataset.wiki }) });
+      const j = await r.json();
+      toast(j.ok ? `📚 ${j.message}` : `${a.name}: ${j.message}`);
+    } catch (err) { toast('The office server is not answering: run `hivey agent-map fleet` again'); }
+  });
   $('#drawer').querySelectorAll('button[data-act]').forEach(b => b.onclick = e => {
     e.stopPropagation();
     if (b.disabled) return;

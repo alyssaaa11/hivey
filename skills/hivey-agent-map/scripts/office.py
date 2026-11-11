@@ -216,6 +216,85 @@ def asleep_desks(hs: dict) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- its wiki: newest pages and log entries
+
+WIKI_SKIP = {"raw", ".obsidian", ".trash", ".git", "node_modules", "assets", "attachments", "templates", "_templates"}
+WIKI_META = {"log.md", "index.md", "claude.md", "agents.md", "ingest-ledger.md", "readme.md"}
+
+
+def obsidian_vaults() -> list[str]:
+    """Folders Obsidian knows as vaults (pages inside them open with obsidian://open)."""
+    try:
+        got = json.loads((HOME / "Library/Application Support/obsidian/obsidian.json").read_text())
+        return [os.path.realpath(v["path"]) for v in (got.get("vaults") or {}).values() if v.get("path")]
+    except (OSError, ValueError, AttributeError, TypeError):
+        return []
+
+
+def wiki_dir(folder: str | None, space: str = "") -> Path | None:
+    """The agent's or swarm's own wiki: a `<name>-wiki/` folder in its folder (or the folder itself); when its
+    terminal sits one level up (~/swarms), the folder named after its space."""
+    bases = [Path(folder)] if folder and os.path.isdir(folder) else []
+    if space and re.fullmatch(r"[\w.-]{1,64}", space):
+        bases += [b / space for b in bases] + [HOME / "agents" / space, HOME / "swarms" / space]
+    for base in bases:
+        if not base.is_dir():
+            continue
+        for cand in [base] + sorted(base.glob("*-wiki")):
+            if cand.is_dir() and cand.name.endswith("-wiki") and any((cand / n).exists() for n in ("index.md", "log.md", "wiki")):
+                return cand
+    return None
+
+
+def wiki_info(folder: str | None, vaults: list[str], space: str = "") -> dict | None:
+    """The newest pages and reports the agent wrote in its wiki and its latest log entries."""
+    root = wiki_dir(folder, space)
+    if not root:
+        return None
+    pages, seen = [], 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d.lower() not in WIKI_SKIP and not d.startswith(".")]
+        for f in filenames:
+            if not f.endswith(".md") or f.lower() in WIKI_META or f.endswith(".excalidraw.md"):
+                continue
+            seen += 1
+            p = os.path.join(dirpath, f)
+            try:
+                pages.append((os.path.getmtime(p), p))
+            except OSError:
+                pass
+        if seen > 20000:
+            break
+    recent = []
+    for mtime, p in sorted(pages, reverse=True)[:8]:
+        title = Path(p).stem.replace("-", " ")
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                for line in fh.read(4000).splitlines():
+                    if line.startswith("# "):
+                        title = line[2:].strip()
+                        break
+        except OSError:
+            pass
+        rel = os.path.relpath(p, root)
+        recent.append({"path": rel, "title": title[:120], "folder": os.path.dirname(rel),
+                       "at": dt.datetime.fromtimestamp(mtime, dt.timezone.utc).isoformat(timespec="seconds")})
+    log = []
+    for lp in (root / "log.md", root / "wiki" / "log.md"):
+        try:
+            text = lp.read_text(errors="replace")[-20000:]
+        except OSError:
+            continue
+        for m in re.finditer(r"^## \[([^\]]+)\]\s*(.+)$", text, re.M):
+            log.append({"date": m.group(1).strip(), "what": m.group(2).strip()[:140]})
+        log = log[-5:][::-1]
+        break
+    real = os.path.realpath(root)
+    vault = next((v for v in vaults if real == v or real.startswith(v + os.sep)), None)
+    return {"dir": str(root), "short": short(str(root)), "vault": bool(vault), "pages": len(pages),
+            "recent": recent, "log": log}
+
+
 # ---------------------------------------------------------------- what each one shows
 
 def screen(hv: str, pane: str, sock: str | None = None) -> str:
@@ -442,8 +521,10 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
               for d in (desks(hv, hs) if hs["running"] else asleep_desks(hs))]
     with cf.ThreadPoolExecutor(max_workers=8) as pool:
         screens = list(pool.map(lambda d: "" if d.get("asleep") else screen(hv, d["pane"], d.get("sock")), people))
+    vaults = obsidian_vaults()
     for d, scr in zip(people, screens):
         d["screen"] = scr
+        d["wiki"] = wiki_info(d.get("folder"), vaults, d.get("space", ""))
         log = session_log(transcript_of(d["session"], d["cli_id"]))
         d["_log"] = log
         d["log_uuid"] = log.get("uuid", "")

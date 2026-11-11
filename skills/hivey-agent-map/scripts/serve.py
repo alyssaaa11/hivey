@@ -36,6 +36,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -50,7 +51,7 @@ PREFERRED_PORT = 42817  # unregistered and below macOS's temporary-port range, s
 IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 MARK = b"hivey-agent-map"
-VERSION = b"office-12"  # bump when the server gains actions, so `ensure` replaces an older one
+VERSION = b"office-13"  # bump when the server gains actions, so `ensure` replaces an older one
 OFFICE_EVERY = 300  # seconds between full office refreshes (every terminal re-summarized) while its page is open
 OFFICE_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 OFFICE_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -360,7 +361,26 @@ def session_action(session: str) -> tuple[bool, str]:
         if how else (False, f"could not open a terminal; run: hivey session attach {session}")
 
 
-def office_action(desk_id: str, action: str, session: str = "") -> tuple[bool, str]:
+def open_wiki_page(desk: dict, rel: str) -> tuple[bool, str]:
+    """Open a page of the agent's own wiki in Obsidian (only .md files inside that wiki)."""
+    wiki = desk.get("wiki") or {}
+    root = os.path.realpath(wiki.get("dir") or "")
+    if not root or not os.path.isdir(root):
+        return False, "this agent has no wiki"
+    target = os.path.realpath(os.path.join(root, rel or ""))
+    if os.path.isdir(target) and target == root:  # the wiki itself: its index
+        target = next((os.path.join(root, n) for n in ("index.md", "wiki/index.md") if os.path.isfile(os.path.join(root, n))), "")
+    if not target.endswith(".md") or not target.startswith(root + os.sep) or not os.path.isfile(target):
+        return False, "not a page of this agent's wiki"
+    if wiki.get("vault"):
+        p = subprocess.run(["open", "obsidian://open?path=" + urllib.parse.quote(target, safe="")],
+                           capture_output=True, text=True, timeout=10)
+        return (p.returncode == 0), ("opened in Obsidian" if p.returncode == 0 else (p.stderr or "open failed").strip()[-200:])
+    subprocess.run(["open", target], capture_output=True, timeout=10)
+    return True, f"opened (not an Obsidian vault yet: in Obsidian, Open folder as vault → {wiki.get('short')})"
+
+
+def office_action(desk_id: str, action: str, session: str = "", path: str = "") -> tuple[bool, str]:
     if action == "session":
         return session_action(session)
     if action == "stop-session":
@@ -373,6 +393,8 @@ def office_action(desk_id: str, action: str, session: str = "") -> tuple[bool, s
     if not desk or not PANE.match(pane):
         return False, "unknown agent"
     sock = desk.get("sock") or None
+    if action == "wiki":  # works for asleep agents too: their wiki is on disk
+        return open_wiki_page(desk, path)
     if desk.get("asleep"):  # an agent of a stopped session: start the session (compact/clear wait until then)
         if action == "focus":
             return session_action(desk.get("hv_session") or "")
@@ -522,7 +544,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)
                 req = json.loads(self.rfile.read(length) or b"{}")
                 ok, msg = office_action(str(req.get("id") or req.get("pane") or ""), str(req.get("action", "")),
-                                        str(req.get("session") or ""))
+                                        str(req.get("session") or ""), str(req.get("path") or ""))
             except (ValueError, OSError, subprocess.SubprocessError) as e:
                 ok, msg = False, str(e)[:200]
             return self.answer(200, json.dumps({"ok": ok, "message": msg}).encode())
