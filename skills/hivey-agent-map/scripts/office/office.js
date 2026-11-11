@@ -65,8 +65,32 @@ function visible(a) {
 }
 
 // ---------------------------------------------------------------- actions
+// click sound: a short sci-fi "warp ping" made with Web Audio (two rising tones and an echo), no file
+let audioCtx = null;
+function warpPing() {
+  try {
+    audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const ac = audioCtx, t = ac.currentTime, out = ac.createGain();
+    out.gain.value = 0.5;
+    const echo = ac.createDelay(), fb = ac.createGain();
+    echo.delayTime.value = 0.13; fb.gain.value = 0.32;
+    out.connect(ac.destination); out.connect(echo); echo.connect(fb); fb.connect(echo); echo.connect(ac.destination);
+    [['sine', 880, 1760, 0, 0.26, 0.32], ['triangle', 1320, 2640, 0.07, 0.12, 0.4], ['sine', 440, 660, 0, 0.1, 0.5]].forEach(([type, f0, f1, at, vol, len]) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.setValueAtTime(f0, t + at); o.frequency.exponentialRampToValueAtTime(f1, t + at + 0.16);
+      g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime(vol, t + at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+      o.connect(g); g.connect(out); o.start(t + at); o.stop(t + at + len + 0.05);
+    });
+    setTimeout(() => { fb.gain.value = 0; }, 900);
+  } catch (e) { /* no audio: the flash is enough */ }
+}
 async function act(a, action) {
-  if (action === 'focus') toast(`Opening ${a.name} in hivey…`);
+  if (action === 'focus') {
+    warpPing();
+    toast(`Opening ${a.name} in hivey…`);
+    office.flash(a.id);
+    document.querySelectorAll(`[data-id="${CSS.escape(a.id)}"]`).forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
+  }
   try {
     const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pane: a.pane, action }) });
     const j = await r.json();
@@ -238,7 +262,7 @@ function closeDrawer() { $('#drawer').classList.remove('open'); selected = null;
 const office = (() => {
   const host = $('#office'), labels = $('#labels');
   let renderer;
-  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); } catch (e) { return { ok: false, build() {}, markSelected() {}, resize() {}, fit() {} }; }
+  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); } catch (e) { return { ok: false, build() {}, markSelected() {}, resize() {}, fit() {}, flash() {} }; }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -593,6 +617,36 @@ const office = (() => {
     dirty = true;
     if (!REDUCED) placeLabels();
   }
+  // click feedback: a gold ring bursts out, a cyan beam flashes and a light pulses at the agent (1.4 s)
+  const flashes = [];
+  const beamGeo = new THREE.CylinderGeometry(0.55, 0.55, 7, 28, 1, true);
+  const glowMat = color => new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+  function flash(id) {
+    const d = desks.find(x => x.a.id === id);
+    if (!d) return;
+    const g = new THREE.Group();
+    g.position.copy(d.g.position).add(new THREE.Vector3(0, 0, -0.9 * d.g.scale.x));
+    const ring = mesh(G.ring, glowMat('#ffd36a'), 0, 0.06, 0, 1, 1, 1, false); ring.rotation.x = -Math.PI / 2;
+    const ring2 = mesh(G.ring, glowMat('#7fe8ff'), 0, 0.07, 0, 1, 1, 1, false); ring2.rotation.x = -Math.PI / 2;
+    const beam = mesh(beamGeo, glowMat('#7fe8ff'), 0, 3.5, 0, 1, 1, 1, false);
+    const light = new THREE.PointLight('#9fe8ff', 0, 9, 1.4); light.position.y = 2.2;
+    g.add(ring, ring2, beam, light); world.add(g);
+    flashes.push({ g, ring, ring2, beam, light, t0: performance.now() });
+    tags.get(id)?.el.classList.add('hover');
+    setTimeout(() => tags.get(id)?.el.classList.remove('hover'), 1600);
+    dirty = true;
+  }
+  function stepFlashes(now) {
+    for (let i = flashes.length - 1; i >= 0; i--) {
+      const f = flashes[i], p = Math.min(1, (now - f.t0) / 1400), fade = 1 - p;
+      const blink = 0.55 + 0.45 * Math.sin(p * Math.PI * 10); // three quick blinks
+      f.ring.scale.setScalar(1 + p * 5); f.ring.material.opacity = fade;
+      f.ring2.scale.setScalar(1 + Math.max(0, p - 0.15) * 5); f.ring2.material.opacity = p > 0.15 ? fade * 0.8 : 0;
+      f.beam.material.opacity = 0.55 * fade * blink; f.beam.scale.set(1 - p * 0.5, 1, 1 - p * 0.5);
+      f.light.intensity = 40 * fade * blink;
+      if (p >= 1) { world.remove(f.g); [f.ring, f.ring2, f.beam].forEach(m => m.material.dispose()); flashes.splice(i, 1); }
+    }
+  }
   function markSelected() {
     desks.forEach(d => { d.ring.material.opacity = d.a.id === selected ? 0.9 : 0; tags.get(d.a.id)?.el.classList.toggle('sel', d.a.id === selected); });
     dirty = true;
@@ -636,7 +690,7 @@ const office = (() => {
   function frame(t) {
     requestAnimationFrame(frame);
     if (document.hidden || ui.view !== 'office') return;
-    const moving = !REDUCED && desks.some(d => d.a.status === 'working' || d.a.status === 'blocked' || d.team.some(m => m.status === 'working'));
+    const moving = flashes.length > 0 || (!REDUCED && desks.some(d => d.a.status === 'working' || d.a.status === 'blocked' || d.team.some(m => m.status === 'working')));
     const dt = Math.min(0.1, (t - (frame.prev || t)) / 1000); frame.prev = t;
     if (!moving && !dirty) return;
     if (moving && t - last < 33) return; // ~30 fps is plenty
@@ -670,6 +724,7 @@ const office = (() => {
         }
       }
     }
+    if (flashes.length) stepFlashes(performance.now());
     if (ui.toon) outline.render(scene, cam); else composer.render();
     placeLabels();
     dirty = false;
@@ -677,7 +732,7 @@ const office = (() => {
   new ResizeObserver(() => { resize(); }).observe(host);
   resize(); placeCam();
   requestAnimationFrame(frame);
-  return { ok: true, build, markSelected, resize, fit, ready: ship.load() };
+  return { ok: true, build, markSelected, resize, fit, flash, ready: ship.load() };
 })();
 
 // ---------------------------------------------------------------- views, polling, keys
@@ -731,6 +786,11 @@ function setMusic(on) {
 $('#music').onclick = () => setMusic(!ui.music);
 if (ui.music) addEventListener('pointerdown', () => { if (ui.music && bgm.paused) setMusic(true); }, { once: true });
 $('#music').textContent = ui.music ? '🎵' : '🔇';
+// only while the page is in front of you: pause when you switch to the terminal or another app or tab
+const inFront = () => !document.hidden && document.hasFocus();
+function followFocus() { if (!ui.music) return; if (inFront()) bgm.play().catch(() => {}); else bgm.pause(); }
+addEventListener('blur', followFocus); addEventListener('focus', followFocus);
+document.addEventListener('visibilitychange', followFocus);
 $('#fit').onclick = () => office.fit();
 function toggleStyle() { ui.toon = !ui.toon; save(); $('#style').textContent = ui.toon ? '🎨 comic' : '✨ HD'; renderAll(); }
 $('#style').onclick = toggleStyle;

@@ -144,6 +144,8 @@ td.j{max-width:420px}
 #toast.show{opacity:1;transform:translateX(-50%)}
 .empty{padding:60px;text-align:center;color:var(--muted)}
 .err{color:var(--block);font-size:12px}
+.flash{animation:flash 1.4s ease-out}
+@keyframes flash{0%,30%,60%{box-shadow:0 0 0 2px #ffd36a,0 0 28px 6px rgba(127,232,255,.75);background-color:rgba(127,232,255,.12)}15%,45%,75%{box-shadow:0 0 0 1px #7fe8ff,0 0 10px 2px rgba(255,211,106,.4)}100%{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
