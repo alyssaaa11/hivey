@@ -904,7 +904,7 @@ async function poll() {
       if (refreshing && Date.parse(j.generated) > refreshing) { refreshing = false; $('#refresh').innerHTML = '⟳'; toast('Office updated'); }
       renderAll();
     }
-  } catch (e) { console.error('hivey fleet:', e); $('#sub').textContent = 'cannot read office.json: is the office server running? (hivey menu → agent office)'; }
+  } catch (e) { console.error('hivey fleet:', e); $('#sub').textContent = 'cannot read office.json: is the office server running? (hivey menu → agent fleet)'; }
 }
 async function refreshNow() {
   if (refreshing) return;

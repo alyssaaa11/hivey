@@ -1,15 +1,16 @@
 //! `hivey agent-map`: what runs on this computer, what it costs and how agents feed each other.
 //! The work is done by the `hivey-agent-map` skill's `agent_map.py` (installed with the hivey
-//! skills); this command runs it, so the menu's "agent map" and "agent office" items and launchd
+//! skills); this command runs it, so the menu's "agent jobs" and "agent fleet" items and launchd
 //! can reach it.
 
 const HELP: &str = "\
 usage: hivey agent-map open              open the latest map (its navbar has Stats, Logs, Sessions);
                                          the first time, builds the pages in seconds, the map after
-       hivey agent-map office [--no-llm] the agent office: every live agent at a desk in a 3D office,
-                                         its current job read from its terminal and session log and
-                                         summed up by Sonnet, its context and compact/clear advice;
-                                         click an agent to open it in hivey (refreshes every 5 min)
+       hivey agent-map fleet [--no-llm]  the agent fleet (also: office): every live agent at a desk on
+                                         a 3D spaceship, one ship per hivey session, its current job
+                                         read from its terminal and session log and summed up by
+                                         Haiku, its context and compact/clear advice; click an agent
+                                         to open it in hivey (⚙ on the page: updates, music, space)
        hivey agent-map refresh           scan again into the latest report (free, no model); the
                                          pages' Refresh button does this
        hivey agent-map nightly [--model sonnet] [--no-llm] [--open]
@@ -21,7 +22,7 @@ usage: hivey agent-map open              open the latest map (its navbar has Sta
        hivey agent-map context [AGENT…] [--set standard|1M]
                                          each agent's context window (list), or set it
        hivey agent-map stats|scan|link|log …   see `hivey agent-map --help-script`
-  Reports: ~/.hivey/agent-map/reports/latest. Also in the hivey menu → agent map / agent office.";
+  Reports: ~/.hivey/agent-map/reports/latest. Also in the hivey menu → agent jobs / agent fleet.";
 
 const SCRIPT: &str = "hivey-agent-map/scripts/agent_map.py";
 
@@ -55,8 +56,12 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     command.arg("-I").arg(&script);
     if args.first().map(String::as_str) == Some("--help-script") {
         command.arg("--help");
-    } else if args.first().map(String::as_str) == Some("office") && args.len() == 1 {
+    } else if matches!(args.first().map(String::as_str), Some("office" | "fleet"))
+        && args.len() == 1
+    {
         command.args(["office", "open"]);
+    } else if args.first().map(String::as_str) == Some("fleet") {
+        command.arg("office").args(&args[1..]);
     } else {
         command.args(args);
     }

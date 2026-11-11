@@ -93,7 +93,7 @@ def nav(active: str, generated: str, days: int = 7) -> str:
 # The Refresh button: the pages are served by `hivey agent-map open` (serve.py) on 127.0.0.1,
 # which reruns the scan on POST /hv-refresh. Opened as plain files, it says how to get there.
 REFRESH_JS = """<script>async function hvRefresh(b){
-if(location.protocol==='file:'){b.textContent='open from the hivey menu → agent map to refresh';return;}
+if(location.protocol==='file:'){b.textContent='open from the hivey menu → agent jobs to refresh';return;}
 b.disabled=true;const t0=Date.now();const tick=setInterval(()=>{b.textContent='↻ Scanning… '+Math.round((Date.now()-t0)/1000)+'s';},500);
 try{const r=await fetch('/hv-refresh',{method:'POST'});const j=await r.json();clearInterval(tick);
 if(j.ok){location.reload();}else{b.disabled=false;b.textContent='refresh failed';b.title=j.error||'';}}

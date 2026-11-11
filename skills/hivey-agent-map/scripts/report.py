@@ -216,7 +216,7 @@ def write_stats(snap: dict, folder: Path) -> None:
     else:
         L.append(f"✅ All {len(jobs)} jobs ran cleanly.\n")
     L.append("Every job and agent, with its status, issues and the last lines of its log: `agent-logs.html` "
-             "in this folder (hivey menu → agent map opens it too).\n")
+             "in this folder (hivey menu → agent jobs opens it too).\n")
 
     L.append("## What is not counted yet? {#gaps}\n")
     L.append('@callout level=warning title="Spend the map cannot see"')
@@ -846,7 +846,7 @@ def offer(hour: int, minute: int, model: str) -> int:
         tty.write(
             "\nhivey can watch this computer every night: scheduled jobs (cron, launchd), agents and\n"
             "swarms, token use and estimated cost per agent and provider, failing jobs, and how\n"
-            "agents feed each other. The report opens from the hivey menu → agent map.\n"
+            "agents feed each other. The report opens from the hivey menu → agent jobs.\n"
             f"It runs at {hour:02}:{minute:02} with Claude {model} (well under a dollar a night).\n"
             "Set up the nightly agent monitoring? [Y/n] ")
         tty.flush()

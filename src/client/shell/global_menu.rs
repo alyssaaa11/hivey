@@ -8,9 +8,9 @@ pub(super) enum ClientGlobalMenuAction {
     Pets,
     /// hivey: quiet mode on/off (no voice, no sounds, Slack posts held)
     Quiet,
-    /// hivey: open the latest agent map report (`hivey agent-map open`)
+    /// hivey: "agent jobs", the latest agent map report: scheduled and background jobs (`hivey agent-map open`)
     AgentMap,
-    /// hivey: open the agent office, what every live agent does now (`hivey agent-map office`)
+    /// hivey: open the agent fleet, what every live agent does now (`hivey agent-map fleet`)
     AgentOffice,
 }
 
@@ -71,8 +71,8 @@ pub(super) fn global_menu_items(
         ClientGlobalMenuAction::Quiet,
     ));
     if AGENT_MAP_SUPPORTED {
-        items.push(("agent map", ClientGlobalMenuAction::AgentMap));
-        items.push(("agent office", ClientGlobalMenuAction::AgentOffice));
+        items.push(("agent jobs", ClientGlobalMenuAction::AgentMap));
+        items.push(("agent fleet", ClientGlobalMenuAction::AgentOffice));
     }
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));

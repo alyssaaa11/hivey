@@ -605,7 +605,7 @@ def open_page(model: str) -> int:
         serve.request_office_refresh(port)
     url = f"http://127.0.0.1:{port}/office/"
     subprocess.run(["open", url], capture_output=True)
-    print(f"agent office: {url}")
+    print(f"agent fleet: {url}")
     return 0
 
 

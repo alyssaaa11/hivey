@@ -10,10 +10,10 @@
                                                  confirm (or remove) a link between two nodes
     agent_map.py nightly [--model sonnet] [--no-llm] [--open]
                                                  a full report in ~/.hivey/agent-map/reports/<date>/
-    agent_map.py open                            open the latest report (hivey menu → agent map)
+    agent_map.py open                            open the latest report (hivey menu → agent jobs)
     agent_map.py office [open|run] [--no-llm]    the agent office: every live agent at a desk, its current
                                                  job (terminal + session log, summed up by Sonnet), context
-                                                 and compact/clear advice (hivey menu → agent office)
+                                                 and compact/clear advice (hivey menu → agent fleet)
     agent_map.py schedule [install|remove|status|offer] [--at 06:30] [--model sonnet]
     agent_map.py schedule token --command "envsave get es_…"   long-lived Claude login for the run
                                                  the nightly launchd run (com.hivey.agent-map)

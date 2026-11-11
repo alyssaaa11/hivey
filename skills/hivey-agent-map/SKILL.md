@@ -108,7 +108,7 @@ hivey agent-map nightly [--model sonnet]   # a full report now (also: --no-llm, 
 hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | status
 ```
 
-- **hivey menu → agent map** runs `hivey agent-map open`: it opens `agent-stats.html`,
+- **hivey menu → agent jobs** runs `hivey agent-map open`: it opens `agent-stats.html`,
   `agent-map.html` and `agent-logs.html` from `~/.hivey/agent-map/reports/latest`.
 - **hivey's layer on the archify pages** (`enhance.py`, after finalize; `agent_map.py enhance [folder]`
   re-applies it): a Stats · Map · Logs navbar on every page; map boxes coloured by spend (green: none →
@@ -130,7 +130,7 @@ hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | st
   People chatting with agents (Claude Code, Codex, Grok in a terminal; snapshot `interactive`, with one
   entry per session) go to **`agent-sessions.html`**: cost by agent and by day, the costliest sessions with
   their peak context (⚠️ over 300k tokens), length and first message, and tips to spend less.
-- **Open:** `hivey agent-map open` (hivey menu → agent map) opens `http://127.0.0.1:42817/latest/agent-map.html`
+- **Open:** `hivey agent-map open` (hivey menu → agent jobs) opens `http://127.0.0.1:42817/latest/agent-map.html`
   (the map first; the stats page when there is no map yet). With no report yet it builds the pages without
   a model in seconds, opens them, then draws the map in the background (`first-run.json` stops a second
   click from starting another build). If a stats page fails, the logs and sessions pages still publish.
@@ -179,9 +179,9 @@ hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | st
 - When you are the nightly model: follow the prompt you were given, change only `map.json`,
   `agent-map.html` and `links.json` (through `link`), and stop after the map passes.
 
-## Agent office (what every agent does now)
+## Agent fleet (what every agent does now)
 
-`hivey agent-map office` (hivey menu → agent office) opens http://127.0.0.1:42817/office/: every live
+`hivey agent-map fleet` (or `office`; hivey menu → agent fleet) opens http://127.0.0.1:42817/office/: every live
 agent in hivey at a desk in a 3D office, one room per space, and one spaceship per hivey session (`hivey session list`: the default session flies the classic frigate, the others a carrier, an explorer or a recoloured frigate, their name painted on the hull; a stopped session's ship has cold engines and its agents asleep at their desks, read from its saved `session.json`; a running one's engines burn). Click an agent to open its session in a terminal: the one already showing it, or a new Terminal/iTerm window running `hivey session attach <name>`, which also starts a stopped session. Click the name painted on a ship's hull for its menu (hover shows its agent count): open/start the session, or stop it (a second click confirms; `hivey session stop` ends all its agents and closes its terminal; never the default session). The space outside is one of six scenes (violet, emerald, crimson, deep blue, golden twin suns, a singularity with its lensed accretion disk), chosen with the page's 🌌 setting: a new one on every load, or always the one you pick (saved with the ⏱ setting; `?space=1..6` in the address overrides it). Drag the hull name to move the ship; positions are kept in `~/.hivey/agent-map/office-settings.json` with the ⏱ setting. Open, compact and clear reach the agent through its own session's socket. After a /compact the context shown is the compacted size until the agent's next reply. Solo agents, extra sessions in a space and
 each swarm's coordinator get a desk; a swarm's workers and critics stand beside their coordinator's desk.
 

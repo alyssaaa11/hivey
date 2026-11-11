@@ -1497,7 +1497,7 @@ fn global_menu_opens_settings_on_the_pets_tab() {
     ));
 }
 
-/// hivey: the menu's agent map item runs `hivey agent-map open` and closes the menu.
+/// hivey: the menu's agent jobs item runs `hivey agent-map open` and closes the menu.
 #[test]
 fn global_menu_opens_the_agent_map() {
     use super::super::global_menu::{
@@ -1512,10 +1512,10 @@ fn global_menu_opens_the_agent_map() {
         .iter()
         .position(|(_, action)| *action == ClientGlobalMenuAction::AgentMap);
     let Some(index) = index.filter(|_| AGENT_MAP_SUPPORTED) else {
-        assert!(index.is_none(), "agent map only on macOS");
+        assert!(index.is_none(), "agent jobs only on macOS");
         return;
     };
-    assert_eq!(items[index].0, "agent map");
+    assert_eq!(items[index].0, "agent jobs");
     let mut outcome = ClientShellInput::default();
     state.activate_global_menu_item(index, &mut outcome);
     assert!(state.overlay.is_none());
@@ -1525,7 +1525,7 @@ fn global_menu_opens_the_agent_map() {
     )));
 }
 
-/// hivey: the menu's agent office item runs `hivey agent-map office` and closes the menu.
+/// hivey: the menu's agent fleet item runs `hivey agent-map office` and closes the menu.
 #[test]
 fn global_menu_opens_the_agent_office() {
     use super::super::global_menu::{
@@ -1540,10 +1540,10 @@ fn global_menu_opens_the_agent_office() {
         .iter()
         .position(|(_, action)| *action == ClientGlobalMenuAction::AgentOffice);
     let Some(index) = index.filter(|_| AGENT_MAP_SUPPORTED) else {
-        assert!(index.is_none(), "agent office only on macOS");
+        assert!(index.is_none(), "agent fleet only on macOS");
         return;
     };
-    assert_eq!(items[index].0, "agent office");
+    assert_eq!(items[index].0, "agent fleet");
     let mut outcome = ClientShellInput::default();
     state.activate_global_menu_item(index, &mut outcome);
     assert!(state.overlay.is_none());
