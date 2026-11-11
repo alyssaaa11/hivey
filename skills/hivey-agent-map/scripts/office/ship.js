@@ -18,7 +18,8 @@ const FILES = {
   lounger: 'models/station/chair-cushion-headrest.glb',
 };
 
-export function createShip({ mesh, hue, st }) {
+export function createShip(opts) {
+  const { mesh, hue, st } = opts;
   const MODELS = {};
   let robotScale = 1;
   async function load() {
@@ -363,7 +364,7 @@ export function createShip({ mesh, hue, st }) {
     return geo;
   }
   const greebles = [];
-  function block(grp, x, y, z, w, h, d, mat = HULL, density = 1) {
+  function block(grp, x, y, z, w, h, d, mat = SH || HULL, density = 1) {
     const m = new THREE.Mesh(hullGeo(w, h, d), mat); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; grp.add(m);
     // greebles on the top and on the faces we can see (+x, +z)
     const n = Math.round(w * d * 0.12 * density);
@@ -379,49 +380,147 @@ export function createShip({ mesh, hue, st }) {
     put(grp, U.sph, led(color, 4), x, y, z, 0.25, 0.25, 0.25, 0, false);
     const s = new THREE.Sprite(glowSprite(color)); s.position.set(x, y, z); s.scale.setScalar(1.6); grp.add(s);
   }
+  // ---------------------------------------------------------------- ship styles (one per hivey session)
+  // hull tint, darker trim, light colour and aft design; style 0 is the classic frigate
+  const STYLES = [
+    { hull: null, dark: null, acc: '#36d6ff', kind: 0 },
+    { hull: '#e0a066', dark: '#5a3a22', acc: '#ffb347', kind: 1 },
+    { hull: '#7fb2e6', dark: '#1f3550', acc: '#5dff9a', kind: 2 },
+    { hull: '#a98ee0', dark: '#2e2448', acc: '#ff5ad8', kind: 0 },
+    { hull: '#86c99a', dark: '#1f3a2a', acc: '#ffd23a', kind: 1 },
+    { hull: '#e08a8a', dark: '#4a2424', acc: '#7fe8ff', kind: 2 },
+  ];
+  let SH = null, SHD = null, ACC = '#36d6ff', KIND = 0, NAME = '', RUN = true, PLATE = null;
+  // engines: a running session's ship thrusts (glow and a flickering plume), a stopped one's are cold
+  const engines = [];
+  const nozzle = () => RUN ? led(ACC, 5) : once('coldNozzle', () => new THREE.MeshStandardMaterial({ color: '#141922', roughness: 0.55, metalness: 0.85 }));
+  function flame(grp, x, y, z, size) {
+    if (!RUN) return;
+    const sp = new THREE.Sprite(glowSprite(ACC)); sp.position.set(x, y, z); sp.scale.setScalar(size); grp.add(sp);
+    const mat = once('plume:' + ACC, () => flat(new THREE.MeshBasicMaterial({ color: ACC, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide })));
+    const pl = new THREE.Mesh(U.cone, mat); pl.rotation.z = Math.PI / 2; pl.position.set(x - size * 0.3, y, z); pl.scale.set(size * 0.22, size * 0.8, size * 0.22); grp.add(pl);
+    engines.push({ sp, pl, s: size, x, ph: rnd() * 6 });
+  }
+  function thrust(s) {
+    for (const e of engines) {
+      if (!e.sp.parent?.parent) continue;  // a ship from an older build
+      const k = 1 + 0.1 * Math.sin(s * 23 + e.ph) + 0.05 * Math.sin(s * 61 + e.ph * 2);
+      e.sp.scale.setScalar(e.s * k);
+      e.pl.scale.y = e.s * 0.8 * (1 + 0.18 * Math.sin(s * 31 + e.ph));
+      e.pl.position.x = e.x - e.pl.scale.y * 0.38;
+    }
+  }
+  function useStyle(v, name, running) {
+    RUN = running !== false;
+    const st = STYLES[((v | 0) % STYLES.length + STYLES.length) % STYLES.length];
+    SH = st.hull ? once('hull:' + st.hull, () => { const m = HULL.clone(); m.color.set(st.hull); return m; }) : HULL;
+    SHD = st.dark ? once('dark:' + st.dark, () => { const m = HULL_DARK.clone(); m.color.set(st.dark); return m; }) : HULL_DARK;
+    ACC = st.acc; KIND = st.kind; NAME = name ? String(name).toUpperCase() : '';
+    for (let i = engines.length - 1; i >= 0; i--) if (!engines[i].sp.parent?.parent) engines.splice(i, 1);
+  }
+  // the ship's name painted on its hull, in its light colour
+  function nameplate(grp, text, x, y, z, w, h) {
+    if (!text) return;
+    const map = tex(1024, 160, (g, cw, ch) => {
+      g.clearRect(0, 0, cw, ch);
+      g.font = '800 104px "Avenir Next", "Segoe UI", Arial, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      let size = 104; while (g.measureText(text).width > cw - 60 && size > 40) { size -= 6; g.font = `800 ${size}px "Avenir Next", "Segoe UI", Arial, sans-serif`; }
+      g.lineWidth = 10; g.strokeStyle = 'rgba(8,12,20,.85)'; g.strokeText(text, cw / 2, ch / 2 + 4);
+      g.fillStyle = '#f4f7fb'; g.fillText(text, cw / 2, ch / 2 + 4);
+      g.fillStyle = ACC; g.fillRect(30, ch - 14, cw - 60, 6);
+    }, 1, 1);
+    const mat = flat(new THREE.MeshBasicMaterial({ map, transparent: true, toneMapped: false, depthWrite: false }));
+    const m = new THREE.Mesh(U.plane, mat); m.position.set(x, y, z); m.scale.set(Math.min(w, h * 1024 / 160), Math.min(h, w * 160 / 1024), 1); m.rotation.x = -0.55; grp.add(m);
+  }
+  function thruster(grp, x, y, z, r) {
+    const n = put(grp, U.cyl, SHD, x, y, z, r * 2.1, r * 1.8, r * 2.1); n.rotation.z = Math.PI / 2;
+    const c = put(grp, U.circ, nozzle(), x - r * 0.92, y, z, r * 1.8, r * 1.8, 1, 0, false); c.rotation.y = -Math.PI / 2;
+    flame(grp, x - r * 1.8, y, z, r * 5);
+  }
+  // carrier: a broad aft hull with two long engine nacelles on outriggers
+  function carrierAft(grp, x0, z0, z1, cz, sy, sz) {
+    const L = 22, hz = (z1 - z0) / 2 + 1.5;
+    block(grp, x0 - 1 - L / 2, sy - 0.4, cz, L, 3.2, (z1 - z0) * 0.8, SH, 0.6);
+    block(grp, x0 - 6 - L / 2, sy + 2.4, cz - 1, L * 0.6, 2.2, (z1 - z0) * 0.4, SHD, 0.6);
+    [-1, 1].forEach(sd => {
+      const nz = cz + sd * hz, len = 30, nx = x0 - 4 - len / 2;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.4, len, 28), SH); body.rotation.z = Math.PI / 2; body.position.set(nx, sy, nz); body.castShadow = body.receiveShadow = true; grp.add(body);
+      for (let i = 0; i < 5; i++) { const b = put(grp, U.torus, SHD, nx - len / 2 + 4 + i * 5.5, sy, nz, 4.9, 4.9, 4.9); b.rotation.y = Math.PI / 2; }
+      put(grp, U.box, SHD, x0 - 10, sy, cz + sd * (hz - 2.4), 5, 0.8, 3.4); // pylon
+      const cap = put(grp, U.circ, led(ACC, 3), nx + len / 2 + 0.02, sy, nz, 3.6, 3.6, 1, 0, false); cap.rotation.y = Math.PI / 2;
+      thruster(grp, nx - len / 2 - 0.6, sy, nz, 2.2);
+      for (let i = 0; i < 7; i++) put(grp, U.box, led('#ffd27a', 2.2), nx - 9 + i * 2.6, sy + 1.2, nz + sd * 1.9, 0.5, 0.18, 0.05, 0, false);
+    });
+    navLight(grp, x0 - 34, sy + 2.6, cz + hz, '#3bff7a'); navLight(grp, x0 - 34, sy + 2.6, cz - hz, '#ff3b3b');
+  }
+  // explorer: a long thin spine through a big habitat ring, cargo pods and one large engine bell
+  function explorerAft(grp, x0, cz, sy, sz) {
+    const len = 40, mx = x0 - 1.5 - len / 2;
+    const spine = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, len, 20), SHD); spine.rotation.z = Math.PI / 2; spine.position.set(mx, sy, sz); spine.castShadow = true; grp.add(spine);
+    const rx = x0 - 13;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(7.5, 0.9, 16, 64), SH); ring.rotation.y = Math.PI / 2; ring.position.set(rx, sy, sz); ring.castShadow = ring.receiveShadow = true; grp.add(ring);
+    for (let i = 0; i < 4; i++) { const sp = put(grp, U.box, SHD, rx, sy, sz, 0.35, 15, 0.35); sp.rotation.x = i * Math.PI / 4; }
+    for (let i = 0; i < 24; i++) { const t = i / 24 * Math.PI * 2; put(grp, U.box, led(i % 3 ? '#ffd27a' : ACC, 2.2), rx + 0.92, sy + Math.sin(t) * 7.5, sz + Math.cos(t) * 7.5, 0.05, 0.3, 0.3, 0, false); }
+    [[-24, 2.4], [-24, -2.4], [-29, 2.4], [-29, -2.4]].forEach(([dx, dz]) => { const c = put(grp, U.cap, SH, x0 + dx, sy, sz + dz, 1.6, 2.2, 1.6); c.rotation.z = Math.PI / 2; });
+    const ex = x0 - 1.5 - len;
+    block(grp, ex + 2, sy, sz, 4, 4.4, 4.4, SH, 0.5);
+    const bell = new THREE.Mesh(new THREE.ConeGeometry(4.2, 5.5, 32, 1, true), SHD); bell.rotation.z = -Math.PI / 2; bell.position.set(ex - 2.6, sy, sz); bell.material.side = THREE.DoubleSide; grp.add(bell);
+    const c = put(grp, U.circ, nozzle(), ex - 0.4, sy, sz, 4.6, 4.6, 1, 0, false); c.rotation.y = -Math.PI / 2;
+    flame(grp, ex - 4.5, sy, sz, 11);
+    navLight(grp, rx, sy + 8.6, sz, '#ffffff');
+  }
+
   function exterior(grp, x0, x1, z0, z1) {
     greebles.length = 0;
     const fw = x1 - x0, fd = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
     // hull under the deck: plating, a stepped keel, a low rim at the open edges
-    block(grp, cx, -1.35, cz, fw + 1.6, 2.4, fd + 1.6, HULL, 0.3);
-    block(grp, cx - 2, -3.3, cz - 1, fw * 0.82, 1.6, fd * 0.7, HULL, 0.4);
-    block(grp, cx - 4, -4.6, cz - 2, fw * 0.55, 1.0, fd * 0.4, HULL_DARK, 0.5);
-    put(grp, U.box, HULL_DARK, cx, 0.22, z1 + 0.5, fw + 1.6, 0.5, 0.6); put(grp, U.box, HULL_DARK, x1 + 0.5, 0.22, cz, 0.6, 0.5, fd + 1.6);
-    put(grp, U.box, led('#36d6ff', 2.2), cx, 0.48, z1 + 0.82, fw + 1.6, 0.04, 0.04, 0, false); put(grp, U.box, led('#36d6ff', 2.2), x1 + 0.82, 0.48, cz, 0.04, 0.04, fd + 1.6, 0, false);
+    block(grp, cx, -1.35, cz, fw + 1.6, 2.4, fd + 1.6, SH, 0.3);
+    block(grp, cx - 2, -3.3, cz - 1, fw * 0.82, 1.6, fd * 0.7, SH, 0.4);
+    block(grp, cx - 4, -4.6, cz - 2, fw * 0.55, 1.0, fd * 0.4, SHD, 0.5);
+    put(grp, U.box, SHD, cx, 0.22, z1 + 0.5, fw + 1.6, 0.5, 0.6); put(grp, U.box, SHD, x1 + 0.5, 0.22, cz, 0.6, 0.5, fd + 1.6);
+    put(grp, U.box, led(ACC, 2.2), cx, 0.48, z1 + 0.82, fw + 1.6, 0.04, 0.04, 0, false); put(grp, U.box, led(ACC, 2.2), x1 + 0.82, 0.48, cz, 0.04, 0.04, fd + 1.6, 0, false);
     // superstructure behind the back wall: stepped decks, a command tower, a dish, antennas, radiator wings
     block(grp, cx, 1.1, z0 - 3.6, fw + 1.6, 5.0, 6.6);
     let x = x0 + 1;
     while (x < x1 - 2) { const w = 4 + rnd() * 7, hh = 1 + rnd() * 2.2, d = 2.4 + rnd() * 2.6; block(grp, Math.min(x + w / 2, x1 - w / 2), 3.6 + hh / 2, z0 - 1.8 - d / 2 - rnd() * 1.5, w, hh, d); x += w + 0.6 + rnd() * 2; }
     const tx = cx + fw * 0.12, tz = z0 - 4.5;
-    block(grp, tx, 7.2, tz, 4.2, 4.2, 3.6); block(grp, tx, 9.9, tz, 2.6, 1.4, 2.4, HULL_DARK);
-    put(grp, U.sph, HULL, tx, 10.6, tz, 2.4, 1.4, 2.4);
+    block(grp, tx, 7.2, tz, 4.2, 4.2, 3.6); block(grp, tx, 9.9, tz, 2.6, 1.4, 2.4, SHD);
+    put(grp, U.sph, SH, tx, 10.6, tz, 2.4, 1.4, 2.4);
     put(grp, U.box, led('#9fe3ff', 2.5), tx, 8.4, tz + 1.82, 3.6, 0.35, 0.04, 0, false); // tower bridge windows
-    [[-0.8, 2.6], [0.6, 3.6], [1.1, 1.8]].forEach(([dx, hgt]) => { put(grp, U.cyl, HULL_DARK, tx + dx, 11.2 + hgt / 2, tz, 0.08, hgt, 0.08); navLight(grp, tx + dx, 11.2 + hgt, tz, '#ffffff'); });
-    if (!place(grp, 'dishL', 3.2, tx - fw * 0.3, 3.6, z0 - 3.4, 0.6)) { const dish = put(grp, U.sph, HULL_DARK, tx - fw * 0.3, 5.6, z0 - 3.4, 3.2, 1.0, 3.2); dish.rotation.x = -0.5; }
+    [[-0.8, 2.6], [0.6, 3.6], [1.1, 1.8]].forEach(([dx, hgt]) => { put(grp, U.cyl, SHD, tx + dx, 11.2 + hgt / 2, tz, 0.08, hgt, 0.08); navLight(grp, tx + dx, 11.2 + hgt, tz, '#ffffff'); });
+    if (!place(grp, 'dishL', 3.2, tx - fw * 0.3, 3.6, z0 - 3.4, 0.6)) { const dish = put(grp, U.sph, SHD, tx - fw * 0.3, 5.6, z0 - 3.4, 3.2, 1.0, 3.2); dish.rotation.x = -0.5; }
     place(grp, 'dish', 3, cx - fw * 0.42, 3.6, z0 - 1.6, -0.4); place(grp, 'wireless', 3.5, cx + fw * 0.38, 3.6, z0 - 2.2); place(grp, 'wireless', 3.5, cx - fw * 0.05, 3.6, z0 - 5.5, 1);
     const radMat = once('radiator', () => new THREE.MeshStandardMaterial({ map: tex(256, 128, (g, w, h) => { g.fillStyle = '#16233f'; g.fillRect(0, 0, w, h); g.strokeStyle = '#3a5ea8'; g.lineWidth = 2; for (let i = 0; i < w; i += 16) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, h); g.stroke(); } for (let j = 0; j < h; j += 16) { g.beginPath(); g.moveTo(0, j); g.lineTo(w, j); g.stroke(); } }), roughness: 0.3, metalness: 0.8 }));
-    [-1, 1].forEach(sd => { const r = put(grp, U.box, radMat, cx + sd * fw * 0.28, 4.2, z0 - 10.5, fw * 0.3, 0.12, 6.5); r.rotation.x = 0.12; put(grp, U.box, HULL_DARK, cx + sd * fw * 0.28, 4.0, z0 - 7.2, 0.5, 0.5, 1.6); });
-    // spine to the left with two spherical modules, then the engine block with glowing thrusters
-    const sy = 0.2, sz = cz - 2.5, len = 30;
-    const spine = put(grp, U.box, HULL, x0 - 1.5 - len / 2, sy, sz, len, 2.8, 3.2); spine.geometry = hullGeo(len, 2.8, 3.2); spine.scale.set(1, 1, 1);
-    [x0 - 10, x0 - 18.5].forEach(px => {
-      const sph = new THREE.Mesh(new THREE.SphereGeometry(4, 40, 28), HULL); sph.position.set(px, sy, sz); sph.castShadow = sph.receiveShadow = true;
-      sph.material = HULL; grp.add(sph);
-      const band = put(grp, U.torus, HULL_DARK, px, sy, sz, 8.2, 8.2, 8.2, 0, true); band.rotation.y = Math.PI / 2;
-      for (let i = 0; i < 6; i++) put(grp, U.box, led('#ffd27a', 2.2), px - 1.6 + i * 0.6, sy + 2.6 - (i % 2) * 0.3, sz + 3.05, 0.25, 0.14, 0.05, 0, false);
-    });
-    for (let i = 0; i < 8; i++) put(grp, U.box, HULL_DARK, x0 - 4 - i * 3.4, sy + 1.6, sz, 0.3, 0.4, 3.6); // spine ribs
-    const ex = x0 - 1.5 - len - 4.5;
-    block(grp, ex, sy + 0.6, sz, 9, 8, 11);
-    block(grp, ex + 1, sy + 5.6, sz - 1, 5, 2, 7, HULL_DARK);
-    [[-2.4, -2.4], [-2.4, 2.4], [2.0, -2.4], [2.0, 2.4]].forEach(([dy, dz]) => {
-      const n = put(grp, U.cyl, HULL_DARK, ex - 5.4, sy + 0.6 + dy, sz + dz, 2.2, 2.0, 2.2); n.rotation.z = Math.PI / 2;
-      const c = put(grp, U.circ, led('#5ad8ff', 5), ex - 6.42, sy + 0.6 + dy, sz + dz, 1.9, 1.9, 1, 0, false); c.rotation.y = -Math.PI / 2;
-      const s = new THREE.Sprite(glowSprite('#4cc8ff')); s.position.set(ex - 7.4, sy + 0.6 + dy, sz + dz); s.scale.setScalar(5.5); grp.add(s);
-    });
-    navLight(grp, ex - 1, sy + 6.8, sz + 5.6, '#ff3b3b');
+    if (KIND === 0) [-1, 1].forEach(sd => { const r = put(grp, U.box, radMat, cx + sd * fw * 0.28, 4.2, z0 - 10.5, fw * 0.3, 0.12, 6.5); r.rotation.x = 0.12; put(grp, U.box, SHD, cx + sd * fw * 0.28, 4.0, z0 - 7.2, 0.5, 0.5, 1.6); });
+    if (KIND !== 0) [-1, 1].forEach(sd => { const f = put(grp, U.box, SHD, cx + sd * fw * 0.3, 5.2, z0 - 6.5, 0.4, 3.4, 5.5); f.rotation.x = -0.35; put(grp, U.box, led(ACC, 2.4), cx + sd * fw * 0.3, 6.85, z0 - 7.1, 0.42, 0.06, 4.2, 0, false).rotation.x = -0.35; });
+    nameplate(grp, NAME, cx - fw * 0.12, -1.2, z1 + 1.15, Math.min(fw * 0.75, 19), 3.0);
+    PLATE = { x: cx - fw * 0.12, y: -1.2, z: z1 + 1.15, w: Math.min(fw * 0.75, 19, 3.0 * 1024 / 160) };  // the page puts the name's click area here
+    // aft section: one of three designs, so every hivey session flies its own kind of ship
+    const sy = 0.2, sz = cz - 2.5;
+    if (KIND === 1) carrierAft(grp, x0, z0, z1, cz, sy, sz);
+    else if (KIND === 2) explorerAft(grp, x0, cz, sy, sz);
+    else {
+      const len = 30;
+      const spine = put(grp, U.box, SH, x0 - 1.5 - len / 2, sy, sz, len, 2.8, 3.2); spine.geometry = hullGeo(len, 2.8, 3.2); spine.scale.set(1, 1, 1);
+      [x0 - 10, x0 - 18.5].forEach(px => {
+        const sph = new THREE.Mesh(new THREE.SphereGeometry(4, 40, 28), SH); sph.position.set(px, sy, sz); sph.castShadow = sph.receiveShadow = true;
+        sph.material = SH; grp.add(sph);
+        const band = put(grp, U.torus, SHD, px, sy, sz, 8.2, 8.2, 8.2, 0, true); band.rotation.y = Math.PI / 2;
+        for (let i = 0; i < 6; i++) put(grp, U.box, led('#ffd27a', 2.2), px - 1.6 + i * 0.6, sy + 2.6 - (i % 2) * 0.3, sz + 3.05, 0.25, 0.14, 0.05, 0, false);
+      });
+      for (let i = 0; i < 8; i++) put(grp, U.box, SHD, x0 - 4 - i * 3.4, sy + 1.6, sz, 0.3, 0.4, 3.6); // spine ribs
+      const ex = x0 - 1.5 - len - 4.5;
+      block(grp, ex, sy + 0.6, sz, 9, 8, 11);
+      block(grp, ex + 1, sy + 5.6, sz - 1, 5, 2, 7, SHD);
+      [[-2.4, -2.4], [-2.4, 2.4], [2.0, -2.4], [2.0, 2.4]].forEach(([dy, dz]) => {
+        const n = put(grp, U.cyl, SHD, ex - 5.4, sy + 0.6 + dy, sz + dz, 2.2, 2.0, 2.2); n.rotation.z = Math.PI / 2;
+        const c = put(grp, U.circ, nozzle(), ex - 6.42, sy + 0.6 + dy, sz + dz, 1.9, 1.9, 1, 0, false); c.rotation.y = -Math.PI / 2;
+        flame(grp, ex - 7.4, sy + 0.6 + dy, sz + dz, 5.5);
+      });
+      navLight(grp, ex - 1, sy + 6.8, sz + 5.6, '#ff3b3b');
+    }
     // all greebles in two instanced draws
-    [HULL_DARK, HULL].forEach((mat, k) => {
+    [SHD, SH].forEach((mat, k) => {
       const list = greebles.filter((_, i) => i % 2 === k);
       const inst = new THREE.InstancedMesh(U.box, mat, list.length), m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
       list.forEach(([gx, gy, gz, w, h, d], i) => inst.setMatrixAt(i, m4.compose(new THREE.Vector3(gx, gy, gz), q, new THREE.Vector3(w, h, d))));
@@ -437,24 +536,24 @@ export function createShip({ mesh, hue, st }) {
     const BW = 10, BD = Math.min(Math.max((e.z1 - e.z0) * 0.7, 9), 12), cz = (e.z0 + e.z1) / 2 - 0.5;
     const bx0 = e.x1 + 1.6, bx1 = bx0 + BW, bz0 = cz - BD / 2, bz1 = cz + BD / 2, bxc = (bx0 + bx1) / 2;
     const gold = led('#ffc94a', 2.2);
-    block(grp, bxc, -1.35, cz, BW + 1.2, 2.4, BD + 1.2, HULL, 0.3);
-    block(grp, bxc + 1, -3.1, cz, BW * 0.8, 1.4, BD * 0.6, HULL_DARK, 0.4);
+    block(grp, bxc, -1.35, cz, BW + 1.2, 2.4, BD + 1.2, SH, 0.3);
+    block(grp, bxc + 1, -3.1, cz, BW * 0.8, 1.4, BD * 0.6, SHD, 0.4);
     const fl = put(grp, U.plane, M.deck, bxc, 0.004, cz, BW, BD, 1, 0, false); fl.rotation.x = -Math.PI / 2; fl.receiveShadow = true;
     const inlay = put(grp, U.ring, gold, bxc, 0.012, cz + 0.4, 3.4, 3.4, 1, 0, false); inlay.rotation.x = -Math.PI / 2;
     // connecting gangway from the main deck
     const gw = put(grp, U.plane, M.deck, (e.x1 + bx0) / 2 + 0.3, 0.003, cz, bx0 - e.x1 + 0.6, 2.4, 1, 0, false); gw.rotation.x = -Math.PI / 2;
-    put(grp, U.box, HULL, (e.x1 + bx0) / 2 + 0.3, -0.7, cz, bx0 - e.x1 + 0.6, 1.4, 2.6);
+    put(grp, U.box, SH, (e.x1 + bx0) / 2 + 0.3, -0.7, cz, bx0 - e.x1 + 0.6, 1.4, 2.6);
     // back wall with the main viewscreen, left wall with a doorway, low rims in front and at the nose
     put(grp, U.box, M.hull, bxc, 1.7, bz0 - 0.15, BW + 0.3, 3.4, 0.3);
     viewport(grp, bxc, bz0 + 0.02, 0, 6.4, 2.4);
     put(grp, U.box, gold, bxc, 3.25, bz0 + 0.03, BW, 0.06, 0.04, 0, false);
     [[bz0, cz - 1.3], [cz + 1.3, bz1]].forEach(([a, b]) => put(grp, U.box, M.hull, bx0 - 0.15, 1.7, (a + b) / 2, 0.3, 3.4, b - a));
-    put(grp, U.box, HULL_DARK, bxc, 0.25, bz1 + 0.3, BW + 0.6, 0.5, 0.6); put(grp, U.box, gold, bxc, 0.52, bz1 + 0.58, BW + 0.6, 0.04, 0.04, 0, false);
-    put(grp, U.box, HULL_DARK, bx1 + 0.3, 0.25, cz, 0.6, 0.5, BD + 0.6); put(grp, U.box, gold, bx1 + 0.58, 0.52, cz, 0.04, 0.04, BD + 0.6, 0, false);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), HULL); dome.position.set(bx1 - 2, 3.4, bz0 - 1.2); dome.castShadow = true; grp.add(dome);
+    put(grp, U.box, SHD, bxc, 0.25, bz1 + 0.3, BW + 0.6, 0.5, 0.6); put(grp, U.box, gold, bxc, 0.52, bz1 + 0.58, BW + 0.6, 0.04, 0.04, 0, false);
+    put(grp, U.box, SHD, bx1 + 0.3, 0.25, cz, 0.6, 0.5, BD + 0.6); put(grp, U.box, gold, bx1 + 0.58, 0.52, cz, 0.04, 0.04, BD + 0.6, 0, false);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2), SH); dome.position.set(bx1 - 2, 3.4, bz0 - 1.2); dome.castShadow = true; grp.add(dome);
     block(grp, bx1 - 2, 1.7, bz0 - 1.3, 4.6, 3.4, 2.2);
     // the nose beyond the bridge
-    const nose = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 3.2, 5.2, 6), HULL); nose.rotation.z = -Math.PI / 2; nose.position.set(bx1 + 3.2, -0.4, cz); nose.castShadow = true; grp.add(nose);
+    const nose = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 3.2, 5.2, 6), SH); nose.rotation.z = -Math.PI / 2; nose.position.set(bx1 + 3.2, -0.4, cz); nose.castShadow = true; grp.add(nose);
     navLight(grp, bx1 + 5.9, -0.4, cz, '#3bff7a');
     // side consoles and the captain's lounge chairs
     place(grp, 'consoleWide', 2.4, bx0 + 0.9, 0, bz0 + 1.0, 0.6); place(grp, 'consoleWide', 2.4, bx1 - 0.9, 0, bz0 + 1.0, -0.6);
@@ -469,7 +568,9 @@ export function createShip({ mesh, hue, st }) {
 
   // ---------------------------------------------------------------- the deck
   let holoPlanet = null;
-  function decorate(grp, W, D) {
+  const planets = [];  // one holotable planet per ship
+  function decorate(grp, W, D, style = {}) {
+    useStyle(style.v || 0, style.name, style.running);
     seedN = 11;
     const m = 2.8, L = 10, H = 3.4;
     const x0 = -W / 2 - m, x1 = W / 2 + m + L, z0 = -D / 2 - m, z1 = D / 2 + 1.4;
@@ -505,7 +606,7 @@ export function createShip({ mesh, hue, st }) {
     const rim = put(grp, U.ring, led('#36d6ff', 1.6), lx, 0.015, lz, 5.7, 5.7, 1, 0, false); rim.rotation.x = -Math.PI / 2;
     sofa(grp, lx, lz - 1.7, 3.4, 0, 200); sofa(grp, lx + 2.3, lz + 0.1, 2.4, -Math.PI / 2, 200); sofa(grp, lx - 2.3, lz + 0.1, 2.4, Math.PI / 2, 200);
     put(grp, U.cyl, M.rib, lx, 0.25, lz, 1.2, 0.5, 1.2); put(grp, U.cyl, led('#36d6ff', 2.8), lx, 0.51, lz, 1.05, 0.03, 1.05, 0, false);
-    holoPlanet = new THREE.Group(); holoPlanet.position.set(lx, 1.25, lz); grp.add(holoPlanet);
+    holoPlanet = new THREE.Group(); holoPlanet.position.set(lx, 1.25, lz); grp.add(holoPlanet); planets.push(holoPlanet);
     holoPlanet.add(mesh(U.wire, flat(once('holoWire', () => new THREE.MeshBasicMaterial({ color: '#5ad8ff', wireframe: true, transparent: true, opacity: 0.55, toneMapped: false }))), 0, 0, 0, 0.9, 0.9, 0.9, false));
     holoPlanet.add(mesh(U.sph, flat(once('holoCore', () => new THREE.MeshBasicMaterial({ color: '#1e90ff', transparent: true, opacity: 0.25, toneMapped: false }))), 0, 0, 0, 0.8, 0.8, 0.8, false));
     const hr = mesh(U.torus, led('#ffcf3a', 2), 0, 0, 0, 1.4, 1.4, 1.4, false); hr.rotation.x = 1.2; holoPlanet.add(hr);
@@ -540,39 +641,159 @@ export function createShip({ mesh, hue, st }) {
     // bridge console in the corner by the lounge
     put(grp, U.box, M.slab, x1 - L - 0.5, 0.5, z0 + 0.7, 0.9, 1.0, 0.7); put(grp, U.plane, screenMat(0), x1 - L - 0.5, 1.02, z0 + 0.75, 0.75, 0.5, 1, 0, false).rotation.x = -1.0;
     const lamp = new THREE.PointLight('#5ad8ff', 8, 7, 1.5); lamp.position.set(lx, 1.6, lz); grp.add(lamp);
-    return { minX: x0 - 6, maxX: x1 + 5, minZ: z0 - 4, maxZ: z1 + 1.2, x0, x1, z0, z1 };
+    return { minX: x0 - 6, maxX: x1 + 5, minZ: z0 - 4, maxZ: z1 + 1.2, x0, x1, z0, z1, plate: PLATE };
   }
 
-  function galaxyTex() {
-    return tex(2048, 1152, (g, w, h) => {
-      const bg = g.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.7); bg.addColorStop(0, '#0a0f2a'); bg.addColorStop(1, '#010208');
+  // the space outside the windows: one of six scenes, rolled again on every page load
+  const SCENES = [
+    { name: 'violet', deep: ['#0a0f2a', '#010208'], clouds: ['rgba(130,60,220,.30)', 'rgba(20,170,210,.22)', 'rgba(230,70,140,.18)', 'rgba(60,90,255,.18)'], arms: ['170,190,255', '255,170,220'], body: 'giant', ring: '230,200,160', planet: ['#f2c894', '#b36a3a', '#2a120a'] },
+    { name: 'emerald', deep: ['#04201c', '#010605'], clouds: ['rgba(20,200,140,.26)', 'rgba(40,140,220,.20)', 'rgba(160,240,120,.14)', 'rgba(10,90,120,.24)'], arms: ['150,255,210', '170,210,255'], body: 'ice', planet: ['#e8fbff', '#6fc2e8', '#0b2a44'] },
+    { name: 'crimson', deep: ['#24070c', '#060102'], clouds: ['rgba(230,60,50,.28)', 'rgba(255,140,40,.20)', 'rgba(170,30,110,.22)', 'rgba(90,20,60,.30)'], arms: ['255,190,150', '255,120,140'], body: 'sun', sun: ['255,120,60', '255,220,170'], moon: true },
+    { name: 'deep blue', deep: ['#061433', '#00030b'], clouds: ['rgba(40,100,255,.28)', 'rgba(20,200,255,.16)', 'rgba(120,80,255,.16)', 'rgba(10,40,120,.30)'], arms: ['180,210,255', '200,180,255'], body: 'earth', planet: ['#7fd0ff', '#1f5fa8', '#04122a'], moon: true },
+    { name: 'golden', deep: ['#201604', '#060401'], clouds: ['rgba(240,170,40,.24)', 'rgba(255,220,120,.14)', 'rgba(200,90,30,.20)', 'rgba(120,70,20,.26)'], arms: ['255,230,170', '255,190,120'], body: 'binary', sun: ['255,200,90', '255,250,220'] },
+    { name: 'singularity', deep: ['#07050a', '#000000'], clouds: ['rgba(90,60,140,.10)', 'rgba(255,150,80,.06)', 'rgba(40,50,120,.10)', 'rgba(120,60,90,.06)'], arms: ['200,190,255', '255,180,140'], body: 'hole' },
+  ];
+  // which scene: ?space=1..6 in the address, else the page's 🌌 setting (a number, or 'random' for a new one each load)
+  const sceneNo = want => { const n = parseInt(want, 10); return n >= 1 && n <= SCENES.length ? n : 1 + Math.floor(Math.random() * SCENES.length); };
+  const fromUrl = parseInt(new URLSearchParams(globalThis.location?.search || '').get('space'), 10);
+  function galaxyTex(n) {
+    const R = Math.random, sc = SCENES[n - 1];
+    const aspect = Math.min(2.6, Math.max(1.2, (globalThis.innerWidth || 16) / Math.max(1, (globalThis.innerHeight || 9) - 100)));
+    return tex(2048, Math.round(2048 / aspect), (g, w, h) => {
+      const glow = (x, y, r, inner, outer = 'rgba(0,0,0,0)') => { const n = g.createRadialGradient(x, y, 0, x, y, r); n.addColorStop(0, inner); n.addColorStop(1, outer); g.fillStyle = n; g.fillRect(0, 0, w, h); };
+      const bg = g.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.7); bg.addColorStop(0, sc.deep[0]); bg.addColorStop(1, sc.deep[1]);
       g.fillStyle = bg; g.fillRect(0, 0, w, h);
-      [['rgba(130,60,220,.30)', .18, .25, .35], ['rgba(20,170,210,.22)', .85, .7, .35], ['rgba(230,70,140,.18)', .6, .15, .25], ['rgba(60,90,255,.18)', .3, .85, .3]].forEach(([c, x, y, r]) => {
-        const n = g.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * w); n.addColorStop(0, c); n.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = n; g.fillRect(0, 0, w, h);
-      });
-      for (let i = 0; i < 9000; i++) { const b = rnd(); g.fillStyle = `rgba(${190 + b * 65},${200 + b * 55},255,${0.25 + b * 0.75})`; const sz = b > 0.985 ? 3 : b > 0.9 ? 1.8 : 1; g.fillRect(rnd() * w, rnd() * h, sz, sz); }
-      // spiral galaxy, upper right
-      const gx = w * 0.78, gy = h * 0.24;
-      g.save(); g.translate(gx, gy); g.scale(1, 0.45); g.rotate(-0.4);
-      const core = g.createRadialGradient(0, 0, 0, 0, 0, 260); core.addColorStop(0, 'rgba(255,240,210,.95)'); core.addColorStop(0.15, 'rgba(255,200,150,.55)'); core.addColorStop(1, 'rgba(120,80,200,0)');
-      g.fillStyle = core; g.beginPath(); g.arc(0, 0, 260, 0, 7); g.fill();
+      sc.clouds.forEach(c => { for (let k = 0; k < 2; k++) glow(R() * w, R() * h, (0.18 + R() * 0.22) * w, c); });
+      for (let i = 0; i < 7000 + R() * 5000; i++) { const b = R(); g.fillStyle = `rgba(${190 + b * 65},${200 + b * 55},255,${0.25 + b * 0.75})`; const sz = b > 0.985 ? 3 : b > 0.9 ? 1.8 : 1; g.fillRect(R() * w, R() * h, sz, sz); }
+      // the galaxy (and the body opposite it) lands in a random corner
+      const right = R() < 0.5, top = R() < 0.5;
+      const gx = w * (right ? 0.72 + R() * 0.12 : 0.16 + R() * 0.12), gy = h * (top ? 0.18 + R() * 0.1 : 0.7 + R() * 0.1);
+      g.save(); g.translate(gx, gy); g.scale(1, 0.35 + R() * 0.3); g.rotate(-0.8 + R() * 1.6);
+      const size = 0.7 + R() * 0.6;
+      const core = g.createRadialGradient(0, 0, 0, 0, 0, 260 * size); core.addColorStop(0, 'rgba(255,240,210,.95)'); core.addColorStop(0.15, `rgba(${sc.arms[1]},.5)`); core.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = core; g.beginPath(); g.arc(0, 0, 260 * size, 0, 7); g.fill();
       for (let arm = 0; arm < 2; arm++) for (let i = 0; i < 1600; i++) {
-        const t = i / 1600 * 3.2 * Math.PI, rr = 18 + t * 26, a = t + arm * Math.PI + (rnd() - 0.5) * 0.5;
-        g.fillStyle = rnd() < 0.7 ? `rgba(170,190,255,${0.15 + rnd() * 0.5})` : `rgba(255,170,220,${0.2 + rnd() * 0.4})`;
-        g.fillRect(Math.cos(a) * rr + (rnd() - 0.5) * 14, Math.sin(a) * rr + (rnd() - 0.5) * 14, 1.6, 1.6);
+        const t = i / 1600 * 3.2 * Math.PI, rr = (18 + t * 26) * size, a = t + arm * Math.PI + (R() - 0.5) * 0.5;
+        g.fillStyle = R() < 0.7 ? `rgba(${sc.arms[0]},${0.15 + R() * 0.5})` : `rgba(${sc.arms[1]},${0.2 + R() * 0.4})`;
+        g.fillRect(Math.cos(a) * rr + (R() - 0.5) * 14, Math.sin(a) * rr + (R() - 0.5) * 14, 1.6, 1.6);
       }
       g.restore();
-      // ringed gas giant, lower left
-      const px = w * 0.13, py = h * 0.8, pr = 120;
-      g.save(); g.translate(px, py); g.rotate(-0.35);
-      g.strokeStyle = 'rgba(230,200,160,.35)'; g.lineWidth = 10; g.beginPath(); g.ellipse(0, 0, pr * 2, pr * 0.45, 0, Math.PI, Math.PI * 2); g.stroke();
-      const pg = g.createRadialGradient(-pr * 0.4, -pr * 0.4, 10, 0, 0, pr); pg.addColorStop(0, '#f2c894'); pg.addColorStop(0.6, '#b36a3a'); pg.addColorStop(1, '#2a120a');
-      g.fillStyle = pg; g.beginPath(); g.arc(0, 0, pr, 0, 7); g.fill();
-      g.fillStyle = 'rgba(90,40,20,.25)'; for (let i = -3; i < 4; i++) g.fillRect(-pr, i * 26, pr * 2, 9);
-      g.strokeStyle = 'rgba(240,215,170,.55)'; g.lineWidth = 10; g.beginPath(); g.ellipse(0, 0, pr * 2, pr * 0.45, 0, 0, Math.PI); g.stroke();
-      g.restore();
+      const px = w * (right ? 0.1 + R() * 0.12 : 0.78 + R() * 0.12), py = h * (top ? 0.72 + R() * 0.12 : 0.2 + R() * 0.12), pr = 90 + R() * 70;
+      const ball = (x, y, r, c) => { const pg = g.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.08, x, y, r); pg.addColorStop(0, c[0]); pg.addColorStop(0.6, c[1]); pg.addColorStop(1, c[2]); g.fillStyle = pg; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); };
+      if (sc.body === 'giant') {  // ringed gas giant
+        g.save(); g.translate(px, py); g.rotate(-0.6 + R() * 1.2);
+        g.strokeStyle = `rgba(${sc.ring},.35)`; g.lineWidth = 10; g.beginPath(); g.ellipse(0, 0, pr * 2, pr * 0.45, 0, Math.PI, Math.PI * 2); g.stroke();
+        ball(0, 0, pr, sc.planet);
+        g.save(); g.beginPath(); g.arc(0, 0, pr, 0, 7); g.clip();
+        g.fillStyle = 'rgba(90,40,20,.25)'; for (let i = -3; i < 4; i++) g.fillRect(-pr, i * pr * 0.22, pr * 2, pr * 0.075);
+        g.restore();
+        g.strokeStyle = `rgba(${sc.ring},.55)`; g.lineWidth = 10; g.beginPath(); g.ellipse(0, 0, pr * 2, pr * 0.45, 0, 0, Math.PI); g.stroke();
+        g.restore();
+      } else if (sc.body === 'ice' || sc.body === 'earth') {  // a lit planet: oceans, land, clouds, night side, atmosphere
+        const earth = sc.body === 'earth', lx = -0.55, ly = -0.45;  // light from the upper left
+        glow(px, py, pr * 1.5, earth ? 'rgba(80,160,255,.28)' : 'rgba(150,230,255,.28)');
+        ball(px, py, pr, sc.planet);
+        g.save(); g.beginPath(); g.arc(px, py, pr, 0, 7); g.clip();
+        const blob = (cx, cy, r, pts = 18) => {  // an irregular closed shape (coastline, cloud bank)
+          const ph = [R() * 6, R() * 6, R() * 6];
+          g.beginPath();
+          for (let i = 0; i <= pts; i++) {
+            const a = i / pts * Math.PI * 2;
+            const k = 1 + 0.28 * Math.sin(a * 3 + ph[0]) + 0.16 * Math.sin(a * 5 + ph[1]) + 0.1 * Math.sin(a * 9 + ph[2]);
+            const x = cx + Math.cos(a) * r * k, y = cy + Math.sin(a) * r * k * 0.8;
+            i ? g.lineTo(x, y) : g.moveTo(x, y);
+          }
+          g.closePath();
+        };
+        if (earth) {  // continents: green lowlands with tan highlands, plus islands
+          for (let c = 0; c < 4; c++) {
+            const cx = px + (R() - 0.5) * pr * 1.4, cy = py + (R() - 0.5) * pr * 1.3, r = pr * (0.18 + R() * 0.2);
+            const land = g.createRadialGradient(cx, cy, r * 0.1, cx, cy, r * 1.3);
+            land.addColorStop(0, '#b8a36a'); land.addColorStop(0.45, '#5f8f43'); land.addColorStop(1, '#2f6a35');
+            g.fillStyle = land; blob(cx, cy, r); g.fill();
+            for (let i = 0; i < 4; i++) { g.fillStyle = '#3f7a3a'; blob(cx + (R() - 0.5) * r * 2.6, cy + (R() - 0.5) * r * 2.2, r * (0.08 + R() * 0.12), 12); g.fill(); }
+          }
+          g.filter = 'blur(1.5px)'; g.fillStyle = 'rgba(240,248,255,.8)'; blob(px + pr * 0.1, py - pr * 1.0, pr * 0.26, 20); g.fill(); blob(px - pr * 0.05, py + pr * 1.02, pr * 0.2, 20); g.fill(); g.filter = 'none';  // ice caps
+        }
+        // clouds: soft streaks that follow the planet's curve
+        g.filter = 'blur(3px)';
+        for (let i = 0; i < 9; i++) {
+          const cy = py + (R() - 0.5) * pr * 1.7, half = Math.sqrt(Math.max(0, pr * pr - (cy - py) ** 2));
+          g.strokeStyle = `rgba(255,255,255,${0.22 + R() * 0.3})`; g.lineWidth = pr * (0.03 + R() * 0.06);
+          g.beginPath(); const x0 = px - half * (0.2 + R() * 0.7), x1 = x0 + half * (0.5 + R() * 0.9);
+          g.moveTo(x0, cy); g.quadraticCurveTo((x0 + x1) / 2, cy - pr * (0.05 + R() * 0.1), x1, cy + pr * (R() - 0.5) * 0.1); g.stroke();
+        }
+        for (let i = 0; i < 3; i++) { g.fillStyle = 'rgba(255,255,255,.25)'; blob(px + (R() - 0.5) * pr * 1.2, py + (R() - 0.5) * pr * 1.2, pr * (0.12 + R() * 0.1), 14); g.fill(); }
+        g.filter = 'none';
+        // night side
+        const night = g.createRadialGradient(px + lx * pr * 0.9, py + ly * pr * 0.9, pr * 0.2, px + lx * pr * 0.5, py + ly * pr * 0.5, pr * 1.9);
+        night.addColorStop(0, 'rgba(0,0,10,0)'); night.addColorStop(0.42, 'rgba(0,0,12,.1)'); night.addColorStop(0.62, 'rgba(0,2,14,.7)'); night.addColorStop(0.8, 'rgba(0,2,14,.93)'); night.addColorStop(1, 'rgba(0,2,14,.97)');
+        g.fillStyle = night; g.fillRect(px - pr, py - pr, pr * 2, pr * 2);
+        g.restore();
+        // thin atmosphere on the lit limb
+        const rim = g.createRadialGradient(px, py, pr * 0.94, px, py, pr * 1.07);
+        rim.addColorStop(0, 'rgba(120,190,255,0)'); rim.addColorStop(0.45, earth ? 'rgba(120,190,255,.55)' : 'rgba(190,240,255,.5)'); rim.addColorStop(1, 'rgba(120,190,255,0)');
+        g.save(); g.fillStyle = rim; g.beginPath(); g.arc(px, py, pr * 1.07, 0, 7); g.fill(); g.restore();
+      } else if (sc.body === 'sun' || sc.body === 'binary') {  // one star, or two
+        const one = (x, y, r) => { glow(x, y, r * 4, `rgba(${sc.sun[0]},.45)`); glow(x, y, r * 1.6, `rgba(${sc.sun[1]},.9)`); ball(x, y, r, ['#ffffff', `rgb(${sc.sun[1]})`, `rgb(${sc.sun[0]})`]); };
+        one(px, py, pr * 0.6);
+        if (sc.body === 'binary') one(px + pr * 1.6, py - pr * 0.7, pr * 0.35);
+      } else if (sc.body === 'hole') {  // a singularity: lensed accretion disk around a black shadow
+        const r = pr * 0.75, warm = (a) => `rgba(255,${206 + Math.round(R() * 30)},${150 + Math.round(R() * 50)},${a})`;
+        g.save(); g.translate(px, py); g.rotate((R() - 0.5) * 0.25);
+        const halo = (rad, c) => { const n = g.createRadialGradient(0, 0, 0, 0, 0, rad); n.addColorStop(0, c); n.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = n; g.fillRect(-rad, -rad, rad * 2, rad * 2); };
+        halo(r * 4.5, 'rgba(255,190,130,.08)');
+        // the flare where the bent light meets the disk
+        g.save(); g.scale(2.6, 1); halo(r * 1.5, 'rgba(255,214,170,.22)'); g.restore();
+        // the far side of the disk, bent over the top (bright, wide) and under the bottom (narrower)
+        const arcBand = (r0, r1, a0, a1, peak) => {
+          const n = g.createRadialGradient(0, 0, r0, 0, 0, r1);
+          n.addColorStop(0, `rgba(255,250,240,${peak})`); n.addColorStop(0.12, `rgba(255,232,200,${peak * 0.85})`);
+          n.addColorStop(0.45, `rgba(255,205,150,${peak * 0.4})`); n.addColorStop(1, 'rgba(255,190,130,0)');
+          g.fillStyle = n; g.beginPath(); g.arc(0, 0, r1, a0, a1); g.arc(0, 0, r0, a1, a0, true); g.closePath(); g.fill();
+        };
+        arcBand(r * 0.92, r * 1.75, Math.PI, Math.PI * 2, 0.95);
+        arcBand(r * 0.92, r * 1.4, 0, Math.PI, 0.7);
+        for (let i = 0; i < 700; i++) {  // fine streaks give it the swirling texture
+          const top = R() < 0.62, a0 = top ? Math.PI + R() * Math.PI : R() * Math.PI;
+          const rr = r * (0.95 + R() ** 1.8 * (top ? 0.8 : 0.45)), len = 0.08 + R() * 0.45;
+          g.strokeStyle = warm((top ? 0.32 : 0.22) * R()); g.lineWidth = 0.5 + R() * 1.2;
+          g.beginPath(); g.arc(0, 0, rr, a0, Math.min(a0 + len, top ? Math.PI * 2 : Math.PI)); g.stroke();
+        }
+        // the shadow and its photon ring
+        g.fillStyle = '#000'; g.beginPath(); g.arc(0, 0, r * 0.86, 0, 7); g.fill();
+        g.shadowColor = 'rgba(255,240,220,.9)'; g.shadowBlur = 10;
+        g.strokeStyle = 'rgba(255,250,240,.95)'; g.lineWidth = 2.2; g.beginPath(); g.arc(0, 0, r * 0.9, 0, 7); g.stroke();
+        g.shadowBlur = 0;
+        // the near side of the disk, edge-on, crossing in front of the shadow
+        for (let j = 0; j < 46; j++) {
+          const a = 0.32 * (1 - j / 46) ** 1.3;
+          g.strokeStyle = warm(a); g.lineWidth = 1.2;
+          g.beginPath(); g.ellipse(0, r * 0.02, r * (0.95 + j * 0.13), r * (0.035 + j * 0.0032), 0, 0, Math.PI * 2); g.stroke();
+        }
+        const band = g.createLinearGradient(-r * 7, 0, r * 7, 0);
+        band.addColorStop(0, 'rgba(255,220,180,0)'); band.addColorStop(0.32, 'rgba(255,220,180,.35)'); band.addColorStop(0.5, 'rgba(255,244,228,.95)');
+        band.addColorStop(0.68, 'rgba(255,220,180,.35)'); band.addColorStop(1, 'rgba(255,220,180,0)');
+        g.fillStyle = band; g.fillRect(-r * 7, -r * 0.035, r * 14, r * 0.07);
+        for (let i = 0; i < 2600; i++) {  // dust in the disk
+          const x = (R() - 0.5) * r * 13 * Math.sqrt(R()), y = (R() + R() + R() - 1.5) * r * 0.09 * (1 + Math.abs(x) / (r * 6));
+          g.fillStyle = warm(0.12 + R() * 0.45 * (1 - Math.abs(x) / (r * 6.5)));
+          g.fillRect(x, y, 1 + R() * 2.5, 1);
+        }
+        g.restore();
+      }
+      if (sc.moon) ball(px + pr * (1.5 + R()), py - pr * (0.8 + R() * 0.5), pr * 0.22, ['#d9d4cc', '#7d776e', '#1c1a17']);
     });
   }
-  const background = galaxyTex();
-  return { load, makeRobot, makeStation, decorate, bridge, background, pod, planet: () => holoPlanet, accent, statusLed, NO_LINE };
+
+  let spaceNo = sceneNo(fromUrl >= 1 ? fromUrl : opts.space);
+  const background = galaxyTex(spaceNo);
+  // a new background texture: the scene numbered n (1..6), or a random other one for 'random'
+  function space(want) {
+    let n = sceneNo(want);
+    if (!(parseInt(want, 10) >= 1)) while (n === spaceNo && SCENES.length > 1) n = sceneNo();
+    spaceNo = n;
+    return galaxyTex(n);
+  }
+  return { load, makeRobot, makeStation, decorate, bridge, background, pod, space, scenes: SCENES.map(s => s.name), spaceNo: () => spaceNo, planets: () => planets.filter(p => p.parent && p.parent.parent), thrusting: () => engines.length > 0, thrust, accent, statusLed, NO_LINE };
 }

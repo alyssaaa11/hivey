@@ -7,7 +7,11 @@ trigger them:
 
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
   POST /hv-office-refresh   `office.py run` in the background (the agent office, /office/)
-  POST /hv-office-action    {"pane": "wN:p1", "action": "focus" | "compact" | "clear"} for a desk on the
+  POST /hv-office-action    {"action": "session", "session": "<name>"} shows a hivey session in a terminal (a
+                            new one if none shows it; `hivey session attach` starts a stopped session),
+                            {"action": "stop-session", "session": "<name>"} stops a non-default session (all
+                            its agents) and closes its terminal windows, or
+                            {"id": "wN:p1" | "<session>/wN:p1", "action": "focus" | "compact" | "clear"} for a desk on the
                             office page: focus opens the agent's terminal in hivey (and brings the
                             terminal app forward); compact/clear type /compact or /clear into an agent
                             that is not working
@@ -26,6 +30,7 @@ import http.server
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -35,7 +40,7 @@ import urllib.request
 from pathlib import Path
 
 STATE = Path.home() / ".hivey" / "agent-map"
-OFFICE_SETTINGS = STATE / "office-settings.json"  # {"every": "minute" | "5min" | "reload"}
+OFFICE_SETTINGS = STATE / "office-settings.json"  # {"every": "minute" | ..., "ships": {"<session>": {"x", "z"}}}
 EVERY_MODES = ("minute", "5min", "15min", "1h", "reload")
 FULL_EVERY = {"minute": 300, "5min": 300, "15min": 900, "1h": 3600}  # seconds between full passes per mode
 REPORTS = STATE / "reports"
@@ -45,7 +50,7 @@ PREFERRED_PORT = 42817  # unregistered and below macOS's temporary-port range, s
 IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 MARK = b"hivey-agent-map"
-VERSION = b"office-5"  # bump when the server gains actions, so `ensure` replaces an older one
+VERSION = b"office-11"  # bump when the server gains actions, so `ensure` replaces an older one
 OFFICE_EVERY = 300  # seconds between full office refreshes (every terminal re-summarized) while its page is open
 OFFICE_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 OFFICE_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -60,10 +65,31 @@ def hivey_bin() -> str | None:
     return exe if exe and os.path.isfile(exe) else shutil.which("hivey")
 
 
+def office_settings() -> dict:
+    try:
+        got = json.loads(OFFICE_SETTINGS.read_text())
+        return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def clean_ships(ships: object) -> dict:
+    """{session: {x, z}} where you dragged each ship on the office page (bad entries dropped)."""
+    out = {}
+    for name, p in (ships.items() if isinstance(ships, dict) else []):
+        try:
+            x, z = float(p["x"]), float(p["z"])
+        except (TypeError, KeyError, ValueError):
+            continue
+        if SESSION_NAME.match(str(name)) and abs(x) < 1e5 and abs(z) < 1e5:
+            out[str(name)] = {"x": round(x, 2), "z": round(z, 2)}
+    return out
+
+
 def office_every() -> str:
     """The office page's refresh setting (every minute by default)."""
     try:
-        mode = json.loads(OFFICE_SETTINGS.read_text()).get("every")
+        mode = office_settings().get("every")
     except (OSError, ValueError, AttributeError):
         mode = None
     return mode if mode in EVERY_MODES else "minute"
@@ -86,8 +112,9 @@ def request_office_refresh(port: int) -> None:
         pass
 
 
-def client_ttys() -> list[str]:
-    """ttys of running hivey clients (the TUI), newest first."""
+def client_ttys(session: str | None = None, only: bool = False) -> list[str]:
+    """ttys of running hivey clients (the TUI), newest first; those attached to `session` first
+    (only: just those)."""
     out = subprocess.run(["ps", "-axo", "pid=,tty=,command="], capture_output=True, text=True, timeout=5).stdout
     found = []
     for line in out.splitlines():
@@ -95,9 +122,14 @@ def client_ttys() -> list[str]:
         if len(f) < 3 or f[1] in ("??", "-"):
             continue
         args = f[2].split()
-        if os.path.basename(args[0]) == "hivey" and (len(args) == 1 or args[1] in ("attach", "--session", "-s")):
-            found.append((int(f[0]), "/dev/" + f[1]))
-    return [tty for _, tty in sorted(found, reverse=True)]
+        if os.path.basename(args[0]) == "hivey" and (len(args) == 1 or args[1] in ("attach", "--session", "-s")
+                                                     or args[1:3] == ["session", "attach"]):
+            named = (args[3] if args[1:3] == ["session", "attach"] and len(args) > 3 else None) \
+                or next((args[i + 1] for i in range(len(args) - 1) if args[i] in ("--session", "-s")), None) \
+                or next((a.split("=", 1)[1] for a in args if a.startswith("--session=")), None)
+            mine = (named or "default") == (session or "default")
+            found.append((mine, int(f[0]), "/dev/" + f[1]))
+    return [tty for mine, _, tty in sorted(found, reverse=True) if mine or not only]
 
 
 RAISE_TERMINAL = """
@@ -141,42 +173,130 @@ end run
 """
 
 
-def raise_terminal() -> None:
-    """Bring the terminal window (and tab) running hivey to the front, not just the terminal app."""
+OPEN_TERMINAL = """
+on run argv
+  tell application "Terminal"
+    activate
+    do script (item 1 of argv)
+  end tell
+end run
+"""
+OPEN_ITERM = """
+on run argv
+  tell application "iTerm"
+    activate
+    create window with default profile command (item 1 of argv)
+  end tell
+end run
+"""
+CLOSE_TERMINAL = """
+on run argv
+  set wanted to item 1 of argv
+  tell application "Terminal"
+    repeat with w in windows
+      repeat with t in tabs of w
+        if tty of t is wanted then
+          if (count of tabs of w) is 1 then close w
+          return "ok"
+        end if
+      end repeat
+    end repeat
+  end tell
+  return "none"
+end run
+"""
+CLOSE_ITERM = """
+on run argv
+  set wanted to item 1 of argv
+  tell application "iTerm"
+    repeat with w in windows
+      repeat with t in tabs of w
+        repeat with s in sessions of t
+          if tty of s is wanted then
+            close s
+            return "ok"
+          end if
+        end repeat
+      end repeat
+    end repeat
+  end tell
+  return "none"
+end run
+"""
+SESSION_NAME = re.compile(r"^[\w.-]{1,64}$")
+
+
+def open_session_terminal(session: str | None) -> bool:
+    """A new terminal window running hivey on this session (`hivey session attach` also starts a stopped one)."""
+    exe = hivey_bin()
+    if not exe or (session and not SESSION_NAME.match(session)):
+        return False
+    cmd = shlex.quote(exe) if not session or session == "default" else \
+        f"{shlex.quote(exe)} session attach {shlex.quote(session)}"
+    cmd = f"exec {cmd}"  # the window ends with hivey (when the session is stopped or you quit)
     app = TERMINAL_APPS.get(os.environ.get("TERM_PROGRAM", ""), "Terminal")
+    script = OPEN_ITERM if app == "iTerm" else OPEN_TERMINAL
+    try:
+        p = subprocess.run(["osascript", "-e", script, cmd], capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return p.returncode == 0
+
+
+def raise_terminal(session: str | None = None) -> str:
+    """Bring the terminal window (and tab) showing this hivey session to the front; when no terminal shows
+    it, open a new one on it. Returns "raised", "opened" or "" (nothing worked)."""
+    app = TERMINAL_APPS.get(os.environ.get("TERM_PROGRAM", ""), "Terminal")
+    mine = client_ttys(session, only=True)
+    if not mine:
+        return "opened" if open_session_terminal(session) else ""
     script = {"Terminal": RAISE_TERMINAL, "iTerm": RAISE_ITERM}.get(app)
     if script:
-        for tty in client_ttys():
+        for tty in mine:
             try:
                 p = subprocess.run(["osascript", "-e", script, tty], capture_output=True, text=True, timeout=10)
             except (OSError, subprocess.SubprocessError):
                 break
             if p.stdout.strip() == "ok":
-                return
+                return "raised"
     subprocess.run(["open", "-a", app], capture_output=True, timeout=10)
+    return "raised"
 
 
-def office_desk(pane: str) -> dict | None:
+def office_desk(desk_id: str) -> dict | None:
+    """The desk on the office page with this id (pane id, or "<session>/<pane>" outside the default session)."""
     try:
         agents = json.loads(OFFICE_JSON.read_text()).get("agents", [])
     except (OSError, ValueError):
         return None
-    return next((a for a in agents if a.get("pane") == pane), None)
+    return next((a for a in agents if a.get("id") == desk_id), None) \
+        or next((a for a in agents if a.get("pane") == desk_id and not a.get("sock")), None)
 
 
-def live_status(hv: str, pane: str) -> str | None:
+INHERITED = ("HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION", "HERDR_PANE_ID", "HERDR_TAB_ID",
+             "HERDR_WORKSPACE_ID", "HERDR_PANE_RUNTIME_ID")
+
+
+def hv(exe: str, sock: str | None, *args: str, timeout: int = 10) -> subprocess.CompletedProcess:
+    """Run a hivey command against one session's server (sock None: the one we inherited)."""
+    env = None
+    if sock:
+        env = {k: v for k, v in os.environ.items() if k not in INHERITED}
+        env["HERDR_SOCKET_PATH"] = sock
+    return subprocess.run([exe, *args], capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def live_status(exe: str, sock: str | None, pane: str) -> str | None:
     try:
-        out = subprocess.run([hv, "pane", "get", pane], capture_output=True, text=True, timeout=5).stdout
-        return json.loads(out)["result"]["pane"].get("agent_status")
+        return json.loads(hv(exe, sock, "pane", "get", pane, timeout=5).stdout)["result"]["pane"].get("agent_status")
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         return None
 
 
-def waiting_in_prompt(hv: str, pane: str, command: str) -> bool:
+def waiting_in_prompt(exe: str, sock: str | None, pane: str, command: str) -> bool:
     """True while the command still sits typed in the agent's input box (its Enter not taken yet)."""
     try:
-        out = subprocess.run([hv, "pane", "read", pane, "--source", "recent", "--lines", "15"],
-                             capture_output=True, text=True, timeout=5).stdout
+        out = hv(exe, sock, "pane", "read", pane, "--source", "recent", "--lines", "15", timeout=5).stdout
     except (OSError, subprocess.SubprocessError):
         return False
     try:  # the CLI answers JSON or plain text depending on the version
@@ -187,45 +307,89 @@ def waiting_in_prompt(hv: str, pane: str, command: str) -> bool:
                for line in str(out).splitlines()[-10:])
 
 
-def send_command(hv: str, pane: str, command: str) -> tuple[bool, str]:
+def send_command(exe: str, sock: str | None, pane: str, command: str) -> tuple[bool, str]:
     """Type a slash command into an agent and press Enter as its own key press, so the CLI does not take
     text and Enter as one paste (or let its slash-command menu swallow the Enter); press Enter again
     while the command is still waiting in the input box."""
-    def call(*args: str) -> subprocess.CompletedProcess:
-        return subprocess.run([hv, "pane", *args], capture_output=True, text=True, timeout=10)
-    p = call("send-text", pane, command)
+    p = hv(exe, sock, "pane", "send-text", pane, command)
     if p.returncode != 0:
         return False, (p.stderr or p.stdout).strip()[-200:] or f"{command} failed"
     for wait in (0.5, 1.2, 1.5):
         time.sleep(wait)
-        if wait > 0.5 and not waiting_in_prompt(hv, pane, command):
+        if wait > 0.5 and not waiting_in_prompt(exe, sock, pane, command):
             return True, f"sent {command} and Enter"
-        p = call("send-keys", pane, "Enter")
+        p = hv(exe, sock, "pane", "send-keys", pane, "Enter")
         if p.returncode != 0:
             return False, (p.stderr or p.stdout).strip()[-200:] or "Enter failed"
     time.sleep(1.5)
-    if waiting_in_prompt(hv, pane, command):
+    if waiting_in_prompt(exe, sock, pane, command):
         return False, f"{command} is typed but the agent has not taken it; press Enter in its terminal"
     return True, f"sent {command} and Enter"
 
 
-def office_action(pane: str, action: str) -> tuple[bool, str]:
-    hv = hivey_bin()
-    if not hv:
+def stop_session(session: str) -> tuple[bool, str]:
+    """Stop a (non-default) hivey session: its server and every agent in it, then close its terminal windows."""
+    exe = hivey_bin()
+    if not exe or not SESSION_NAME.match(session or ""):
+        return False, "unknown session"
+    if session == "default":
+        return False, "the default session is not stopped from here (it runs this office); quit it in hivey"
+    ttys = client_ttys(session, only=True)
+    p = subprocess.run([exe, "session", "stop", session], capture_output=True, text=True, timeout=60)
+    if p.returncode != 0:
+        return False, (p.stderr or p.stdout).strip()[-200:] or "stop failed"
+    time.sleep(1.5)  # let its hivey clients exit
+    app = TERMINAL_APPS.get(os.environ.get("TERM_PROGRAM", ""), "Terminal")
+    script = {"Terminal": CLOSE_TERMINAL, "iTerm": CLOSE_ITERM}.get(app)
+    closed = 0
+    for tty in ttys if script else []:
+        try:
+            r = subprocess.run(["osascript", "-e", script, tty], capture_output=True, text=True, timeout=10)
+            closed += r.stdout.strip() == "ok"
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return True, f"session {session} stopped" + (f", {closed} terminal closed" if closed else "")
+
+
+def session_action(session: str) -> tuple[bool, str]:
+    """Click on a ship: show that hivey session in a terminal (a new one if none shows it; starts it if stopped)."""
+    if not SESSION_NAME.match(session or ""):
+        return False, "unknown session"
+    how = raise_terminal(session)
+    return (True, {"opened": f"opened session {session} in a new terminal", "raised": f"session {session} is in front"}[how]) \
+        if how else (False, f"could not open a terminal; run: hivey session attach {session}")
+
+
+def office_action(desk_id: str, action: str, session: str = "") -> tuple[bool, str]:
+    if action == "session":
+        return session_action(session)
+    if action == "stop-session":
+        return stop_session(session)
+    exe = hivey_bin()
+    if not exe:
         return False, "hivey not found"
-    if not PANE.match(pane or "") or not office_desk(pane):
+    desk = office_desk(desk_id)
+    pane = (desk or {}).get("pane") or ""
+    if not desk or not PANE.match(pane):
         return False, "unknown agent"
+    sock = desk.get("sock") or None
+    if desk.get("asleep"):  # an agent of a stopped session: start the session (compact/clear wait until then)
+        if action == "focus":
+            return session_action(desk.get("hv_session") or "")
+        return False, f"session {desk.get('hv_session')} is stopped; open it first"
     if action == "focus":
-        p = subprocess.run([hv, "agent", "focus", pane], capture_output=True, text=True, timeout=10)
+        p = hv(exe, sock, "agent", "focus", pane)
         if p.returncode != 0:
             return False, (p.stderr or p.stdout).strip()[-200:] or "focus failed"
-        raise_terminal()
-        return True, "opened in hivey"
+        how = raise_terminal(desk.get("hv_session"))
+        where = desk.get("hv_session") or "default"
+        return True, {"opened": f"opened in a new terminal on session {where}",
+                      "raised": "opened in hivey"}.get(how, "focused in hivey (bring its terminal forward yourself)")
     if action in ("compact", "clear"):
-        status = live_status(hv, pane)
+        status = live_status(exe, sock, pane)
         if status in ("working", "blocked"):
             return False, f"it is {status} now; try when it is idle"
-        return send_command(hv, pane, f"/{action}")
+        return send_command(exe, sock, pane, f"/{action}")
     return False, "unknown action"
 
 
@@ -325,10 +489,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except ValueError:
                 req = {}
             if self.path == "/hv-office-settings":
-                if req.get("every") not in EVERY_MODES:
-                    return self.answer(400, b'{"ok":false,"error":"every: minute, 5min, 15min, 1h or reload"}')
-                OFFICE_SETTINGS.write_text(json.dumps({"every": req["every"]}))
-                return self.answer(200, json.dumps({"ok": True, "every": req["every"]}).encode())
+                cur = office_settings()
+                if "every" in req:
+                    if req.get("every") not in EVERY_MODES:
+                        return self.answer(400, b'{"ok":false,"error":"every: minute, 5min, 15min, 1h or reload"}')
+                    cur["every"] = req["every"]
+                if "space" in req:  # the background: "random" (new each load) or a scene "1".."6"
+                    if str(req["space"]) not in ("random", "1", "2", "3", "4", "5", "6"):
+                        return self.answer(400, b'{"ok":false,"error":"space: random or 1..6"}')
+                    cur["space"] = str(req["space"])
+                if "ships" in req:  # the ship positions you dragged on the office page
+                    cur["ships"] = clean_ships(req["ships"])
+                OFFICE_SETTINGS.write_text(json.dumps(cur))
+                return self.answer(200, json.dumps({"ok": True, "every": office_every(), "space": cur.get("space"),
+                                                    "ships": cur.get("ships", {})}).encode())
             every = office_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
             quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
@@ -336,12 +510,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not quick:
                 Handler.office_full = time.time()
             start_office_refresh(quick=quick)
-            return self.answer(200, json.dumps({"ok": True, "started": True, "every": every}).encode())
+            return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
+                                                "space": office_settings().get("space"),
+                                                "ships": clean_ships(office_settings().get("ships"))}).encode())
         if self.path == "/hv-office-action":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)
                 req = json.loads(self.rfile.read(length) or b"{}")
-                ok, msg = office_action(str(req.get("pane", "")), str(req.get("action", "")))
+                ok, msg = office_action(str(req.get("id") or req.get("pane") or ""), str(req.get("action", "")),
+                                        str(req.get("session") or ""))
             except (ValueError, OSError, subprocess.SubprocessError) as e:
                 ok, msg = False, str(e)[:200]
             return self.answer(200, json.dumps({"ok": ok, "message": msg}).encode())

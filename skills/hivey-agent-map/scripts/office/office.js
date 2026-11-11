@@ -26,7 +26,9 @@ const ui = JSON.parse(localStorage.getItem('hv-office-ship') || '{}');
 ui.view ||= 'office';
 ui.filter ||= null;
 if (ui.toon === undefined) ui.toon = false;
-const save = () => localStorage.setItem('hv-office-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music }));
+const save = () => localStorage.setItem('hv-office-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space }));
+// ship positions also live on the office server, so every browser opens the fleet where you left it
+const saveShips = () => { save(); fetch('/hv-office-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
 
 // ---------------------------------------------------------------- helpers
 function hue(name) { let h = 0; for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; }
@@ -84,6 +86,58 @@ function warpPing() {
     setTimeout(() => { fb.gain.value = 0; }, 900);
   } catch (e) { /* no audio: the flash is enough */ }
 }
+// a ship's name tag opens a small menu: open (or start) the session, or stop it (a second click confirms)
+function closeShipMenu() { document.querySelector('.ship-menu')?.remove(); }
+function shipMenu(el, s, n) {
+  const was = document.querySelector('.ship-menu')?.dataset.name;
+  closeShipMenu();
+  if (was === s.name) return;
+  const m = document.createElement('div');
+  m.className = 'ship-menu'; m.dataset.name = s.name;
+  m.innerHTML = `<div class="t">${s.running ? '🚀' : '💤'} ${esc(s.name)}</div>` + (s.running
+    ? `<button data-k="open">▶ Open in a terminal</button>` + (s.default ? `<div class="note">the default session is stopped from hivey itself</div>`
+      : `<button data-k="stop" class="danger">⏹ Stop session</button>`)
+    : `<button data-k="open">▶ Start session</button>`)
+    + (ui.ships?.[s.name] ? `<button data-k="home">↺ Put back in line</button>` : `<div class="note">drag this tag to move the ship</div>`);
+  const r = el.getBoundingClientRect();
+  m.style.left = Math.min(r.left, innerWidth - 230) + 'px'; m.style.top = (r.bottom + 6) + 'px';
+  document.body.appendChild(m);
+  m.onclick = e => e.stopPropagation();
+  m.querySelector('[data-k="open"]').onclick = () => { closeShipMenu(); openSession(s.name, s.running); };
+  const home = m.querySelector('[data-k="home"]');
+  if (home) home.onclick = () => { closeShipMenu(); delete ui.ships[s.name]; saveShips(); renderAll(); };
+  const stop = m.querySelector('[data-k="stop"]');
+  if (stop) stop.onclick = () => {
+    if (!stop.classList.contains('arm')) {
+      stop.classList.add('arm'); stop.textContent = `Click again: ends its ${n} agent${n === 1 ? '' : 's'}`;
+      setTimeout(() => { if (stop.isConnected) { stop.classList.remove('arm'); stop.textContent = '⏹ Stop session'; } }, 3500);
+      return;
+    }
+    closeShipMenu(); stopSession(s.name);
+  };
+}
+document.addEventListener('click', closeShipMenu);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeShipMenu(); });
+async function stopSession(name) {
+  toast(`Stopping session ${name}…`);
+  try {
+    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop-session', session: name }) });
+    const j = await r.json();
+    toast(j.message || (j.ok ? `Session ${name} stopped` : `Could not stop session ${name}`));
+    if (j.ok) fetch('/hv-office-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500));
+  } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
+}
+// click on a ship's name tag: that hivey session in a terminal (a new one if none shows it; starts a stopped one)
+async function openSession(name, running) {
+  warpPing();
+  toast(running ? `Opening session ${name}…` : `Starting session ${name}…`);
+  try {
+    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'session', session: name }) });
+    const j = await r.json();
+    toast(j.message || (j.ok ? `Session ${name} opened` : `Could not open session ${name}`));
+    if (j.ok && !running) setTimeout(() => fetch('/hv-office-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500)), 4000);
+  } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
+}
 async function act(a, action) {
   if (action === 'focus' || action === 'compact') {
     warpPing();
@@ -92,9 +146,9 @@ async function act(a, action) {
     document.querySelectorAll(`[data-id="${CSS.escape(a.id)}"]`).forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
   }
   try {
-    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pane: a.pane, action }) });
+    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, pane: a.pane, action }) });
     const j = await r.json();
-    toast(j.ok ? (action === 'focus' ? `${a.name} is open in hivey ↗` : `${a.name}: ${j.message}`) : `${a.name}: ${j.message}`);
+    toast(j.ok && action === 'focus' && !/new terminal/.test(j.message || '') ? `${a.name} is open in hivey ↗` : `${a.name}: ${j.message}`);
   } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
 }
 // clear needs a second click within 3 s (no browser dialogs); compact goes at once
@@ -106,7 +160,7 @@ function armed(btn, a, action) {
   setTimeout(() => { if (btn.classList.contains('arm')) { btn.classList.remove('arm'); btn.textContent = btn.dataset.label; } }, 3000);
 }
 function actionButtons(a) {
-  const busy = a.status === 'working' || a.status === 'blocked';
+  const busy = a.status === 'working' || a.status === 'blocked' || a.asleep;
   return `<div class="actions">
     <button class="primary" data-act="focus" title="Open its terminal in hivey">↗ Open</button>
     ${a.cli_id === 'claude' ? `<button data-act="compact" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /compact into it and press Enter"'}>🗜 Compact</button>
@@ -158,8 +212,8 @@ function tickSub() {
     (data.error ? ` · <span class="err" title="${esc(data.error)}">summaries from the recap (model call failed)</span>` : '');
 }
 function renderInbox() {
-  const blocked = agents.filter(a => a.status === 'blocked');
-  const asked = agents.filter(a => a.status !== 'blocked' && a.status !== 'working' && a.summary?.needs_you);
+  const blocked = agents.filter(a => a.status === 'blocked' && !a.asleep);
+  const asked = agents.filter(a => !a.asleep && a.status !== 'blocked' && a.status !== 'working' && a.summary?.needs_you);
   const need = [...blocked, ...asked];
   const lead = [blocked.length ? `✋ ${blocked.length} blocked` : '', asked.length ? `<span style="color:var(--honey)">💬 ${asked.length} asked you</span>` : ''].filter(Boolean).join('<br>');
   $('#inbox').innerHTML = need.length ? `<span class="lead">${lead}</span>` + need.map(a =>
@@ -267,7 +321,7 @@ function closeDrawer() { $('#drawer').classList.remove('open'); selected = null;
 const office = (() => {
   const host = $('#office'), labels = $('#labels');
   let renderer;
-  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); } catch (e) { return { ok: false, build() {}, markSelected() {}, resize() {}, fit() {}, flash() {} }; }
+  try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); } catch (e) { return { ok: false, build() {}, markSelected() {}, resize() {}, fit() {}, flash() {}, setSpace() {} }; }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -387,7 +441,7 @@ const office = (() => {
     const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.scale.set(sx, sy, sz);
     m.castShadow = shadow; m.receiveShadow = true; return m;
   }
-  const ship = createShip({ mesh, hue, st });
+  const ship = createShip({ mesh, hue, st, space: ui.space });
   scene.background = ship.background; // the ship floats in deep space
   [M.wall, M.floor, M.hit, holoMat].forEach(m => m.userData.outlineParameters = NO_LINE);
   Object.values(signs).forEach(m => m.userData.outlineParameters = NO_LINE);
@@ -450,9 +504,8 @@ const office = (() => {
     labels.appendChild(el);
     tags.set(a.id, { el, d, prio: ({ blocked: 0, working: 1, done: 2, idle: 3 }[a.status] ?? 4) - (a.summary?.needs_you ? 0.5 : 0) });
   }
-  function build(list) {
-    scene.remove(world); world = new THREE.Group(); scene.add(world);
-    desks = []; labels.innerHTML = ''; tags = new Map(); roomTags = [];
+  // one spaceship (rooms, bridge, hull) for one hivey session's agents, built into grp around its origin
+  function buildShip(list, grp, style) {
     // the CEO's space gets the captain's bridge; everyone else gets team rooms
     const isCeo = a => /^ceo$/i.test(a.space || '');
     const ceo = list.filter(isCeo);
@@ -477,31 +530,97 @@ const office = (() => {
     sizes.forEach(r => {
       const h = hue(r.s[0].space), rx = ox + r.x, rz = oz + r.z;
       const rug = mesh(G.plane, rugMatFor(h), rx + r.w / 2, 0.006, rz + r.d / 2, r.w - 0.3, r.d - 0.3, 1, false);
-      rug.rotation.x = -Math.PI / 2; world.add(rug);
-      world.add(mesh(G.box, M.wall, rx + r.w / 2, 0.5, rz + 0.06, r.w, 1.0, 0.06, false), mesh(G.box, M.wall, rx + 0.06, 0.5, rz + r.d / 2, 0.06, 1.0, r.d, false));
-      ship.pod(world, rx + r.w - 0.6, rz + 0.6);
-      world.add(mesh(G.box, accentFor(h), rx + r.w / 2, 1.02, rz + 0.06, r.w, 0.05, 0.1, false), mesh(G.box, accentFor(h), rx + 0.06, 1.02, rz + r.d / 2, 0.1, 0.05, r.d, false));
+      rug.rotation.x = -Math.PI / 2; grp.add(rug);
+      grp.add(mesh(G.box, M.wall, rx + r.w / 2, 0.5, rz + 0.06, r.w, 1.0, 0.06, false), mesh(G.box, M.wall, rx + 0.06, 0.5, rz + r.d / 2, 0.06, 1.0, r.d, false));
+      ship.pod(grp, rx + r.w - 0.6, rz + 0.6);
+      grp.add(mesh(G.box, accentFor(h), rx + r.w / 2, 1.02, rz + 0.06, r.w, 0.05, 0.1, false), mesh(G.box, accentFor(h), rx + 0.06, 1.02, rz + r.d / 2, 0.1, 0.05, r.d, false));
       r.s.sort((a, b) => (b.team?.length || 0) - (a.team?.length || 0) || (order[a.status] ?? 9) - (order[b.status] ?? 9));
       r.s.forEach((a, i) => {
         const d = makeDesk(a, rx + PAD + DX / 2 + (i % 3) * DX, rz + PAD + 1.6 + Math.floor(i / 3) * DZ);
-        world.add(d.g); desks.push(d); addTag(a, d);
+        grp.add(d.g); desks.push(d); addTag(a, d);
       });
       const rl = document.createElement('div');
       rl.className = 'room-label'; rl.textContent = `${r.s[0].emoji} ${r.s[0].space}`;
       labels.appendChild(rl); roomTags.push({ el: rl, p: new THREE.Vector3(rx + 0.3, 0.9, rz + r.d + 0.2) });
     });
-    const e = ship.decorate(world, Math.max(W, 8), Math.max(D, 8));
-    const br = ship.bridge(world, e);
+    const e = ship.decorate(grp, Math.max(W, 8), Math.max(D, 8), style);
+    const br = ship.bridge(grp, e);
     ceo.sort((a, b) => (a.role === 'session') - (b.role === 'session') || (order[a.status] ?? 9) - (order[b.status] ?? 9));
     ceo.slice(0, br.slots.length).forEach((a, i) => {
       const slot = br.slots[i], d = makeDesk(a, slot.x, slot.z);
       if (slot.captain) { d.g.scale.setScalar(1.18); d.anchor.y *= 1.18; }
-      world.add(d.g); desks.push(d); addTag(a, d);
+      grp.add(d.g); desks.push(d); addTag(a, d);
     });
-    const bl = document.createElement('div');
-    bl.className = 'room-label'; bl.textContent = `${ceo[0]?.emoji || '👔'} ceo · captain's bridge`;
-    labels.appendChild(bl); roomTags.push({ el: bl, p: br.label });
+    if (ceo.length) {
+      const bl = document.createElement('div');
+      bl.className = 'room-label'; bl.textContent = `${ceo[0]?.emoji || '👔'} ceo · captain's bridge`;
+      labels.appendChild(bl); roomTags.push({ el: bl, p: br.label });
+    }
     e.maxX = Math.max(e.maxX, br.bounds.maxX);
+    return e;
+  }
+  // one spaceship per hivey session, flying in a column (the default session first, stopped ones dark and empty)
+  function build(list, sessions) {
+    scene.remove(world); world = new THREE.Group(); scene.add(world);
+    desks = []; labels.innerHTML = ''; tags = new Map(); roomTags = [];
+    sessions = sessions?.length ? sessions : [{ name: 'default', running: true, default: true }];
+    const known = new Set(sessions.map(s => s.name));
+    const fleet = sessions.map(s => ({ s, list: list.filter(a => (a.hv_session || 'default') === s.name || (s.default && !known.has(a.hv_session || 'default'))) }));
+    const e = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+    let zCur = 0;
+    const others = sessions.filter(s => !s.default).map(s => s.name).sort();
+    fleet.forEach(({ s, list }) => {
+      const grp = new THREE.Group(); world.add(grp);
+      const d0 = desks.length, r0 = roomTags.length;
+      // the default session flies the classic frigate; the others, in name order, each get their own design
+      const v = s.default ? 0 : 1 + others.indexOf(s.name);
+      const se = buildShip(list, grp, { v, name: s.name, running: s.running !== false });
+      const off = new THREE.Vector3(-(se.minX + se.maxX) / 2, 0, zCur - se.minZ);
+      const placed = ui.ships?.[s.name];  // where you dragged this ship last time
+      if (placed && isFinite(placed.x) && isFinite(placed.z)) off.set(placed.x, 0, placed.z);
+      grp.position.copy(off);
+      desks.slice(d0).forEach(d => d.anchor.add(off));
+      roomTags.slice(r0).forEach(t => t.p.add(off));
+      if (se.plate) {  // the name painted on the hull is the ship's handle: click for its menu, drag to move it
+        const n = list.length, el = document.createElement('div');
+        el.className = 'ship-label' + (s.running ? '' : ' stopped');
+        el.innerHTML = `<span class="cap">${s.running ? '🚀' : '💤'} ${s.running ? `${n} agent${n === 1 ? '' : 's'}` : `stopped${n ? ` · ${n} asleep` : ''}`}</span>`;
+        el.title = s.running ? `hivey session "${s.name}": open or stop it` : `hivey session "${s.name}" is stopped: start it`;
+        el.onclick = e => { e.stopPropagation(); if (!el.dataset.dragged) shipMenu(el, s, n); };
+        // drag the name tag to move the ship anywhere in space (saved in this browser)
+        const crew = desks.slice(d0), marks = roomTags.slice(r0);
+        el.addEventListener('pointerdown', e => {
+          if (e.button !== 0) return;
+          e.stopPropagation(); e.preventDefault();
+          const start = worldAt(e), base = grp.position.clone(), sx = e.clientX, sy = e.clientY;
+          let moved = false;
+          const mv = ev => {
+            if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+            if (!moved) { moved = true; closeShipMenu(); el.classList.add('dragging'); }
+            const np = base.clone().add(worldAt(ev).sub(start)); np.y = 0;
+            const d = np.clone().sub(grp.position);
+            grp.position.copy(np);
+            crew.forEach(k => k.anchor.add(d)); marks.forEach(t => t.p.add(d)); shipTag.p.add(d); shipTag.p2.add(d);
+            dirty = true;
+          };
+          const up = () => {
+            removeEventListener('pointermove', mv); removeEventListener('pointerup', up);
+            el.classList.remove('dragging');
+            if (!moved) return;
+            ui.ships = { ...(ui.ships || {}), [s.name]: { x: +grp.position.x.toFixed(2), z: +grp.position.z.toFixed(2) } }; saveShips();
+            el.dataset.dragged = '1'; setTimeout(() => delete el.dataset.dragged, 0);
+          };
+          addEventListener('pointermove', mv); addEventListener('pointerup', up);
+        });
+        labels.appendChild(el);
+        const pc = new THREE.Vector3(off.x + se.plate.x, se.plate.y, off.z + se.plate.z);
+        const shipTag = { el, p: pc, p2: pc.clone().add(new THREE.Vector3(se.plate.w / 2, 0, 0)) };
+        roomTags.push(shipTag);
+      }
+      e.minX = Math.min(e.minX, off.x + se.minX); e.maxX = Math.max(e.maxX, off.x + se.maxX);
+      e.minZ = Math.min(e.minZ, off.z + se.minZ); e.maxZ = Math.max(e.maxZ, off.z + se.maxZ);
+      zCur += se.maxZ - se.minZ + 30;  // room for the next ship's tower so it does not hide this one's name
+    })
     // measure each label once (bubble and plate), for the overlap pass in placeLabels
     tags.forEach(t => {
       const b = t.el.querySelector('.bubble'), pl = t.el.querySelector('.plate');
@@ -630,7 +749,7 @@ const office = (() => {
     const d = desks.find(x => x.a.id === id);
     if (!d) return;
     const g = new THREE.Group();
-    g.position.copy(d.g.position).add(new THREE.Vector3(0, 0, -0.9 * d.g.scale.x));
+    d.g.getWorldPosition(g.position).add(new THREE.Vector3(0, 0, -0.9 * d.g.scale.x));
     const ring = mesh(G.ring, glowMat('#ffd36a'), 0, 0.06, 0, 1, 1, 1, false); ring.rotation.x = -Math.PI / 2;
     const ring2 = mesh(G.ring, glowMat('#7fe8ff'), 0, 0.07, 0, 1, 1, 1, false); ring2.rotation.x = -Math.PI / 2;
     const beam = mesh(beamGeo, glowMat('#7fe8ff'), 0, 3.5, 0, 1, 1, 1, false);
@@ -683,7 +802,16 @@ const office = (() => {
       placed.push(mode === 'full' ? [x - bw, y - t.ph - t.bh, x + bw, y] : [x - pw, y - t.ph, x + pw, y]);
       el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
     }
-    roomTags.forEach(({ el, p }) => { v.copy(p).project(cam); el.style.transform = `translate(${(v.x + 1) / 2 * w}px, ${(1 - v.y) / 2 * h}px)`; });
+    roomTags.forEach(({ el, p, p2 }) => {
+      v.copy(p).project(cam);
+      const x = (v.x + 1) / 2 * w, y = (1 - v.y) / 2 * h;
+      if (p2) {  // the hull name's click area: as wide as the painted name at this zoom
+        v.copy(p2).project(cam);
+        const half = Math.hypot((v.x + 1) / 2 * w - x, (1 - v.y) / 2 * h - y);
+        el.style.width = `${Math.max(40, half * 2)}px`; el.style.height = `${Math.max(14, half * 0.32)}px`;
+        el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+      } else el.style.transform = `translate(${x}px, ${y}px)`;
+    });
   }
   // the hover class keeps a bubble visible while zoomed out
   const style = document.createElement('style');
@@ -695,14 +823,16 @@ const office = (() => {
   function frame(t) {
     requestAnimationFrame(frame);
     if (document.hidden || ui.view !== 'office') return;
-    const moving = flashes.length > 0 || (!REDUCED && desks.some(d => d.a.status === 'working' || d.a.status === 'blocked' || d.team.some(m => m.status === 'working')));
+    const busy = flashes.length > 0 || (!REDUCED && desks.some(d => d.a.status === 'working' || d.a.status === 'blocked' || d.team.some(m => m.status === 'working')));
+    const moving = busy || (!REDUCED && ship.thrusting());
     const dt = Math.min(0.1, (t - (frame.prev || t)) / 1000); frame.prev = t;
     if (!moving && !dirty) return;
-    if (moving && t - last < 33) return; // ~30 fps is plenty
+    if (moving && t - last < (busy ? 33 : 66)) return; // ~30 fps is plenty (15 when only engines burn)
     last = t;
     const s = t / 1000;
     if (moving) {
-      const pl = ship.planet(); if (pl) pl.rotation.y = s * 0.4;
+      ship.planets().forEach(pl => { pl.rotation.y = s * 0.4; });
+      ship.thrust(s);
       if (t - lastCode > 110) { drawCode(); lastCode = t; }
       for (const d of desks) {
         const b = d.bot, ph = d.ph;
@@ -737,7 +867,15 @@ const office = (() => {
   new ResizeObserver(() => { resize(); }).observe(host);
   resize(); placeCam();
   requestAnimationFrame(frame);
-  return { ok: true, build, markSelected, resize, fit, flash, ready: ship.load() };
+  // the 🌌 setting: show scene n (1..6) now, or a new random one
+  function setSpace(want) {
+    const old = scene.background;
+    scene.background = ship.space(want);
+    old?.dispose?.();
+    dirty = true;
+    return ship.spaceNo();
+  }
+  return { ok: true, build, markSelected, resize, fit, flash, setSpace, ready: ship.load() };
 })();
 
 // ---------------------------------------------------------------- views, polling, keys
@@ -751,7 +889,7 @@ function renderAll() {
   $('#office').style.display = ui.view === 'office' ? '' : 'none';
   $('#board').style.display = ui.view === 'board' ? 'block' : 'none';
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
-  if (ui.view === 'office') { office.build(agents.filter(visible)); office.resize(); }
+  if (ui.view === 'office') { office.build(agents.filter(visible), data.sessions); office.resize(); }
   if (ui.view === 'board') renderBoard();
   if (ui.view === 'list') renderList();
   if (selected) { const a = agents.find(x => x.id === selected); if (a && $('#drawer').classList.contains('open')) openDrawer(a); }
@@ -821,7 +959,27 @@ poll();
 // refresh setting (every minute: a quick pass, the model only for changed statuses; otherwise a full pass)
 const post = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
 function showEvery(m) { if (EVERY_S[m] || m === 'reload') { every = m; $('#every').value = m; tickSub(); } }
-post('/hv-office-refresh', { load: true }).then(j => { showEvery(j.every); setTimeout(poll, 2500); setTimeout(poll, 8000); }).catch(() => {});
+// 🌌 background: a new scene on every load (random) or always the one you pick
+const SPACE_NAMES = ['violet', 'emerald', 'crimson', 'deep blue', 'golden', 'singularity'];
+$('#space').value = /^[1-6]$/.test(String(ui.space)) ? String(ui.space) : 'random';
+$('#space').onchange = e => {
+  ui.space = e.target.value; save();
+  const n = office.setSpace(ui.space);
+  toast(ui.space === 'random' ? `A new space scene every time you open the page (now: ${SPACE_NAMES[n - 1] || '?'})` : `Background: ${SPACE_NAMES[n - 1]}, always`);
+  post('/hv-office-settings', { space: ui.space }).catch(() => {});
+};
+post('/hv-office-refresh', { load: true }).then(j => {
+  showEvery(j.every);
+  if (j.space && j.space !== String(ui.space || 'random')) {  // the server's choice wins (set in another browser)
+    ui.space = j.space; save(); $('#space').value = j.space;
+    if (j.space !== 'random') office.setSpace(j.space);
+  } else if (!j.space && ui.space) post('/hv-office-settings', { space: String(ui.space) }).catch(() => {});
+  const server = j.ships || {}, local = ui.ships || {};
+  if (Object.keys(server).length) {  // the server's positions win; rebuild if they differ from this browser's
+    if (JSON.stringify(server) !== JSON.stringify(local)) { ui.ships = server; save(); if (data) renderAll(); }
+  } else if (Object.keys(local).length) saveShips();  // first time: hand this browser's positions to the server
+  setTimeout(poll, 2500); setTimeout(poll, 8000);
+}).catch(() => {});
 $('#every').onchange = e => post('/hv-office-settings', { every: e.target.value })
   .then(j => { showEvery(j.every); toast({ minute: 'Updates every minute (summaries only for agents that changed)', '5min': 'Updates every 5 minutes', '15min': 'Updates every 15 minutes', '1h': 'Updates every hour', reload: 'Updates only when you reload or press ⟳' }[j.every]); })
   .catch(() => toast('The office server is not answering'));

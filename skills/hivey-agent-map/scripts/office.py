@@ -66,9 +66,22 @@ def hivey_bin() -> str | None:
     return exe if exe and os.path.isfile(exe) else shutil.which("hivey")
 
 
-def sh(cmd: list[str], timeout: int = 15) -> str:
+INHERITED = ("HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION", "HERDR_PANE_ID", "HERDR_TAB_ID",
+             "HERDR_WORKSPACE_ID", "HERDR_PANE_RUNTIME_ID")
+
+
+def hv_env(sock: str | None) -> dict | None:
+    """The environment that points a hivey command at one session's server (None: inherit ours)."""
+    if not sock:
+        return None
+    env = {k: v for k, v in os.environ.items() if k not in INHERITED}
+    env["HERDR_SOCKET_PATH"] = sock
+    return env
+
+
+def sh(cmd: list[str], timeout: int = 15, sock: str | None = None) -> str:
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=hv_env(sock)).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -83,11 +96,25 @@ def now_iso() -> str:
 
 # ---------------------------------------------------------------- who is in the office
 
-def spaces(hv: str) -> dict:
+def hv_sessions(hv: str) -> list[dict]:
+    """Every named hivey session: [{name, running, default, socket}] (the default one first)."""
+    try:
+        got = json.loads(sh([hv, "session", "list", "--json"]) or "{}").get("sessions") or []
+    except (ValueError, AttributeError):
+        got = []
+    out = [{"name": s.get("name") or "default", "running": bool(s.get("running")), "default": bool(s.get("default")),
+            "socket": s.get("socket_path"), "dir": s.get("session_dir")} for s in got if isinstance(s, dict)]
+    if not out:  # an older hivey without sessions: the server we are attached to
+        out = [{"name": "default", "running": True, "default": True, "socket": None}]
+    out.sort(key=lambda s: (not s["default"], not s["running"], s["name"]))
+    return out
+
+
+def spaces(hv: str, sock: str | None = None) -> dict:
     """workspace id → {label, emoji, name, about}."""
     out = {}
     try:
-        data = json.loads(sh([hv, "workspace", "list"]) or "{}")
+        data = json.loads(sh([hv, "workspace", "list"], sock=sock) or "{}")
     except ValueError:
         return out
     for w in data.get("result", {}).get("workspaces", []):
@@ -102,14 +129,17 @@ def spaces(hv: str) -> dict:
     return out
 
 
-def desks(hv: str) -> list[dict]:
-    """One entry per agent you talk to; swarm workers/critics/scripts fold into their coordinator."""
+def desks(hv: str, hs: dict | None = None) -> list[dict]:
+    """One entry per agent you talk to; swarm workers/critics/scripts fold into their coordinator.
+    hs: the hivey session to read (default: the one we are attached to)."""
+    hs = hs or {"name": "default", "default": True, "socket": None}
+    sock = hs.get("socket")
     try:
-        data = json.loads(sh([hv, "agent", "list"]) or "{}")
+        data = json.loads(sh([hv, "agent", "list"], sock=sock) or "{}")
     except ValueError:
         return []
     agents = data.get("result", {}).get("agents", [])
-    rooms = spaces(hv)
+    rooms = spaces(hv, sock)
     team: dict[str, list] = {}
     for a in agents:
         tok = a.get("tokens") or {}
@@ -132,7 +162,8 @@ def desks(hv: str) -> list[dict]:
         sess = a.get("agent_session") or {}
         title = re.sub(r"^\W+\s*", "", a.get("title") or "")
         out.append({
-            "id": a.get("pane_id"), "pane": a.get("pane_id"), "workspace": ws, "space": room["name"],
+            "id": a.get("pane_id") if hs.get("default") else f"{hs['name']}/{a.get('pane_id')}",
+            "pane": a.get("pane_id"), "hv_session": hs["name"], "sock": sock, "workspace": ws, "space": room["name"],
             "space_label": room["label"], "emoji": room["emoji"], "about": room["about"] if master else "",
             "name": name, "role": "coordinator" if members else ("agent" if master else "session"),
             "cli": CLIS.get(a.get("agent"), a.get("agent") or "?"), "cli_id": a.get("agent"),
@@ -148,11 +179,48 @@ def desks(hv: str) -> list[dict]:
     return out
 
 
+def asleep_desks(hs: dict) -> list[dict]:
+    """The agents of a stopped hivey session, from the layout it saved (session.json): they sit powered down
+    at their desks; their context and last work still come from their session logs."""
+    try:
+        path = Path(hs.get("dir") or "") / "session.json"
+        saved = json.loads(path.read_text())
+        stopped_at = dt.datetime.fromtimestamp(path.stat().st_mtime, dt.timezone.utc).isoformat(timespec="seconds")
+    except (OSError, ValueError, TypeError):
+        return []
+    out = []
+    for w in saved.get("workspaces") or []:
+        if not isinstance(w, dict):
+            continue
+        ws, label = w.get("id", ""), w.get("custom_name") or w.get("id", "")
+        m = re.match(r"^(\W+?)\s+(.+)$", label)
+        emoji, space = (m.group(1).strip(), m.group(2)) if m else ("🐝", label)
+        panes = [(pid, p) for t in w.get("tabs") or [] for pid, p in (t.get("panes") or {}).items()
+                 if isinstance(p, dict) and (p.get("agent_session") or {}).get("value")]
+        leads = [x for x in panes if not x[1].get("managed_agent_kind")] or panes[:1]
+        crew = [x for x in panes if x not in leads]
+        for n, (pid, p) in enumerate(leads, 1):
+            sess = p["agent_session"]
+            members = [{"name": c.get("agent_name") or f"pane {cid}", "role": (c.get("agent_name") or "").rsplit("-", 1)[-1] or "worker",
+                        "status": "idle"} for cid, c in crew] if n == 1 else []
+            name = p.get("agent_name") or (space if len(leads) == 1 else f"{space} · session {n}")
+            pane = f"{ws}:p{pid}"
+            out.append({
+                "id": f"{hs['name']}/{pane}", "pane": pane, "hv_session": hs["name"], "sock": None, "asleep": True,
+                "stopped_at": stopped_at, "workspace": f"{hs['name']}/{ws}", "space": space, "space_label": label, "emoji": emoji, "about": "",
+                "name": name, "role": "coordinator" if members else "agent",
+                "cli": CLIS.get(sess.get("agent"), sess.get("agent") or "?"), "cli_id": sess.get("agent"),
+                "status": "idle", "cwd": short(p.get("cwd")), "folder": p.get("cwd"), "session": sess.get("value"),
+                "model_hint": "", "team": members, "team_working": 0, "focused": False, "queued": False,
+            })
+    return out
+
+
 # ---------------------------------------------------------------- what each one shows
 
-def screen(hv: str, pane: str) -> str:
+def screen(hv: str, pane: str, sock: str | None = None) -> str:
     """The bottom of the pane's terminal, cleaned for reading (no colors, no box lines, no blank runs)."""
-    raw = sh([hv, "pane", "read", pane, "--source", "recent", "--lines", str(SCREEN_LINES)], timeout=10)
+    raw = sh([hv, "pane", "read", pane, "--source", "recent", "--lines", str(SCREEN_LINES)], timeout=10, sock=sock)
     lines = []
     for line in ANSI.sub("", raw).splitlines():
         line = BOX.sub(" ", line).rstrip()
@@ -207,6 +275,13 @@ def session_log(path: Path | None) -> dict:
         ts = d.get("timestamp")
         if kind == "last-prompt":
             info["last_prompt"] = (d.get("lastPrompt") or "")[:400]
+            continue
+        if kind == "system" and d.get("subtype") == "compact_boundary":
+            # /compact (or auto-compact) shrank the context; until the next reply this is its size
+            meta = d.get("compactMetadata") if isinstance(d.get("compactMetadata"), dict) else {}
+            if meta.get("postTokens"):
+                info["context"] = int(meta["postTokens"])
+            info["compacted_at"] = d.get("timestamp")
             continue
         if kind == "system" and d.get("subtype") == "away_summary":
             info["recap"] = re.sub(r"\n+DONE:.*$", "", d.get("content") or "", flags=re.S).strip()[:600]
@@ -361,10 +436,12 @@ def clean_summary(s: dict) -> dict:
 
 # ---------------------------------------------------------------- one refresh
 
-def collect(hv: str) -> list[dict]:
-    people = desks(hv)
+def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
+    """Every agent of every running hivey session (one spaceship per session on the page)."""
+    people = [d for hs in (sessions or hv_sessions(hv))
+              for d in (desks(hv, hs) if hs["running"] else asleep_desks(hs))]
     with cf.ThreadPoolExecutor(max_workers=8) as pool:
-        screens = list(pool.map(lambda d: screen(hv, d["pane"]), people))
+        screens = list(pool.map(lambda d: "" if d.get("asleep") else screen(hv, d["pane"], d.get("sock")), people))
     for d, scr in zip(people, screens):
         d["screen"] = scr
         log = session_log(transcript_of(d["session"], d["cli_id"]))
@@ -379,6 +456,7 @@ def collect(hv: str) -> list[dict]:
         d["log"] = log.get("log", "")
         d["last_prompt"] = log.get("last_prompt", "")
         d["recap"] = log.get("recap", "")
+        d["compacted_at"] = log.get("compacted_at")
     return people
 
 
@@ -409,7 +487,8 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
     but whose status did not keeps its last summary (re-summarized at the next full pass), and only
     desks whose status changed (blocked -> working, working -> done...) are sent to the model now."""
     start = time.time()
-    people = collect(hv)
+    sessions = hv_sessions(hv)
+    people = collect(hv, sessions)
     try:
         cache = json.loads(CACHE.read_text())
     except (OSError, ValueError):
@@ -418,7 +497,14 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
     for d in people:
         d["fp"] = fingerprint(d)
         hit = cache.get(d["id"])
-        if hit and hit.get("fp") == d["fp"] and (hit.get("by") != "fallback" or not use_llm):
+        if d.get("asleep") and not d["log_uuid"]:  # stopped, and its session log is gone: nothing to summarize
+            day = dt.datetime.fromisoformat(d["stopped_at"]).astimezone().strftime("%b %-d")
+            crew = f" with {len(d['team'])} teammates" if d["team"] else ""
+            d["summary"] = {"job": f"Session {d['hv_session']} stopped", "bubble": f"💤 Asleep since {day}{crew}. Click to start session {d['hv_session']}.",
+                            "next": f"Start session {d['hv_session']} to wake it", "needs_you": "", "done": [],
+                            "advice": "keep", "advice_why": "its session is stopped", "by": "stopped"}
+            d["summarized_at"] = d["stopped_at"]
+        elif hit and hit.get("fp") == d["fp"] and (hit.get("by") != "fallback" or not use_llm):
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
         elif quick and hit and hit.get("status", d["status"]) == d["status"] and hit.get("by") != "fallback":
@@ -448,6 +534,9 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
         s = d["summary"]
         if d["context_pct"] >= 85 and s.get("advice") == "keep":  # a model can be too gentle
             s["advice"], s["advice_why"] = "compact", f"context at {d['context_pct']}%"
+        if d["context_pct"] < 40 and s.get("advice") == "compact":  # already compacted since that summary
+            s["advice"], s["advice_why"] = "keep", f"context at {d['context_pct']}% after compacting" \
+                if d.get("compacted_at") else f"context at {d['context_pct']}%"
         if d["status"] in ("working", "blocked") and s.get("advice") == "clear":
             s["advice"] = "keep"
     CACHE.write_text(json.dumps({d["id"]: stale.get(d["id"]) or {
@@ -461,7 +550,9 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
             d.pop(k, None)
     order = {"blocked": 0, "working": 1, "done": 2, "idle": 3}
     people.sort(key=lambda d: (order.get(d["status"], 4), -d["context_pct"], d["name"]))
-    counts = {k: sum(1 for d in people if d["status"] == k) for k in ("working", "blocked", "done", "idle")}
+    counts = {k: sum(1 for d in people if d["status"] == k and not d.get("asleep"))
+              for k in ("working", "blocked", "done", "idle")}
+    counts["asleep"] = sum(1 for d in people if d.get("asleep"))
     full_at = now_iso()
     if quick:  # a live pass: the last full summary pass stays the one already on the page
         try:
@@ -471,7 +562,10 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
     data = {"generated": now_iso(), "kind": "quick" if quick else "full", "full_at": full_at, "seconds": round(time.time() - start, 1), "model": model if use_llm else None,
             "summarized": len(todo) if use_llm else 0, "error": error, "refresh_every": 60,
             "counts": counts, "agents": people,
-            "advice": {k: sum(1 for d in people if d["summary"].get("advice") == k) for k in ("compact", "clear")}}
+            "sessions": [{"name": hs["name"], "running": hs["running"], "default": hs["default"],
+                          "agents": sum(1 for d in people if d["hv_session"] == hs["name"])} for hs in sessions],
+            "advice": {k: sum(1 for d in people if d["summary"].get("advice") == k and not d.get("asleep"))
+                       for k in ("compact", "clear")}}
     write(data)
     print(f"office: {len(people)} desks, {len(todo) if use_llm else 0} summarized"
           f"{' (' + error + ')' if error else ''} in {data['seconds']}s → {OUT / 'index.html'}")

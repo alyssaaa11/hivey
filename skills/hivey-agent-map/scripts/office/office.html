@@ -76,6 +76,19 @@ main{position:relative}
 .room-label{position:absolute;transform:translate(0,-50%);font-weight:700;font-size:13px;color:#cbd5e1;
   text-shadow:0 1px 6px #000;white-space:nowrap;letter-spacing:.2px}
 .lod-tiny .room-label{font-size:11px}
+.ship-label{position:absolute;left:0;top:0;border-radius:8px;border:1px solid transparent;pointer-events:auto;transition:background .15s,border-color .15s}
+.ship-label .cap{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:4px;white-space:nowrap;font-size:11px;color:#cfe0ff;
+  background:rgba(10,16,32,.8);border:1px solid rgba(120,170,255,.35);border-radius:999px;padding:2px 9px;opacity:0;transition:opacity .15s;pointer-events:none}
+.ship-label:hover,.ship-label.dragging{background:rgba(255,200,80,.10);border-color:rgba(255,200,80,.55)}
+.ship-label:hover .cap,.ship-label.dragging .cap{opacity:1}
+.ship-menu{position:fixed;z-index:60;min-width:210px;background:rgba(12,18,34,.96);border:1px solid rgba(120,170,255,.45);border-radius:12px;padding:8px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:6px}
+.ship-menu .t{font-weight:700;padding:2px 4px 4px;text-transform:uppercase;letter-spacing:.05em;font-size:12px;color:#cfe0ff}
+.ship-menu button{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:inherit;cursor:pointer}
+.ship-menu button:hover{border-color:var(--honey)}
+.ship-menu button.danger{color:#fda4af}.ship-menu button.danger.arm{background:#7f1d1d;color:#fff;border-color:#fb7185}
+.ship-menu .note{font-size:11px;color:#93a4c3;padding:0 4px}
+.ship-label{cursor:grab;touch-action:none;user-select:none}.ship-label.dragging{cursor:grabbing;border-color:var(--honey)}
 #hud{position:absolute;left:14px;bottom:12px;display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}
 #hud button{background:rgba(21,27,39,.9);border:1px solid var(--line);border-radius:9px;padding:5px 9px}
 #tip{position:fixed;z-index:30;pointer-events:none;max-width:340px;padding:11px 13px;border-radius:12px;background:rgba(21,27,39,.97);
@@ -158,7 +171,7 @@ td.j{max-width:420px}
   <div class="spacer"></div>
   <input class="search" id="q" placeholder="Search agents, jobs…  ( / )" autocomplete="off">
   <div class="seg" id="views">
-    <button data-v="office" title="3D office (1)">🏢 Office</button>
+    <button data-v="office" title="Your spaceships, one per hivey session (1)">🚀 Fleet</button>
     <button data-v="board" title="Cards by what needs you (2)">▦ Board</button>
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
   </div>
@@ -169,6 +182,15 @@ td.j{max-width:420px}
     <option value="15min">⏱ every 15 min</option>
     <option value="1h">⏱ every hour</option>
     <option value="reload">⏱ on reload only</option>
+  </select>
+  <select class="every" id="space" title="Background: a new space scene every time, or always one">
+    <option value="random">🌌 new each time</option>
+    <option value="1">🌌 violet</option>
+    <option value="2">🌌 emerald</option>
+    <option value="3">🌌 crimson</option>
+    <option value="4">🌌 deep blue</option>
+    <option value="5">🌌 golden suns</option>
+    <option value="6">🌌 singularity</option>
   </select>
   <button class="iconbtn" id="refresh" title="Read every terminal and session log again now (r)">⟳</button>
 </header>
