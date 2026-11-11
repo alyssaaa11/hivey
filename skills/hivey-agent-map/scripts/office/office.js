@@ -560,8 +560,35 @@ const office = (() => {
     return e;
   }
   // one spaceship per hivey session, flying in a column (the default session first, stopped ones dark and empty)
+  // free what the old scene used and the new one does not (shapes, materials, textures stay on the GPU
+  // otherwise: every rebuild leaked ~10 MB until the page froze)
+  function release(prev, next) {
+    const keep = new Set([scene.background, scene.environment]);
+    const texturesOf = m => Object.values(m).filter(v => v && v.isTexture);
+    next.traverse(o => {
+      if (o.geometry) keep.add(o.geometry);
+      if (o.skeleton) keep.add(o.skeleton);
+      [].concat(o.material || []).forEach(m => { keep.add(m); texturesOf(m).forEach(t => keep.add(t)); });
+    });
+    prev.traverse(o => {
+      if (o.geometry && !keep.has(o.geometry)) o.geometry.dispose();
+      if (o.skeleton && !keep.has(o.skeleton)) o.skeleton.dispose();  // each robot's bone texture
+      [].concat(o.material || []).forEach(m => {
+        if (keep.has(m)) return;
+        texturesOf(m).forEach(t => { if (!keep.has(t)) t.dispose(); });
+        m.dispose();
+      });
+    });
+  }
   function build(list, sessions) {
+    // rebuild only when something drawn changed (searching, polling and view switches call this often)
+    const sig = JSON.stringify([list.map(a => [a.id, a.status, a.name, a.space, a.context_pct, a.asleep, a.summary?.bubble,
+      a.summary?.needs_you, a.summary?.advice, (a.team || []).map(m => m.status)]), sessions, ui.toon, ui.ships]);
+    if (sig === build.sig && world.children.length) return;
+    build.sig = sig;
+    const prev = world;
     scene.remove(world); world = new THREE.Group(); scene.add(world);
+    ship.reset();
     desks = []; labels.innerHTML = ''; tags = new Map(); roomTags = [];
     sessions = sessions?.length ? sessions : [{ name: 'default', running: true, default: true }];
     const known = new Set(sessions.map(s => s.name));
@@ -638,6 +665,7 @@ const office = (() => {
     sun.shadow.camera.updateProjectionMatrix();
     applyStyle(world);
     markSelected();
+    release(prev, world);
     if (!build.done) { fit(); build.done = true; }
     dirty = true;
   }
@@ -875,6 +903,7 @@ const office = (() => {
     dirty = true;
     return ship.spaceNo();
   }
+  globalThis.__fleet = { memory: () => ({ ...renderer.info.memory, programs: renderer.info.programs?.length }), world: () => world };  // for debugging leaks
   return { ok: true, build, markSelected, resize, fit, flash, setSpace, ready: ship.load() };
 })();
 

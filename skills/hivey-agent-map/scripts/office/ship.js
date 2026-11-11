@@ -403,7 +403,6 @@ export function createShip(opts) {
   }
   function thrust(s) {
     for (const e of engines) {
-      if (!e.sp.parent?.parent) continue;  // a ship from an older build
       const k = 1 + 0.1 * Math.sin(s * 23 + e.ph) + 0.05 * Math.sin(s * 61 + e.ph * 2);
       e.sp.scale.setScalar(e.s * k);
       e.pl.scale.y = e.s * 0.8 * (1 + 0.18 * Math.sin(s * 31 + e.ph));
@@ -416,7 +415,6 @@ export function createShip(opts) {
     SH = st.hull ? once('hull:' + st.hull, () => { const m = HULL.clone(); m.color.set(st.hull); return m; }) : HULL;
     SHD = st.dark ? once('dark:' + st.dark, () => { const m = HULL_DARK.clone(); m.color.set(st.dark); return m; }) : HULL_DARK;
     ACC = st.acc; KIND = st.kind; NAME = name ? String(name).toUpperCase() : '';
-    for (let i = engines.length - 1; i >= 0; i--) if (!engines[i].sp.parent?.parent) engines.splice(i, 1);
   }
   // the ship's name painted on its hull, in its light colour
   function nameplate(grp, text, x, y, z, w, h) {
@@ -795,5 +793,7 @@ export function createShip(opts) {
     spaceNo = n;
     return galaxyTex(n);
   }
-  return { load, makeRobot, makeStation, decorate, bridge, background, pod, space, scenes: SCENES.map(s => s.name), spaceNo: () => spaceNo, planets: () => planets.filter(p => p.parent && p.parent.parent), thrusting: () => engines.length > 0, thrust, accent, statusLed, NO_LINE };
+  return { load, makeRobot, makeStation, decorate, bridge, background, pod, space, scenes: SCENES.map(s => s.name), spaceNo: () => spaceNo, planets: () => planets, thrusting: () => engines.length > 0, thrust,
+    // a new scene is being built: forget the old ships' engines and planets (they kept the old scene in memory)
+    reset: () => { engines.length = 0; planets.length = 0; }, accent, statusLed, NO_LINE };
 }
