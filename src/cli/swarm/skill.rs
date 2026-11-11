@@ -390,6 +390,42 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 "scripts/office/music/space.mp3.b64",
                 include_str!("../../../skills/hivey-agent-map/scripts/office/music/space.mp3.b64"),
             ),
+            (
+                "scripts/office/music/space_02.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/space_02.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_01.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_01.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_02.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_02.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_03.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_03.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_04.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_04.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_05.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_05.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_06.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_06.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_07.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_07.mp3.b64"),
+            ),
+            (
+                "scripts/office/music/track_08.mp3.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/office/music/track_08.mp3.b64"),
+            ),
             // Three.js r160 (MIT), vendored so the office works offline
             (
                 "scripts/office/three.module.min.js",

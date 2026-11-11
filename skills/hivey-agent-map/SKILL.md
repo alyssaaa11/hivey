@@ -199,7 +199,7 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   every 5 min, 15 min or hour (full passes only) or on reload only (no clock: a full pass when the page loads or on ⟳),
   saved in `~/.hivey/agent-map/office-settings.json`. The header shows the time of the last update, of
   the last full summary pass and of the next update.
-- **Page**: Office (Three.js r160, MIT, vendored in `scripts/office/` with RoomEnvironment, OutlineEffect and the bloom
+- **Page** (titled "hivey fleet", with the hivey logo; the ⚙ button holds the 🎵 music, ⏱ updates and 🌌 background settings): Fleet (Three.js r160, MIT, vendored in `scripts/office/` with RoomEnvironment, OutlineEffect and the bloom
   post-processing; `ship.js` builds the scene: the deck of a spacecraft floating in front of a galaxy, viewports, hull
   light strips, an observation lounge with a holotable, galley, server racks, plant pods; the crew are mini robots,
   one per desk, glass visor eyes in the status colour, team-coloured ear pods; ✨ HD (bloom) or 🎨 comic, `t`; only working agents move, a blocked one waves, labels
@@ -213,7 +213,7 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   `office.py` decodes them into the page folder): the animated crew robot (RobotExpressive, Tomás Laulhé /
   Quaternius, CC0: Idle + nods when working, Wave when blocked, ThumbsUp when done, Sitting when idle), Kenney
   Space Kit and Space Station Kit pieces (CC0: desks, chairs, generators, dishes, small craft, astronauts,
-  consoles, crates), licences in `models/LICENSE-*`; a MusicGen space ambient loop, 🔇/🎵 or `m`.
+  consoles, crates), licences in `models/LICENSE-*`; 10 MusicGen electronic space tracks (`music/README.txt` has their prompts), 🔇/🎵 or `m`; the 🎵 menu plays a new one each time (moving on when one ends) or always one (saved with the other settings). Browsers allow sound only after you touch the page, so when playing at once is refused the music starts with your first click or key press anywhere.
 - **CEO**: the space named `ceo` gets the captain's bridge, its own room in the ship's nose (gold trim, main
   viewscreen); its master sits at the captain's console.
 

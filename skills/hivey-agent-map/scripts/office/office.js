@@ -26,7 +26,7 @@ const ui = JSON.parse(localStorage.getItem('hv-office-ship') || '{}');
 ui.view ||= 'office';
 ui.filter ||= null;
 if (ui.toon === undefined) ui.toon = false;
-const save = () => localStorage.setItem('hv-office-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space }));
+const save = () => localStorage.setItem('hv-office-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
 // ship positions also live on the office server, so every browser opens the fleet where you left it
 const saveShips = () => { save(); fetch('/hv-office-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
 
@@ -904,7 +904,7 @@ async function poll() {
       if (refreshing && Date.parse(j.generated) > refreshing) { refreshing = false; $('#refresh').innerHTML = '⟳'; toast('Office updated'); }
       renderAll();
     }
-  } catch (e) { console.error('hivey office:', e); $('#sub').textContent = 'cannot read office.json: is the office server running? (hivey menu → agent office)'; }
+  } catch (e) { console.error('hivey fleet:', e); $('#sub').textContent = 'cannot read office.json: is the office server running? (hivey menu → agent office)'; }
 }
 async function refreshNow() {
   if (refreshing) return;
@@ -917,18 +917,65 @@ async function refreshNow() {
 }
 document.querySelectorAll('#views button').forEach(b => b.onclick = () => { ui.view = b.dataset.v; save(); renderAll(); });
 $('#refresh').onclick = refreshNow;
-// background music: a MusicGen space ambient loop, off until you turn it on (browsers block autoplay)
+// ⚙ settings panel (music, updates, background): opens under the gear, closes on a click outside or Escape
+const gear = $('#gear'), panel = $('#settings');
+const showSettings = on => { panel.hidden = !on; gear.classList.toggle('on', on); };
+gear.onclick = e => { e.stopPropagation(); showSettings(panel.hidden); };
+panel.addEventListener('click', e => e.stopPropagation());
+document.addEventListener('click', () => showSettings(false));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') showSettings(false); });
+// background music: MusicGen electronic space tracks; 🎵 setting = a new track each time (moving on to another
+// when one ends) or always one (looping). Browsers only allow sound after you touch the page, so when playing
+// right away is refused, the music starts with your first click or key press anywhere.
+const TRACKS = [
+  ['space.mp3', 'cosmic ambient'], ['space_02.mp3', 'cosmic ambient II'], ['track_01.mp3', 'dark techno'],
+  ['track_02.mp3', 'synthwave cruise'], ['track_03.mp3', 'glitch downtempo'], ['track_04.mp3', 'cinematic drones'],
+  ['track_05.mp3', 'lo-fi stars'], ['track_06.mp3', 'berlin sequencer'], ['track_07.mp3', 'deep house orbit'],
+  ['track_08.mp3', 'liquid drum & bass'],
+];
 const bgm = $('#bgm');
 bgm.volume = 0.35;
+let trackNo = 0;
+const fixedTrack = () => /^\d+$/.test(String(ui.track)) && +ui.track >= 1 && +ui.track <= TRACKS.length ? +ui.track : 0;
+function loadTrack(n) {
+  trackNo = n;
+  bgm.src = './music/' + TRACKS[n - 1][0];
+  bgm.loop = !!fixedTrack();
+  $('#music').title = ui.music ? `Music: ${TRACKS[n - 1][1]} (click to mute, m)` : 'Background music on/off (m)';
+}
+function pickTrack() {  // the fixed one, or a random one that is not the one just played
+  const f = fixedTrack();
+  if (f) return f;
+  let n = 1 + Math.floor(Math.random() * TRACKS.length);
+  if (n === trackNo && TRACKS.length > 1) n = n % TRACKS.length + 1;
+  return n;
+}
+bgm.addEventListener('ended', () => { if (!fixedTrack()) { loadTrack(pickTrack()); if (ui.music && inFront()) bgm.play().catch(() => {}); } });
+let waitingForTouch = false;
+function startOnTouch() {  // the browser refused to play before you touched the page: start on the first touch
+  if (waitingForTouch) return;
+  waitingForTouch = true;
+  const go = () => { waitingForTouch = false; removeEventListener('pointerdown', go, true); removeEventListener('keydown', go, true); if (ui.music && bgm.paused) bgm.play().catch(() => {}); };
+  addEventListener('pointerdown', go, true); addEventListener('keydown', go, true);
+}
 function setMusic(on) {
   ui.music = on; save();
   $('#music').textContent = on ? '🎵' : '🔇';
-  $('#music').title = on ? 'Music on: click to mute (m)' : 'Background music on/off (m)';
-  if (on) bgm.play().catch(() => { $('#music').textContent = '🔇'; toast('Click 🔇 to start the music'); }); else bgm.pause();
+  if (!trackNo) loadTrack(pickTrack());
+  $('#music').title = on ? `Music: ${TRACKS[trackNo - 1][1]} (click to mute, m)` : 'Background music on/off (m)';
+  if (on) bgm.play().catch(() => startOnTouch()); else bgm.pause();
 }
-$('#music').onclick = () => setMusic(!ui.music);
-if (ui.music) addEventListener('pointerdown', () => { if (ui.music && bgm.paused) setMusic(true); }, { once: true });
+$('#music').onclick = e => { e.stopPropagation(); setMusic(!ui.music); };
 $('#music').textContent = ui.music ? '🎵' : '🔇';
+$('#track').value = fixedTrack() ? String(fixedTrack()) : 'random';
+$('#track').onchange = e => {
+  ui.track = e.target.value; save();
+  loadTrack(pickTrack());
+  if (!ui.music) setMusic(true); else bgm.play().catch(() => startOnTouch());
+  toast(ui.track === 'random' ? `A new track each time (now: ${TRACKS[trackNo - 1][1]})` : `Music: ${TRACKS[trackNo - 1][1]}, always`);
+  post('/hv-office-settings', { track: ui.track }).catch(() => {});
+};
+if (ui.music) { loadTrack(pickTrack()); bgm.play().catch(() => startOnTouch()); }
 // only while the page is in front of you: pause when you switch to the terminal or another app or tab
 const inFront = () => !document.hidden && document.hasFocus();
 function followFocus() { if (!ui.music) return; if (inFront()) bgm.play().catch(() => {}); else bgm.pause(); }
@@ -974,6 +1021,10 @@ post('/hv-office-refresh', { load: true }).then(j => {
     ui.space = j.space; save(); $('#space').value = j.space;
     if (j.space !== 'random') office.setSpace(j.space);
   } else if (!j.space && ui.space) post('/hv-office-settings', { space: String(ui.space) }).catch(() => {});
+  if (j.track && j.track !== String(ui.track || 'random')) {  // the music choice made in another browser
+    ui.track = j.track; save(); $('#track').value = j.track;
+    if (fixedTrack() && fixedTrack() !== trackNo) { loadTrack(fixedTrack()); if (ui.music) bgm.play().catch(() => startOnTouch()); }
+  } else if (!j.track && ui.track) post('/hv-office-settings', { track: String(ui.track) }).catch(() => {});
   const server = j.ships || {}, local = ui.ships || {};
   if (Object.keys(server).length) {  // the server's positions win; rebuild if they differ from this browser's
     if (JSON.stringify(server) !== JSON.stringify(local)) { ui.ships = server; save(); if (data) renderAll(); }

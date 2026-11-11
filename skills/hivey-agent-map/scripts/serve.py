@@ -50,7 +50,7 @@ PREFERRED_PORT = 42817  # unregistered and below macOS's temporary-port range, s
 IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 MARK = b"hivey-agent-map"
-VERSION = b"office-11"  # bump when the server gains actions, so `ensure` replaces an older one
+VERSION = b"office-12"  # bump when the server gains actions, so `ensure` replaces an older one
 OFFICE_EVERY = 300  # seconds between full office refreshes (every terminal re-summarized) while its page is open
 OFFICE_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 OFFICE_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -498,10 +498,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if str(req["space"]) not in ("random", "1", "2", "3", "4", "5", "6"):
                         return self.answer(400, b'{"ok":false,"error":"space: random or 1..6"}')
                     cur["space"] = str(req["space"])
+                if "track" in req:  # the music: "random" (new each load, then the next) or a track "1".."10"
+                    if not re.fullmatch(r"random|[1-9]|10", str(req["track"])):
+                        return self.answer(400, b'{"ok":false,"error":"track: random or 1..10"}')
+                    cur["track"] = str(req["track"])
                 if "ships" in req:  # the ship positions you dragged on the office page
                     cur["ships"] = clean_ships(req["ships"])
                 OFFICE_SETTINGS.write_text(json.dumps(cur))
-                return self.answer(200, json.dumps({"ok": True, "every": office_every(), "space": cur.get("space"),
+                return self.answer(200, json.dumps({"ok": True, "every": office_every(), "space": cur.get("space"), "track": cur.get("track"),
                                                     "ships": cur.get("ships", {})}).encode())
             every = office_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
@@ -511,7 +515,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 Handler.office_full = time.time()
             start_office_refresh(quick=quick)
             return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
-                                                "space": office_settings().get("space"),
+                                                "space": office_settings().get("space"), "track": office_settings().get("track"),
                                                 "ships": clean_ships(office_settings().get("ships"))}).encode())
         if self.path == "/hv-office-action":
             try:

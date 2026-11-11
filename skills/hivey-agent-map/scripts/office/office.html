@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>hivey office</title>
+<title>hivey fleet</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
 <style>
 :root{
@@ -19,7 +19,7 @@ a{color:var(--honey)}
 header{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;
   padding:10px 18px;background:rgba(13,17,25,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:10px;margin-right:6px}
-.brand .logo{font-size:26px;filter:drop-shadow(0 0 8px rgba(245,184,61,.45))}
+.brand .logo{width:30px;height:30px;display:block;filter:drop-shadow(0 0 8px rgba(155,239,200,.35))}
 .brand h1{margin:0;font-size:17px;letter-spacing:.2px}
 .brand .sub{color:var(--muted);font-size:12px}
 .pills{display:flex;flex-wrap:wrap;gap:6px}
@@ -40,6 +40,15 @@ header{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:
 .iconbtn:hover{border-color:var(--honey)}
 .every{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 9px;color:inherit;font:inherit;cursor:pointer}
 .every:hover{border-color:var(--honey)}
+.settings{position:fixed;top:58px;right:14px;z-index:70;width:290px;background:rgba(12,18,34,.97);border:1px solid rgba(120,170,255,.4);border-radius:14px;
+  padding:12px 14px;box-shadow:0 14px 40px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:10px}
+.settings[hidden]{display:none}
+.settings .t{font-weight:700;font-size:13px;color:#cfe0ff;letter-spacing:.04em}
+.settings label{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px}
+.settings label span{color:#cbd5e1;white-space:nowrap}
+.settings select{width:160px}
+.settings .note{font-size:11px;color:var(--muted);line-height:1.4}
+#gear.on{border-color:var(--honey)}
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* ---------- needs-you inbox ---------- */
@@ -166,7 +175,7 @@ td.j{max-width:420px}
 </head>
 <body>
 <header>
-  <div class="brand"><span class="logo">🐝</span><div><h1>hivey office</h1><div class="sub" id="sub">loading…</div></div></div>
+  <div class="brand"><svg class="logo" viewBox="0 0 40 40" role="img" aria-label="hivey"><rect width="40" height="40" rx="9" fill="#9befc8"/><path d="M10 9h7v9h6V9h7v23h-7V22h-6v10h-7z" fill="#122319"/></svg><div><h1>hivey fleet</h1><div class="sub" id="sub">loading…</div></div></div>
   <div class="pills" id="pills"></div>
   <div class="spacer"></div>
   <input class="search" id="q" placeholder="Search agents, jobs…  ( / )" autocomplete="off">
@@ -176,24 +185,48 @@ td.j{max-width:420px}
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
   </div>
   <button class="iconbtn" id="music" title="Background music on/off (m)">🔇</button>
-  <select class="every" id="every" title="How the office updates itself">
-    <option value="minute">⏱ every minute</option>
-    <option value="5min">⏱ every 5 min</option>
-    <option value="15min">⏱ every 15 min</option>
-    <option value="1h">⏱ every hour</option>
-    <option value="reload">⏱ on reload only</option>
-  </select>
-  <select class="every" id="space" title="Background: a new space scene every time, or always one">
-    <option value="random">🌌 new each time</option>
-    <option value="1">🌌 violet</option>
-    <option value="2">🌌 emerald</option>
-    <option value="3">🌌 crimson</option>
-    <option value="4">🌌 deep blue</option>
-    <option value="5">🌌 golden suns</option>
-    <option value="6">🌌 singularity</option>
-  </select>
   <button class="iconbtn" id="refresh" title="Read every terminal and session log again now (r)">⟳</button>
+  <button class="iconbtn" id="gear" title="Settings: music, updates, background">⚙</button>
 </header>
+<div id="settings" class="settings" hidden>
+  <div class="t">⚙ Settings</div>
+  <label><span>🎵 Music</span>
+      <select class="every" id="track" title="Music: a new track each time, or always one">
+        <option value="random">new each time</option>
+        <option value="1">cosmic ambient</option>
+        <option value="2">cosmic ambient II</option>
+        <option value="3">dark techno</option>
+        <option value="4">synthwave cruise</option>
+        <option value="5">glitch downtempo</option>
+        <option value="6">cinematic drones</option>
+        <option value="7">lo-fi stars</option>
+        <option value="8">berlin sequencer</option>
+        <option value="9">deep house orbit</option>
+        <option value="10">liquid drum &amp; bass</option>
+      </select>
+  </label>
+  <label><span>⏱ Updates</span>
+      <select class="every" id="every" title="How the office updates itself">
+        <option value="minute">every minute</option>
+        <option value="5min">every 5 min</option>
+        <option value="15min">every 15 min</option>
+        <option value="1h">every hour</option>
+        <option value="reload">on reload only</option>
+      </select>
+  </label>
+  <label><span>🌌 Background</span>
+      <select class="every" id="space" title="Background: a new space scene every time, or always one">
+        <option value="random">new each time</option>
+        <option value="1">violet</option>
+        <option value="2">emerald</option>
+        <option value="3">crimson</option>
+        <option value="4">deep blue</option>
+        <option value="5">golden suns</option>
+        <option value="6">singularity</option>
+      </select>
+  </label>
+  <div class="note">Saved for every browser. 🔇 in the header mutes the music; ⟳ updates now.</div>
+</div>
 <div id="inbox"></div>
 <main>
   <section id="office">
@@ -206,7 +239,7 @@ td.j{max-width:420px}
 <aside id="drawer"></aside>
 <div id="tip"></div>
 <div id="toast"></div>
-<audio id="bgm" src="./music/space.mp3" loop preload="none"></audio>
+<audio id="bgm" preload="auto"></audio>
 <script type="module" src="./office.js"></script>
 </body>
 </html>
