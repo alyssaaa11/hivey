@@ -188,12 +188,17 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
 - **Reads** each desk's terminal (`hivey pane read`, any CLI) and its Claude Code session log (context
   size = input + cache tokens of the last reply, model, last prompt, the session recap, last replies and
   tools). `office.py run` writes `~/.hivey/agent-map/reports/office/office.json`.
-- **Summarizes** with Sonnet (`claude -p --model sonnet`, no tools, no settings, no session saved), in
+- **Summarizes** with Haiku (`claude -p --model haiku`, no tools, no settings, no session saved), in
   batches of 10, only the desks whose terminal or log changed (`~/.hivey/agent-map/office-cache.json`):
   current job, a speech-bubble line, up to 3 achievements, next step, what to answer when it waits
   for you, and keep / compact / clear advice. `--no-llm` (or a failed call) falls back to the recap.
-- **Refreshes** every 5 minutes while the page is open (the server's office clock; the page polls every
-  15 s), or now with ⟳ / `r`.
+- **Refreshes** while the page is open (the server's office clock; the page polls every 15 s): a live
+  pass every minute and when the page loads (`run --quick`: status, context and terminal are fresh,
+  only desks whose status changed go to the model) and a full pass every 5 minutes (every desk whose
+  terminal changed), or a full pass now with ⟳ / `r`. The page's ⏱ setting picks every minute (that),
+  every 5 min, 15 min or hour (full passes only) or on reload only (no clock: a full pass when the page loads or on ⟳),
+  saved in `~/.hivey/agent-map/office-settings.json`. The header shows the time of the last update, of
+  the last full summary pass and of the next update.
 - **Page**: Office (Three.js r160, MIT, vendored in `scripts/office/` with RoomEnvironment, OutlineEffect and the bloom
   post-processing; `ship.js` builds the scene: the deck of a spacecraft floating in front of a galaxy, viewports, hull
   light strips, an observation lounge with a holotable, galley, server racks, plant pods; the crew are mini robots,

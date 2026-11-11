@@ -38,6 +38,8 @@ header{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:
 .seg button.on{background:var(--panel2);color:var(--text);box-shadow:inset 0 -2px 0 var(--honey)}
 .iconbtn{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 11px}
 .iconbtn:hover{border-color:var(--honey)}
+.every{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:7px 9px;color:inherit;font:inherit;cursor:pointer}
+.every:hover{border-color:var(--honey)}
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 /* ---------- needs-you inbox ---------- */
@@ -161,6 +163,13 @@ td.j{max-width:420px}
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
   </div>
   <button class="iconbtn" id="music" title="Background music on/off (m)">🔇</button>
+  <select class="every" id="every" title="How the office updates itself">
+    <option value="minute">⏱ every minute</option>
+    <option value="5min">⏱ every 5 min</option>
+    <option value="15min">⏱ every 15 min</option>
+    <option value="1h">⏱ every hour</option>
+    <option value="reload">⏱ on reload only</option>
+  </select>
   <button class="iconbtn" id="refresh" title="Read every terminal and session log again now (r)">⟳</button>
 </header>
 <div id="inbox"></div>

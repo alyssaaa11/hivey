@@ -12,7 +12,12 @@ trigger them:
                             terminal app forward); compact/clear type /compact or /clear into an agent
                             that is not working
 
-While an office page is open (it polls /office/office.json), the office is refreshed every 5 minutes.
+While an office page is open (it polls /office/office.json), a live pass runs every minute (status,
+context, screen; only desks whose status changed go to the model) and a full re-summary every 5 minutes.
+The office page's ⏱ setting (POST /hv-office-settings {"every": "minute" | "5min" | "15min" | "1h" | "reload"}, saved in
+~/.hivey/agent-map/office-settings.json) picks every minute (above), every 5 / 15 minutes or every hour (full passes only)
+or on reload only (no clock). POST /hv-office-refresh: {} a full pass now (⟳), {"load": true} when a page
+opens (a quick pass in minute mode, a full one otherwise), {"quick": true} a quick pass.
 It stops after 2 hours unused. Python standard library only.
 """
 from __future__ import annotations
@@ -30,6 +35,9 @@ import urllib.request
 from pathlib import Path
 
 STATE = Path.home() / ".hivey" / "agent-map"
+OFFICE_SETTINGS = STATE / "office-settings.json"  # {"every": "minute" | "5min" | "reload"}
+EVERY_MODES = ("minute", "5min", "15min", "1h", "reload")
+FULL_EVERY = {"minute": 300, "5min": 300, "15min": 900, "1h": 3600}  # seconds between full passes per mode
 REPORTS = STATE / "reports"
 INFO = STATE / "server.json"
 SCRIPTS = Path(__file__).resolve().parent
@@ -37,8 +45,9 @@ PREFERRED_PORT = 42817  # unregistered and below macOS's temporary-port range, s
 IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 MARK = b"hivey-agent-map"
-VERSION = b"office-2"  # bump when the server gains actions, so `ensure` replaces an older one
-OFFICE_EVERY = 300  # seconds between office refreshes while its page is open
+VERSION = b"office-5"  # bump when the server gains actions, so `ensure` replaces an older one
+OFFICE_EVERY = 300  # seconds between full office refreshes (every terminal re-summarized) while its page is open
+OFFICE_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 OFFICE_WATCHED = 600  # the page counts as open for this long after its last poll
 OFFICE_JSON = REPORTS / "office" / "office.json"
 PANE = re.compile(r"^[\w-]{1,24}:[\w-]{1,24}$")
@@ -51,9 +60,19 @@ def hivey_bin() -> str | None:
     return exe if exe and os.path.isfile(exe) else shutil.which("hivey")
 
 
-def start_office_refresh(llm: bool = True) -> None:
+def office_every() -> str:
+    """The office page's refresh setting (every minute by default)."""
+    try:
+        mode = json.loads(OFFICE_SETTINGS.read_text()).get("every")
+    except (OSError, ValueError, AttributeError):
+        mode = None
+    return mode if mode in EVERY_MODES else "minute"
+
+
+def start_office_refresh(llm: bool = True, quick: bool = False) -> None:
     """office.py run in the background (it holds its own lock, so overlapping starts are dropped)."""
-    cmd = [sys.executable, "-I", str(SCRIPTS / "office.py"), "run"] + ([] if llm else ["--no-llm"])
+    cmd = [sys.executable, "-I", str(SCRIPTS / "office.py"), "run"] + ([] if llm else ["--no-llm"]) \
+        + (["--quick"] if quick else [])
     with open(STATE / "office.log", "a") as fh:
         subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=fh, stderr=fh, start_new_session=True)
 
@@ -153,6 +172,43 @@ def live_status(hv: str, pane: str) -> str | None:
         return None
 
 
+def waiting_in_prompt(hv: str, pane: str, command: str) -> bool:
+    """True while the command still sits typed in the agent's input box (its Enter not taken yet)."""
+    try:
+        out = subprocess.run([hv, "pane", "read", pane, "--source", "recent", "--lines", "15"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    try:  # the CLI answers JSON or plain text depending on the version
+        out = json.loads(out)["result"].get("text", out)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return any(re.match(r"^[│|\s]*[>❯›]\s*" + re.escape(command) + r"\s*[│|]?\s*$", line)
+               for line in str(out).splitlines()[-10:])
+
+
+def send_command(hv: str, pane: str, command: str) -> tuple[bool, str]:
+    """Type a slash command into an agent and press Enter as its own key press, so the CLI does not take
+    text and Enter as one paste (or let its slash-command menu swallow the Enter); press Enter again
+    while the command is still waiting in the input box."""
+    def call(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run([hv, "pane", *args], capture_output=True, text=True, timeout=10)
+    p = call("send-text", pane, command)
+    if p.returncode != 0:
+        return False, (p.stderr or p.stdout).strip()[-200:] or f"{command} failed"
+    for wait in (0.5, 1.2, 1.5):
+        time.sleep(wait)
+        if wait > 0.5 and not waiting_in_prompt(hv, pane, command):
+            return True, f"sent {command} and Enter"
+        p = call("send-keys", pane, "Enter")
+        if p.returncode != 0:
+            return False, (p.stderr or p.stdout).strip()[-200:] or "Enter failed"
+    time.sleep(1.5)
+    if waiting_in_prompt(hv, pane, command):
+        return False, f"{command} is typed but the agent has not taken it; press Enter in its terminal"
+    return True, f"sent {command} and Enter"
+
+
 def office_action(pane: str, action: str) -> tuple[bool, str]:
     hv = hivey_bin()
     if not hv:
@@ -169,10 +225,7 @@ def office_action(pane: str, action: str) -> tuple[bool, str]:
         status = live_status(hv, pane)
         if status in ("working", "blocked"):
             return False, f"it is {status} now; try when it is idle"
-        p = subprocess.run([hv, "pane", "run", pane, f"/{action}"], capture_output=True, text=True, timeout=10)
-        if p.returncode != 0:
-            return False, (p.stderr or p.stdout).strip()[-200:] or f"/{action} failed"
-        return True, f"sent /{action}"
+        return send_command(hv, pane, f"/{action}")
     return False, "unknown action"
 
 
@@ -230,6 +283,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     busy = threading.Lock()
     last_used = time.time()
     office_polled = 0.0
+    office_full = 0.0  # last full (all re-summarized) office refresh started by this server
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(REPORTS), **kwargs)
@@ -259,13 +313,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         Handler.last_used = time.time()
         port = self.server.server_address[1]
-        if self.path not in ("/hv-refresh", "/hv-office-refresh", "/hv-office-action"):
+        if self.path not in ("/hv-refresh", "/hv-office-refresh", "/hv-office-action", "/hv-office-settings"):
             return self.answer(404, b'{"ok":false,"error":"not found"}')
         if self.headers.get("Origin") not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
             return self.answer(403, b'{"ok":false,"error":"only the agent map pages can do this"}')
-        if self.path == "/hv-office-refresh":
-            start_office_refresh()
-            return self.answer(200, b'{"ok":true,"started":true}')
+        if self.path in ("/hv-office-refresh", "/hv-office-settings"):
+            try:
+                length = min(int(self.headers.get("Content-Length") or 0), 4096)
+                req = json.loads(self.rfile.read(length) or b"{}")
+                req = req if isinstance(req, dict) else {}
+            except ValueError:
+                req = {}
+            if self.path == "/hv-office-settings":
+                if req.get("every") not in EVERY_MODES:
+                    return self.answer(400, b'{"ok":false,"error":"every: minute, 5min, 15min, 1h or reload"}')
+                OFFICE_SETTINGS.write_text(json.dumps({"every": req["every"]}))
+                return self.answer(200, json.dumps({"ok": True, "every": req["every"]}).encode())
+            every = office_every()
+            # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
+            quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
+            Handler.office_polled = time.time()
+            if not quick:
+                Handler.office_full = time.time()
+            start_office_refresh(quick=quick)
+            return self.answer(200, json.dumps({"ok": True, "started": True, "every": every}).encode())
         if self.path == "/hv-office-action":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)
@@ -306,18 +377,23 @@ def serve() -> int:
                 return
 
     def office_clock() -> None:
-        """Refresh the office every 5 minutes while one of its pages is open."""
+        """While an office page is open: a live pass every minute, a full re-summary every 5 minutes."""
         while True:
-            time.sleep(15)
-            if time.time() - Handler.office_polled > OFFICE_WATCHED:
+            time.sleep(10)
+            every = office_every()
+            if every == "reload" or time.time() - Handler.office_polled > OFFICE_WATCHED:
                 continue
             try:
                 age = time.time() - OFFICE_JSON.stat().st_mtime
             except OSError:
                 age = OFFICE_EVERY
-            if age >= OFFICE_EVERY:
+            if time.time() - Handler.office_full >= FULL_EVERY.get(every, OFFICE_EVERY):
+                Handler.office_full = time.time()
                 start_office_refresh()
-                time.sleep(60)  # give it time to write before checking the age again
+                time.sleep(30)  # give it time to write before checking the age again
+            elif every == "minute" and age >= OFFICE_LIVE:
+                start_office_refresh(quick=True)
+                time.sleep(20)
 
     threading.Thread(target=watchdog, daemon=True).start()
     threading.Thread(target=office_clock, daemon=True).start()

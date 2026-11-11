@@ -85,9 +85,9 @@ function warpPing() {
   } catch (e) { /* no audio: the flash is enough */ }
 }
 async function act(a, action) {
-  if (action === 'focus') {
+  if (action === 'focus' || action === 'compact') {
     warpPing();
-    toast(`Opening ${a.name} in hivey…`);
+    toast(action === 'focus' ? `Opening ${a.name} in hivey…` : `Compacting ${a.name}…`);
     office.flash(a.id);
     document.querySelectorAll(`[data-id="${CSS.escape(a.id)}"]`).forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
   }
@@ -97,7 +97,7 @@ async function act(a, action) {
     toast(j.ok ? (action === 'focus' ? `${a.name} is open in hivey ↗` : `${a.name}: ${j.message}`) : `${a.name}: ${j.message}`);
   } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
 }
-// compact / clear need a second click within 3 s (no browser dialogs)
+// clear needs a second click within 3 s (no browser dialogs); compact goes at once
 function armed(btn, a, action) {
   if (btn.classList.contains('arm')) { btn.classList.remove('arm'); btn.textContent = btn.dataset.label; act(a, action); return; }
   btn.dataset.label = btn.textContent;
@@ -109,8 +109,8 @@ function actionButtons(a) {
   const busy = a.status === 'working' || a.status === 'blocked';
   return `<div class="actions">
     <button class="primary" data-act="focus" title="Open its terminal in hivey">↗ Open</button>
-    ${a.cli_id === 'claude' ? `<button data-act="compact" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /compact into it"'}>🗜 Compact</button>
-    <button data-act="clear" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /clear into it"'}>🧹 Clear</button>` : ''}
+    ${a.cli_id === 'claude' ? `<button data-act="compact" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /compact into it and press Enter"'}>🗜 Compact</button>
+    <button data-act="clear" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /clear into it and press Enter (click twice)"'}>🧹 Clear</button>` : ''}
     <button data-act="info" title="Everything about it">ⓘ Details</button></div>`;
 }
 function wireActions(root) {
@@ -124,7 +124,7 @@ function wireActions(root) {
       if (b.disabled) return;
       const k = b.dataset.act;
       if (k === 'info') return openDrawer(a);
-      if (k === 'focus') return act(a, 'focus');
+      if (k === 'focus' || k === 'compact') return act(a, k);
       armed(b, a, k);
     });
     el.addEventListener('contextmenu', e => { e.preventDefault(); openDrawer(a); });
@@ -143,13 +143,18 @@ function renderHeader() {
   $('#pills').querySelectorAll('.pill').forEach(p => p.onclick = () => { ui.filter = ui.filter === p.dataset.f ? null : p.dataset.f; save(); renderAll(); });
   tickSub();
 }
+let every = 'minute';  // the refresh setting, kept by the office server (shared by every open page)
+const EVERY_S = { minute: 60, '5min': 300, '15min': 900, '1h': 3600 };
 function tickSub() {
   if (!data) return;
-  const next = Date.parse(data.generated) / 1000 + (data.refresh_every || 300) - Date.now() / 1000;
+  const next = Date.parse(data.generated) / 1000 + (EVERY_S[every] || 0) - Date.now() / 1000;
   const n = agents.length;
   const mm = Math.max(0, Math.floor(next / 60)), ss = Math.max(0, Math.floor(next % 60));
-  $('#sub').innerHTML = `${n} agent${n === 1 ? '' : 's'} · updated ${ago(data.generated)} · ` +
-    (refreshing ? '<span class="spin">⟳</span> reading terminals…' : next > 0 ? `next in ${mm}:${String(ss).padStart(2, '0')}` : 'refreshing soon') +
+  const at = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?';
+  const full = data.full_at && data.full_at !== data.generated
+    ? ` · <span title="Last pass that re-summarized every agent whose terminal changed">summaries ${at(data.full_at)} (${ago(data.full_at)})</span>` : '';
+  $('#sub').innerHTML = `${n} agent${n === 1 ? '' : 's'} · <span title="Last time every terminal and session log was read">updated ${at(data.generated)} (${ago(data.generated)})</span>${full} · ` +
+    (refreshing ? '<span class="spin">⟳</span> reading terminals…' : every === 'reload' ? 'updates when you reload or press ⟳' : next > 0 ? `next ${at(new Date(Date.now() + next * 1000).toISOString())} (in ${mm}:${String(ss).padStart(2, '0')})` : 'refreshing soon') +
     (data.error ? ` · <span class="err" title="${esc(data.error)}">summaries from the recap (model call failed)</span>` : '');
 }
 function renderInbox() {
@@ -251,7 +256,7 @@ function wireDrawer(a) {
     e.stopPropagation();
     if (b.disabled) return;
     const k = b.dataset.act;
-    if (k === 'focus') return act(a, 'focus');
+    if (k === 'focus' || k === 'compact') return act(a, k);
     if (k === 'info') return;
     armed(b, a, k);
   });
@@ -812,3 +817,11 @@ if (!office.ok) document.querySelector('#views [data-v="office"]').disabled = tr
 setInterval(poll, 15000);
 setInterval(tickSub, 1000);
 poll();
+// opening or reloading the page reads every terminal again right away; the server answers with the
+// refresh setting (every minute: a quick pass, the model only for changed statuses; otherwise a full pass)
+const post = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+function showEvery(m) { if (EVERY_S[m] || m === 'reload') { every = m; $('#every').value = m; tickSub(); } }
+post('/hv-office-refresh', { load: true }).then(j => { showEvery(j.every); setTimeout(poll, 2500); setTimeout(poll, 8000); }).catch(() => {});
+$('#every').onchange = e => post('/hv-office-settings', { every: e.target.value })
+  .then(j => { showEvery(j.every); toast({ minute: 'Updates every minute (summaries only for agents that changed)', '5min': 'Updates every 5 minutes', '15min': 'Updates every 15 minutes', '1h': 'Updates every hour', reload: 'Updates only when you reload or press ⟳' }[j.every]); })
+  .catch(() => toast('The office server is not answering'));

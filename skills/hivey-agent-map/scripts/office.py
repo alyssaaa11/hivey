@@ -10,7 +10,7 @@ For each desk it reads two things:
                 context size (input + cache tokens of the last reply), model, your last prompt, the
                 session's recap (away_summary) and its last replies
 
-Sonnet (`claude -p --model sonnet`, no tools, no session saved) turns them into a short summary per
+Haiku (`claude -p --model haiku`, no tools, no session saved) turns them into a short summary per
 desk: the current job, a speech-bubble line, what it achieved, what it waits for and whether to keep,
 /compact or /clear the conversation. Only desks whose terminal or log changed since the last run are
 sent again, in batches, so 100 agents cost a few calls per refresh. Without a model (--no-llm, or the
@@ -19,7 +19,7 @@ call fails) the summary comes from the recap and the last prompt.
 Output: ~/.hivey/agent-map/reports/office/office.json, read by office.html (Three.js, vendored), served
 by serve.py, which reruns this every 5 minutes while the page is open. Python standard library only.
 
-  office.py run [--no-llm] [--model sonnet]    one refresh
+  office.py run [--no-llm] [--quick] [--model haiku]    one refresh (--quick: the 1-minute live pass)
   office.py open                               start the server, refresh if stale, open the page
 """
 from __future__ import annotations
@@ -48,7 +48,7 @@ STATE = HOME / ".hivey" / "agent-map"
 OUT = STATE / "reports" / "office"
 CACHE = STATE / "office-cache.json"
 LOCK = STATE / "office.lock"
-RUN_DIR = STATE / "office-run"  # neutral cwd for the sonnet calls (no CLAUDE.md, no project)
+RUN_DIR = STATE / "office-run"  # neutral cwd for the model calls (no CLAUDE.md, no project)
 
 STANDARD_WINDOW = 200_000
 LARGE_WINDOW = 1_000_000
@@ -305,7 +305,7 @@ def claude_token() -> str | None:
         return None
 
 
-def ask_sonnet(batch: list[dict], model: str, token: str | None) -> list[dict]:
+def ask_model(batch: list[dict], model: str, token: str | None) -> list[dict]:
     claude = shutil.which("claude") or str(HOME / ".local/bin/claude")
     prompt = PROMPT + "\n\n".join(brief(d) for d in batch)
     env = dict(os.environ)
@@ -382,7 +382,7 @@ def collect(hv: str) -> list[dict]:
     return people
 
 
-def run(model: str = "sonnet", use_llm: bool = True) -> int:
+def run(model: str = "haiku", use_llm: bool = True, quick: bool = False) -> int:
     hv = hivey_bin()
     if not hv:
         print("office: hivey not found", file=sys.stderr)
@@ -397,34 +397,41 @@ def run(model: str = "sonnet", use_llm: bool = True) -> int:
             print("office: a refresh is already running")
             return 0
         LOCK.unlink(missing_ok=True)
-        return run(model, use_llm)
+        return run(model, use_llm, quick)
     try:
-        return _run(hv, model, use_llm)
+        return _run(hv, model, use_llm, quick)
     finally:
         LOCK.unlink(missing_ok=True)
 
 
-def _run(hv: str, model: str, use_llm: bool) -> int:
+def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
+    """quick: the 1-minute live pass. Status, context and screen are fresh; a desk whose terminal moved
+    but whose status did not keeps its last summary (re-summarized at the next full pass), and only
+    desks whose status changed (blocked -> working, working -> done...) are sent to the model now."""
     start = time.time()
     people = collect(hv)
     try:
         cache = json.loads(CACHE.read_text())
     except (OSError, ValueError):
         cache = {}
-    todo, error = [], ""
+    todo, error, stale = [], "", {}
     for d in people:
         d["fp"] = fingerprint(d)
         hit = cache.get(d["id"])
         if hit and hit.get("fp") == d["fp"] and (hit.get("by") != "fallback" or not use_llm):
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
+        elif quick and hit and hit.get("status", d["status"]) == d["status"] and hit.get("by") != "fallback":
+            d["summary"] = hit["summary"]
+            d["summarized_at"] = hit.get("at")
+            stale[d["id"]] = hit  # keep its old fingerprint so the next full pass re-summarizes it
         else:
             todo.append(d)
     if todo and use_llm:
         token = claude_token()
         batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
         with cf.ThreadPoolExecutor(max_workers=4) as pool:
-            futures = {pool.submit(ask_sonnet, b, model, token): b for b in batches}
+            futures = {pool.submit(ask_model, b, model, token): b for b in batches}
             for fut in cf.as_completed(futures):
                 try:
                     got = {s["id"]: s for s in fut.result()}
@@ -443,8 +450,9 @@ def _run(hv: str, model: str, use_llm: bool) -> int:
             s["advice"], s["advice_why"] = "compact", f"context at {d['context_pct']}%"
         if d["status"] in ("working", "blocked") and s.get("advice") == "clear":
             s["advice"] = "keep"
-    CACHE.write_text(json.dumps({d["id"]: {"fp": d["fp"], "summary": d["summary"], "at": d["summarized_at"],
-                                           "by": d["summary"].get("by")} for d in people}))
+    CACHE.write_text(json.dumps({d["id"]: stale.get(d["id"]) or {
+        "fp": d["fp"], "summary": d["summary"], "at": d["summarized_at"], "by": d["summary"].get("by"),
+        "status": d["status"]} for d in people}))
     for d in people:
         log = d.pop("_log", {})
         d["tools"] = log.get("tools", [])[-5:]
@@ -454,8 +462,14 @@ def _run(hv: str, model: str, use_llm: bool) -> int:
     order = {"blocked": 0, "working": 1, "done": 2, "idle": 3}
     people.sort(key=lambda d: (order.get(d["status"], 4), -d["context_pct"], d["name"]))
     counts = {k: sum(1 for d in people if d["status"] == k) for k in ("working", "blocked", "done", "idle")}
-    data = {"generated": now_iso(), "seconds": round(time.time() - start, 1), "model": model if use_llm else None,
-            "summarized": len(todo) if use_llm else 0, "error": error, "refresh_every": 300,
+    full_at = now_iso()
+    if quick:  # a live pass: the last full summary pass stays the one already on the page
+        try:
+            full_at = json.loads((OUT / "office.json").read_text()).get("full_at") or full_at
+        except (OSError, ValueError):
+            pass
+    data = {"generated": now_iso(), "kind": "quick" if quick else "full", "full_at": full_at, "seconds": round(time.time() - start, 1), "model": model if use_llm else None,
+            "summarized": len(todo) if use_llm else 0, "error": error, "refresh_every": 60,
             "counts": counts, "agents": people,
             "advice": {k: sum(1 for d in people if d["summary"].get("advice") == k) for k in ("compact", "clear")}}
     write(data)
@@ -506,12 +520,13 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd")
     r = sub.add_parser("run")
     r.add_argument("--no-llm", action="store_true")
-    r.add_argument("--model", default="sonnet")
+    r.add_argument("--quick", action="store_true", help="live pass: summarize only desks whose status changed")
+    r.add_argument("--model", default="haiku")
     o = sub.add_parser("open")
-    o.add_argument("--model", default="sonnet")
+    o.add_argument("--model", default="haiku")
     a = ap.parse_args(argv)
     if a.cmd == "run":
-        return run(a.model, not a.no_llm)
+        return run(a.model, not a.no_llm, a.quick)
     if a.cmd == "open":
         return open_page(a.model)
     ap.print_help()

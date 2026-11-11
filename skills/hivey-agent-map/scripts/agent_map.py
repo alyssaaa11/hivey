@@ -1079,7 +1079,7 @@ def main() -> int:
     of = sub.add_parser("office", help="the agent office: what every live agent does now (open | run)")
     of.add_argument("action", choices=["open", "run"], nargs="?", default="open")
     of.add_argument("--no-llm", action="store_true", help="run: summaries from the session recap, no model")
-    of.add_argument("--model", default="sonnet")
+    of.add_argument("--model", default="haiku")
     cx = sub.add_parser("context", help="context window per agent: list, or set standard | 1M")
     cx.add_argument("agents", nargs="*", help="agent names (as on the Sessions page) or folders")
     cx.add_argument("--set", choices=["standard", "1M", "1m"], help="standard = 200k, compacts early; 1M = large")
