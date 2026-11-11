@@ -1525,6 +1525,34 @@ fn global_menu_opens_the_agent_map() {
     )));
 }
 
+/// hivey: the menu's agent office item runs `hivey agent-map office` and closes the menu.
+#[test]
+fn global_menu_opens_the_agent_office() {
+    use super::super::global_menu::{
+        global_menu_items, ClientGlobalMenuAction, AGENT_MAP_SUPPORTED,
+    };
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.toggle_global_menu();
+    let items = global_menu_items(state.snapshot.as_deref().expect("snapshot"));
+    let index = items
+        .iter()
+        .position(|(_, action)| *action == ClientGlobalMenuAction::AgentOffice);
+    let Some(index) = index.filter(|_| AGENT_MAP_SUPPORTED) else {
+        assert!(index.is_none(), "agent office only on macOS");
+        return;
+    };
+    assert_eq!(items[index].0, "agent office");
+    let mut outcome = ClientShellInput::default();
+    state.activate_global_menu_item(index, &mut outcome);
+    assert!(state.overlay.is_none());
+    assert!(outcome.actions.iter().any(|action| matches!(
+        action,
+        ClientShellAction::RunHivey(args) if args == &["agent-map", "office"]
+    )));
+}
+
 /// hivey: the menu's quiet mode item toggles `~/.hivey/quiet` and stays open to show it.
 #[test]
 fn global_menu_toggles_quiet_mode() {

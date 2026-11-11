@@ -10,6 +10,8 @@ pub(super) enum ClientGlobalMenuAction {
     Quiet,
     /// hivey: open the latest agent map report (`hivey agent-map open`)
     AgentMap,
+    /// hivey: open the agent office, what every live agent does now (`hivey agent-map office`)
+    AgentOffice,
 }
 
 /// hivey: the agent map reads launchd and opens its pages with `open`, so macOS only.
@@ -70,6 +72,7 @@ pub(super) fn global_menu_items(
     ));
     if AGENT_MAP_SUPPORTED {
         items.push(("agent map", ClientGlobalMenuAction::AgentMap));
+        items.push(("agent office", ClientGlobalMenuAction::AgentOffice));
     }
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));
@@ -147,6 +150,12 @@ impl ClientShellState {
                 outcome.actions.push(ClientShellAction::RunHivey(vec![
                     "agent-map".to_string(),
                     "open".to_string(),
+                ]))
+            }
+            ClientGlobalMenuAction::AgentOffice => {
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "agent-map".to_string(),
+                    "office".to_string(),
                 ]))
             }
             ClientGlobalMenuAction::Quiet => {}

@@ -11,6 +11,9 @@
     agent_map.py nightly [--model sonnet] [--no-llm] [--open]
                                                  a full report in ~/.hivey/agent-map/reports/<date>/
     agent_map.py open                            open the latest report (hivey menu → agent map)
+    agent_map.py office [open|run] [--no-llm]    the agent office: every live agent at a desk, its current
+                                                 job (terminal + session log, summed up by Sonnet), context
+                                                 and compact/clear advice (hivey menu → agent office)
     agent_map.py schedule [install|remove|status|offer] [--at 06:30] [--model sonnet]
     agent_map.py schedule token --command "envsave get es_…"   long-lived Claude login for the run
                                                  the nightly launchd run (com.hivey.agent-map)
@@ -1073,6 +1076,10 @@ def main() -> int:
     rf = sub.add_parser("refresh", help="new scan into the latest report's pages, no model (the Refresh button)")
     rf.add_argument("--days", type=int, default=7)
     sub.add_parser("serve", help="serve the report pages on 127.0.0.1 (`open` starts it)")
+    of = sub.add_parser("office", help="the agent office: what every live agent does now (open | run)")
+    of.add_argument("action", choices=["open", "run"], nargs="?", default="open")
+    of.add_argument("--no-llm", action="store_true", help="run: summaries from the session recap, no model")
+    of.add_argument("--model", default="sonnet")
     cx = sub.add_parser("context", help="context window per agent: list, or set standard | 1M")
     cx.add_argument("agents", nargs="*", help="agent names (as on the Sessions page) or folders")
     cx.add_argument("--set", choices=["standard", "1M", "1m"], help="standard = 200k, compacts early; 1M = large")
@@ -1127,6 +1134,9 @@ def main() -> int:
     if a.cmd == "serve":
         import serve
         return serve.serve()
+    if a.cmd == "office":
+        import office
+        return office.open_page(a.model) if a.action == "open" else office.run(a.model, not a.no_llm)
     if a.cmd == "context":
         return context_cmd(a.agents, a.set)
     if a.cmd == "link":

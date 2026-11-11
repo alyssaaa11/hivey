@@ -179,6 +179,39 @@ hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | st
 - When you are the nightly model: follow the prompt you were given, change only `map.json`,
   `agent-map.html` and `links.json` (through `link`), and stop after the map passes.
 
+## Agent office (what every agent does now)
+
+`hivey agent-map office` (hivey menu → agent office) opens http://127.0.0.1:42817/office/: every live
+agent in hivey at a desk in a 3D office, one room per space. Solo agents, extra sessions in a space and
+each swarm's coordinator get a desk; a swarm's workers and critics stand beside their coordinator's desk.
+
+- **Reads** each desk's terminal (`hivey pane read`, any CLI) and its Claude Code session log (context
+  size = input + cache tokens of the last reply, model, last prompt, the session recap, last replies and
+  tools). `office.py run` writes `~/.hivey/agent-map/reports/office/office.json`.
+- **Summarizes** with Sonnet (`claude -p --model sonnet`, no tools, no settings, no session saved), in
+  batches of 10, only the desks whose terminal or log changed (`~/.hivey/agent-map/office-cache.json`):
+  current job, a speech-bubble line, up to 3 achievements, next step, what to answer when it waits
+  for you, and keep / compact / clear advice. `--no-llm` (or a failed call) falls back to the recap.
+- **Refreshes** every 5 minutes while the page is open (the server's office clock; the page polls every
+  15 s), or now with ⟳ / `r`.
+- **Page**: Office (Three.js r160, MIT, vendored in `scripts/office/` with RoomEnvironment, OutlineEffect and the bloom
+  post-processing; `ship.js` builds the scene: the deck of a spacecraft floating in front of a galaxy, viewports, hull
+  light strips, an observation lounge with a holotable, galley, server racks, plant pods; the crew are mini robots,
+  one per desk, glass visor eyes in the status colour, team-coloured ear pods; ✨ HD (bloom) or 🎨 comic, `t`; only working agents move, a blocked one waves, labels
+  give way by urgency so hundreds stay readable), Board (cards by what needs you), List (sortable rows).
+  The top strip lists who is blocked or asked you something. Click an agent: `hivey agent focus` plus
+  the exact Terminal/iTerm tab running hivey comes forward. Right-click or ⓘ: details (context gauge,
+  terminal tail). Compact / Clear type `/compact` or `/clear` into an agent that is not working (two
+  clicks).
+
+- **Models and music** (`scripts/office/models/`, `music/`, stored as `.b64` because skills install text files;
+  `office.py` decodes them into the page folder): the animated crew robot (RobotExpressive, Tomás Laulhé /
+  Quaternius, CC0: Idle + nods when working, Wave when blocked, ThumbsUp when done, Sitting when idle), Kenney
+  Space Kit and Space Station Kit pieces (CC0: desks, chairs, generators, dishes, small craft, astronauts,
+  consoles, crates), licences in `models/LICENSE-*`; a MusicGen space ambient loop, 🔇/🎵 or `m`.
+- **CEO**: the space named `ceo` gets the captain's bridge, its own room in the ship's nose (gold trim, main
+  viewscreen); its master sits at the captain's console.
+
 ## Spend log (`hivey_spend.py`)
 
 Calls made through Claude Code, Codex and Grok CLI are already counted from their own transcripts, and
