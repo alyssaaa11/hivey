@@ -189,7 +189,7 @@ The harness, when chosen:
 
 | Piece | What it does |
 |---|---|
-| Done gate | Stop hook `agent_gate.py`: while `.agent/state/run_active` exists, runs the check when the agent tries to finish and blocks it (at most 3 times), logging to `.agent/state/gate.log` |
+| Done gate | Stop hook `agent_gate.py`: while `.agent/state/run_active` exists, runs the check when the agent tries to finish and blocks it (at most 3 times), logging to `.agent/state/gate.log`. After the check passes it also requires `status_check.py --today` (Status dated today, ≤ 40 lines, no unreviewed work under done; off with `"status_check": false`) and, when `review.critics` > 0, a fresh review from this run that says APPROVED or used all `review.rounds` |
 | Resume context | SessionStart hook `agent_context.py`: on startup, resume and compaction injects run-in-progress, gate log, `tasks.json` progress, recent commits and the newest progress-log entries |
 | Fresh review | the hivey skill's `fresh_review.py run --folder .`: N one-shot critics in parallel (`claude -p`, empty context, no saved session, read-only), merged into one review in `.agent/reviews/`; exit 0 only if every critic PASSes and the check exits 0 |
 

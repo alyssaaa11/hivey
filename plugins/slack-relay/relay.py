@@ -24,6 +24,9 @@ Config: $HERDR_PLUGIN_CONFIG_DIR/config.json
   {"token_command": "envsave get <id>", "mirror": "masters", "interval": 10}
   The token comes from $SLACK_TOKEN if set, else from token_command's output.
   Scopes needed: channels:history, chat:write (groups:history for private channels).
+Failures      Each direction fails on its own (a read error doesn't block posts). After 3 failed
+              rounds in a row the relay alerts once (desktop notification + a post in the channel,
+              when posting works), backs off up to 6× the interval, and says when it recovers.
 State: <root>/.swarm/slack_relay_state.json (last Slack ts, bus offset, echo guards).
 """
 import json
@@ -50,6 +53,8 @@ PALETTE = ["🦊", "🐙", "🦉", "🐝", "🦄", "🐬", "🦖", "🐢", "🦜
 KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
 KEEP_HELD = 500  # posts held in quiet mode
 CATCH_UP_LINES = 40  # lines in the catch-up message; the rest are counted
+ALERT_AFTER = 3  # failed rounds in a row before the relay alerts the user (then it backs off)
+MAX_BACKOFF = 6  # at most interval × this between rounds while failing
 
 
 # ---------------------------------------------------------------------------
@@ -275,14 +280,28 @@ def take_held_posts(channel):
     return texts
 
 
+def desktop_notify(text):
+    """Best-effort macOS notification; silent elsewhere or if osascript is missing."""
+    if sys.platform != "darwin":
+        return
+    plain = re.sub(r"[*_`]", "", text).replace('"', "'")[:230]
+    try:
+        subprocess.run(["osascript", "-e", f'display notification "{plain}" with title "hivey relay"'],
+                       capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def log(line):
     print(f"{time.strftime('%H:%M:%S')} {line}", flush=True)
 
 
 class Relay:
     def __init__(self, root, slack, hivey, channel, scope, quiet=quiet_mode_on,
-                 held_posts=take_held_posts):
+                 held_posts=take_held_posts, notify=None):
         self.root, self.slack, self.hivey = Path(root), slack, hivey
+        self.notify = notify or desktop_notify
+        self.failures, self.alerted, self.last_error = 0, False, ""
         self.channel, self.scope = channel, scope
         self.quiet, self.held_posts = quiet, held_posts
         self.state_path = self.root / ".swarm" / "slack_relay_state.json"
@@ -356,10 +375,55 @@ class Relay:
         log(f"bus → slack  catch-up of {len(held)} held post(s)")
 
     def step(self):
+        """One round. The two directions fail independently: a read error (e.g. a missing
+        groups:history scope) must not stop agents' posts from reaching Slack."""
         manifest = self.manifest()
-        self.slack_to_bus(manifest)
-        self.bus_to_slack(manifest)
+        errors = []
+        for part in (self.slack_to_bus, self.bus_to_slack):
+            try:
+                part(manifest)
+            except Exception as err:  # network blips, Slack errors: keep the other direction going
+                errors.append(f"{part.__name__.replace('_', ' ')}: {err}")
         self.save()
+        self.track(errors)
+        return errors
+
+    def track(self, errors):
+        """Silent retry loops hid a broken relay for 30 minutes (verifier audit 2026-11-05):
+        after ALERT_AFTER failed rounds in a row, tell the user once; say when it recovers."""
+        if not errors:
+            if self.alerted:
+                self.alert(f"✅ *hivey relay → you*: #{self.slug()} works again after "
+                           f"{self.failures} failed rounds.")
+            self.failures, self.alerted, self.last_error = 0, False, ""
+            return
+        self.failures += 1
+        self.last_error = errors[0]
+        for e in errors:
+            log(f"error: {e}")
+        if self.failures >= ALERT_AFTER and not self.alerted:
+            self.alerted = True
+            self.alert(f"⚠️ *hivey relay → you*: #{self.slug()} is failing ({self.failures} rounds "
+                       f"in a row): {errors[0][:200]}. Messages may not reach agents or Slack until "
+                       f"it's fixed. Log: the relay pane of this swarm.")
+
+    def slug(self):
+        try:
+            return self.manifest().get("slug", "?")
+        except (OSError, json.JSONDecodeError):
+            return "?"
+
+    def alert(self, text):
+        log(f"ALERT {text}")
+        self.notify(text)
+        try:  # posting may still work when reading doesn't
+            self.state["posted"].append(self.slack.post(self.channel, text))
+            self.save()
+        except Exception as err:
+            log(f"alert post failed too: {err}")
+
+    def wait_seconds(self, interval):
+        return interval * min(MAX_BACKOFF, max(1, self.failures))
 
 
 def claim(pid_path):
@@ -406,9 +470,10 @@ def main():
             return
         try:
             relay.step()
-        except Exception as err:  # network blips, a bad manifest read: keep relaying
+        except Exception as err:  # a bad manifest read: keep relaying
             log(f"error: {err}")
-        time.sleep(interval)
+            relay.track([f"step: {err}"])
+        time.sleep(relay.wait_seconds(interval))
 
 
 if __name__ == "__main__":

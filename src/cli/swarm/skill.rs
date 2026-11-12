@@ -149,6 +149,10 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 "scripts/setup_agent.py",
                 include_str!("../../../skills/hivey-agent-creator/scripts/setup_agent.py"),
             ),
+            (
+                "scripts/status_check.py",
+                include_str!("../../../skills/hivey-agent-creator/scripts/status_check.py"),
+            ),
         ],
     ),
     // Current library docs in seconds, from any agent (no MCP server needed).

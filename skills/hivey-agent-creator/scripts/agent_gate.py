@@ -7,10 +7,20 @@ finish runs the agent's check command from .agent/config.json. If the check fail
 blocked and the agent gets the check output as its next instruction. After MAX_ATTEMPTS failed
 attempts the gate gives up (so it can never loop forever), logs it, and lets the agent stop.
 With no run in progress, it does nothing: normal conversation is never blocked.
+
+After the check passes, two more gates (verifier audit 2026-11-05: stale Status files and self-graded
+"done" made agents' status untrustworthy):
+  - Status: status_check.py --today must pass (Status rewritten for this run, ≤ 40 lines, dated today,
+    no unreviewed work under "done"). Off with "status_check": false in .agent/config.json.
+  - Review: when .agent/config.json has review.critics > 0, a fresh review written during this run must
+    say APPROVED, or the run must have used all review.rounds (leftovers noted). The agent re-reading its
+    own fixes doesn't count. A run labelled in run_active (e.g. `echo evening > .agent/state/run_active`)
+    skips this only if the label is listed in review.optional_for.
 """
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -18,6 +28,44 @@ from pathlib import Path
 
 MAX_ATTEMPTS = 3
 TIMEOUT_S = 300
+HERE = Path(__file__).resolve().parent
+VERDICT_RE = re.compile(r"^\*\*Verdict:\*\*\s*(\w+)", re.M)
+
+
+def review_gate(root, cfg, active):
+    """None if the run's review requirement is met, else the reason it isn't."""
+    review = cfg.get("review") or {}
+    if int(review.get("critics") or 0) <= 0:
+        return None
+    label = active.read_text().strip() if active.exists() else ""
+    if label and label in (review.get("optional_for") or []):
+        return None
+    start = active.stat().st_mtime
+    files = []
+    for d in (root / ".swarm" / "reviews", root / ".agent" / "reviews"):
+        if d.is_dir():
+            files += [f for f in d.glob("*.md") if f.stat().st_mtime >= start]
+    if not files:
+        return ("no fresh review was run during this run. Run the fresh review your brief names "
+                "(fresh_review.py run …) and fix what it finds; your own re-read doesn't count.")
+    files.sort(key=lambda f: f.stat().st_mtime)
+    verdicts = [(VERDICT_RE.search(f.read_text(errors="ignore")) or [None, "?"])[1] for f in files]
+    if verdicts[-1] == "APPROVED":
+        return None
+    rounds = int(review.get("rounds") or 3)
+    if len(files) >= rounds:
+        return None  # max rounds used: allowed to finish, leftovers must be noted in Status
+    return (f"the latest fresh review says {verdicts[-1]} ({files[-1].name}). Fixing its defects yourself "
+            f"isn't a review: run round {len(files) + 1} (--round {len(files) + 1} --previous {files[-1]}) "
+            f"until APPROVED, or until {rounds} rounds are used and the leftovers are noted in Status.")
+
+
+def status_gate(root, cfg):
+    if cfg.get("status_check") is False or not (HERE / "status_check.py").exists():
+        return None
+    r = subprocess.run([sys.executable, str(HERE / "status_check.py"), str(root), "--today"],
+                       capture_output=True, text=True, timeout=60)
+    return None if r.returncode == 0 else (r.stdout + r.stderr).strip()
 
 
 def log(state, line):
@@ -38,7 +86,8 @@ def main():
     active = state / "run_active"
     if not cfg_path.exists() or not active.exists():
         return
-    check = json.loads(cfg_path.read_text()).get("check")
+    cfg = json.loads(cfg_path.read_text())
+    check = cfg.get("check")
     if not check:
         return
 
@@ -49,6 +98,10 @@ def main():
     except subprocess.TimeoutExpired:
         code, output = 124, f"check timed out after {TIMEOUT_S}s"
 
+    if code == 0:
+        extra = [x for x in (status_gate(root, cfg), review_gate(root, cfg, active)) if x]
+        if extra:
+            code, output = 1, "The check passed, but:\n- " + "\n- ".join(extra)
     if code == 0:
         active.unlink(missing_ok=True)
         attempts_file.unlink(missing_ok=True)

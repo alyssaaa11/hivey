@@ -267,5 +267,48 @@ class HeldPostFiles(unittest.TestCase):
         self.assertEqual(list(held.iterdir()), [])
 
 
+
+class Failures(unittest.TestCase):
+    """A broken read (e.g. missing groups:history) must not block posts, and must be reported."""
+
+    def test_read_failure_still_posts_alerts_once_and_recovers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".swarm").mkdir()
+            (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
+            bus = root / ".swarm" / "bus.jsonl"
+            bus.write_text("")
+            slack, hivey, notes = FakeSlack(), FakeHivey(bus), []
+            broken = {"on": True}
+            real_history = slack.history
+
+            def history(channel, oldest):
+                if broken["on"]:
+                    raise RuntimeError("slack conversations.history: missing_scope")
+                return real_history(channel, oldest)
+
+            slack.history = history
+            r = relay.Relay(root, slack, hivey, "C1", "masters", quiet=lambda: False,
+                            held_posts=lambda c: [], notify=notes.append)
+            r.state["last_ts"] = "0"
+            with open(bus, "a") as f:
+                f.write(json.dumps({"ev": "msg", "id": "a1", "from": "ideas/coordinator",
+                                    "to": "human", "swarm": "ideas", "text": "decisions"}) + "\n")
+            errors = r.step()
+            self.assertTrue(errors and "missing_scope" in errors[0])
+            self.assertEqual(len(slack.posted), 1, "the agent's post still reaches Slack")
+            for _ in range(5):
+                r.step()
+            self.assertEqual(len(notes), 1, "alerts once, not every round")
+            self.assertIn("is failing", notes[0])
+            self.assertTrue(relay.is_relay_post(slack.posted[-1]), "the alert is never re-injected")
+            self.assertEqual(r.wait_seconds(10), 60, "backs off while failing")
+            broken["on"] = False
+            self.assertEqual(r.step(), [])
+            self.assertIn("works again", notes[-1])
+            self.assertEqual(r.wait_seconds(10), 10)
+            self.assertEqual(hivey.sent, [], "alert posts coming back through history aren't injected")
+
+
 if __name__ == "__main__":
     unittest.main()
