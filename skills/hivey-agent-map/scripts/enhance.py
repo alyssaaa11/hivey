@@ -50,6 +50,7 @@ NAV_CSS = """
 """
 
 MAP_CSS = """
+.hv-off{margin-top:6px;padding-top:6px;border-top:1px solid rgba(127,127,127,.25);max-width:340px;line-height:1.35}
 .hv-legend{position:fixed;left:14px;bottom:14px;z-index:40;padding:8px 10px;border-radius:10px;
   font:12px/1.3 -apple-system,BlinkMacSystemFont,sans-serif;background:rgba(255,255,255,.92);color:#1d2330;
   border:1px solid rgba(127,127,127,.3);box-shadow:0 2px 10px rgba(0,0,0,.08)}
@@ -264,6 +265,16 @@ new MutationObserver(refill).observe(document.body,{childList:true,subtree:true,
 """
 
 
+def jobs_off_map(spec: dict, meta: dict, snap: dict) -> list[dict]:
+    """The scanned jobs no map box stands for: a job is on the map when a box's map-meta refs list it,
+    or list the agent it belongs to (links_candidates.belongs_to). The nightly model gets this list
+    so new jobs reach the map, and the map page names any still missing."""
+    boxes = {str(n.get("id")) for n in spec.get("nodes") or []}
+    refs = {r for k, v in (meta.get("nodes") or {}).items() if k in boxes for r in (v or {}).get("refs") or []}
+    owner = {b.get("job"): b.get("agent") for b in (snap.get("links_candidates") or {}).get("belongs_to") or []}
+    return [j for j in snap.get("jobs") or [] if j.get("id") and j["id"] not in refs and owner.get(j["id"]) not in refs]
+
+
 def enhance_folder(folder: Path, snap: dict, job_state) -> None:
     generated, days = snap.get("generated", ""), snap.get("window_days", 7)
     stats = folder / "agent-stats.html"
@@ -277,6 +288,11 @@ def enhance_folder(folder: Path, snap: dict, job_state) -> None:
         except (OSError, ValueError):
             meta = {}
         data, top = node_data(snap, spec, meta, job_state)
+        off = jobs_off_map(spec, meta, snap)
+        off_note = (f'<div class="hv-off" title="{html.escape(", ".join(j["id"] for j in off))}">'
+                    f'<b>Not on the map yet ({len(off)}):</b> {html.escape(", ".join(j.get("name") or j["id"] for j in off))}'
+                    '<br><span style="opacity:.65">the next nightly run adds them; the Logs page has every job</span></div>'
+                    if off else "")
         stages = dict(STAGE_HELP)
         stages.update({k.lower(): v for k, v in (meta.get("stages") or {}).items()})
         script = (MAP_JS.replace("__DATA__", json.dumps(data)).replace("__STAGES__", json.dumps(stages))
@@ -284,5 +300,5 @@ def enhance_folder(folder: Path, snap: dict, job_state) -> None:
         legend = (f'<div class="hv-legend"><b>Spend, last {span(days)}</b><div class="bar"></div>'
                   f'<div class="ends"><span>$0</span><span>{money(top)}</span></div>'
                   f'<div style="opacity:.65;margin-top:3px">click a box for what it does, tokens and models</div>'
-                  f'<div style="opacity:.65">⚠️ its last run failed, was missed or logged errors</div></div>')
+                  f'<div style="opacity:.65">⚠️ its last run failed, was missed or logged errors</div>{off_note}</div>')
         page.write_text(inject(page.read_text(), NAV_CSS + MAP_CSS, nav("agent-map.html", generated, days) + legend, script))

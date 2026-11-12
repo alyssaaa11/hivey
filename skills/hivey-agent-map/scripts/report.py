@@ -420,7 +420,11 @@ already built: do not touch stats.archify.md or agent-stats.html.
    and keep a consumer agent (one a job feeds) without its interactive cost. Each node's sublabel holds
    its schedule with its start time (a box folding several jobs shows the earliest: "cron from 00:30")
    or its role, its models and its automated cost when it has one ("cron 04:15 · Grok + Sonnet ·
-   $0.40"); spend is usage.agents (automated only). Keep at most 25 nodes on 5 stages x rows 0-4;
+   $0.40"); spend is usage.agents (automated only). EVERY job in snapshot.json "jobs" must be on the map:
+   in its own box, or folded into a box with related jobs (e.g. "5 git backups", "11 trading jobs", "4 X
+   jobs") or into the box of the agent it belongs to (links_candidates.belongs_to); map-meta.json refs
+   (step 3) list every job id a box stands for. Fold more when space runs out, never drop a job.
+   Keep at most 25 nodes on 5 stages x rows 0-4;
    refresh the numbers in the cards (automated spend, models in use, needs attention).
 3. Descriptions: every node in snapshot.json has a "description" (what it does). snapshot.json
    "descriptions_to_write" lists the ids whose description is empty, cut off, copied from a brief
@@ -478,13 +482,30 @@ def set_token_command(command: str) -> int:
     return 0
 
 
-def run_llm(folder: Path, model: str, has_map: bool) -> bool:
+def off_map_task(prev: Path | None, snap: dict) -> str:
+    """The map step's words for the scanned jobs last night's map leaves out (see enhance.jobs_off_map)."""
+    import enhance
+    try:
+        spec = json.loads((prev / "map.json").read_text()) if prev else {}
+        meta = json.loads((prev / "map-meta.json").read_text()) if prev else {}
+    except (OSError, ValueError):
+        spec, meta = {}, {}
+    off = enhance.jobs_off_map(spec, meta, snap) if spec else []
+    if not off:
+        return ""
+    lines = "\n".join(f"     - {j['id']} ({j.get('schedule') or 'no schedule'}): {(j.get('description') or '')[:110]}"
+                      for j in off)
+    return ("\n   These scheduled jobs are not on the map yet; add every one of them:\n" + lines)
+
+
+def run_llm(folder: Path, model: str, has_map: bool, prev: Path | None = None, snap: dict | None = None) -> bool:
     claude = shutil.which("claude")
     archify = archify_bin()
     if not claude or not archify:
         log(folder, "skipping the map update: claude or archify not found")
         return False
-    task = ("map.json is last night's map: update it, adding nodes and flows for newly confirmed links."
+    task = ("map.json is last night's map: update it, adding nodes and flows for newly confirmed links and "
+            "every scheduled job that is not on it yet." + off_map_task(prev, snap or {})
             if has_map else "there is no map.json yet: write it following the skill's map rules.")
     prompt = MAP_PROMPT.format(folder=folder, scripts=SCRIPTS, archify=archify, map_task=task)
     tools = ("Read,Write,Edit,Glob,Grep,Bash(python3:*),Bash(node:*),Bash(ls:*),Bash(cat:*),"
@@ -686,7 +707,7 @@ def nightly(scan, days: int, model: str, use_llm: bool) -> int:
         shutil.copy2(prev, folder / "map.json")
     has_map = (folder / "map.json").is_file()
     if use_llm:
-        run_llm(folder, model, has_map)
+        run_llm(folder, model, has_map, prev.parent if has_map and prev else None, snap)
     if (folder / "map.json").is_file() and not html_current(folder, "agent-map.html", "map.json"):
         good, why = finalize(folder, "dataflow", "map.json", "agent-map.html")
         if not good and prev and prev.is_file():  # the model broke it: last night's map, unchanged

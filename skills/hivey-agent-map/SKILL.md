@@ -77,7 +77,10 @@ schemas, `finalize`, repair rules).
   X content, radars, trading, research swarms). Draw only confirmed links, labelled with what flows
   (≤ 17 characters: "top-20 tweets", "transcripts"). Fold the rest: a job that belongs to an agent
   merges into it ("+ nightly 03:15" in its sublabel), many similar jobs become one node ("12 trading
-  jobs"), and unlinked housekeeping (git auto-commits, upgrades, purges) goes in a "Not drawn" card.
+  jobs"), and unlinked housekeeping (git auto-commits, upgrades, purges) becomes one box ("8 housekeeping
+  jobs"). **Every scanned job is on the map**: its own box, a group box or its agent's box, listed in that
+  box's `map-meta.json` refs. The nightly run gives the model the jobs last night's map left out
+  (`enhance.jobs_off_map`), and the map page names any still missing under its legend.
   **Node tags do not show at default zoom: put cost and status in the sublabel** ("$110 · posts → n8n",
   "launchd 04:30 · exit 1"). Put an agent that shares no data at a free cell where no line crosses it.
   Providers and totals go in cards (spend by provider and model, needs attention, spend gaps, not
