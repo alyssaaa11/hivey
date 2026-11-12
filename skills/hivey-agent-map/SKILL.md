@@ -108,7 +108,7 @@ hivey agent-map nightly [--model sonnet]   # a full report now (also: --no-llm, 
 hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | status
 ```
 
-- **hivey menu → agent jobs** runs `hivey agent-map open`: it opens `agent-stats.html`,
+- **hivey menu → agent fleet → 📊 Jobs tab** (key 4, or `/fleet/?view=jobs`) shows these pages inside the fleet page: the frame loads `/hv-jobs`, which the server redirects to the latest map (else stats, logs, sessions); with no report yet it starts the first build (`agent_map.py open --no-open`) and shows a page that reloads until it is ready. Every jobs page's navbar starts with 🚀 Fleet (hidden inside the frame). `hivey agent-map open` still opens `agent-stats.html`,
   `agent-map.html` and `agent-logs.html` from `~/.hivey/agent-map/reports/latest`.
 - **hivey's layer on the archify pages** (`enhance.py`, after finalize; `agent_map.py enhance [folder]`
   re-applies it): a Stats · Map · Logs navbar on every page; map boxes coloured by spend (green: none →
@@ -130,7 +130,7 @@ hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | st
   People chatting with agents (Claude Code, Codex, Grok in a terminal; snapshot `interactive`, with one
   entry per session) go to **`agent-sessions.html`**: cost by agent and by day, the costliest sessions with
   their peak context (⚠️ over 300k tokens), length and first message, and tips to spend less.
-- **Open:** `hivey agent-map open` (hivey menu → agent jobs) opens `http://127.0.0.1:42817/latest/agent-map.html`
+- **Open:** `hivey agent-map open` (or the fleet page's 📊 Jobs tab) opens `http://127.0.0.1:42817/latest/agent-map.html`
   (the map first; the stats page when there is no map yet). With no report yet it builds the pages without
   a model in seconds, opens them, then draws the map in the background (`first-run.json` stops a second
   click from starting another build). If a stats page fails, the logs and sessions pages still publish.
@@ -181,25 +181,25 @@ hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | st
 
 ## Agent fleet (what every agent does now)
 
-`hivey agent-map fleet` (or `office`; hivey menu → agent fleet) opens http://127.0.0.1:42817/office/: every live
-agent in hivey at a desk in a 3D office, one room per space, and one spaceship per hivey session (`hivey session list`: the default session flies the classic frigate, the others a carrier, an explorer or a recoloured frigate, their name painted on the hull; a stopped session's ship has cold engines and its agents asleep at their desks, read from its saved `session.json`; a running one's engines burn). Click an agent to open its session in a terminal: the one already showing it, or a new Terminal/iTerm window running `hivey session attach <name>`, which also starts a stopped session. Click the name painted on a ship's hull for its menu (hover shows its agent count): open/start the session, or stop it (a second click confirms; `hivey session stop` ends all its agents and closes its terminal; never the default session). The space outside is one of six scenes (violet, emerald, crimson, deep blue, golden twin suns, a singularity with its lensed accretion disk), chosen with the page's 🌌 setting: a new one on every load, or always the one you pick (saved with the ⏱ setting; `?space=1..6` in the address overrides it). Drag the hull name to move the ship; positions are kept in `~/.hivey/agent-map/office-settings.json` with the ⏱ setting. Open, compact and clear reach the agent through its own session's socket. The details panel (right-click an agent, or ⓘ) has a 📚 Wiki section: the agent's own `<name>-wiki/` (in its folder, or the folder named after its space under `~/agents` or `~/swarms`), its 8 newest pages and reports and its latest `log.md` entries; click one to open it in Obsidian (`obsidian://open`; a wiki that is not an Obsidian vault yet opens in the default Markdown app). After a /compact the context shown is the compacted size until the agent's next reply. Solo agents, extra sessions in a space and
+`hivey agent-map fleet` (or `fleet`; hivey menu → agent fleet) opens http://127.0.0.1:42817/fleet/ (old /fleet/ links redirect there; files in `reports/fleet/`): every live
+agent in hivey at a desk in a 3D fleet, one room per space, and one spaceship per hivey session (`hivey session list`: the default session flies the classic frigate, the others a carrier, an explorer or a recoloured frigate, their name painted on the hull; a stopped session's ship has cold engines and its agents asleep at their desks, read from its saved `session.json`; a running one's engines burn). Click an agent to open its session in a terminal: the one already showing it, or a new Terminal/iTerm window running `hivey session attach <name>`, which also starts a stopped session. Click the name painted on a ship's hull for its menu (hover shows its agent count): open/start the session, or stop it (a second click confirms; `hivey session stop` ends all its agents and closes its terminal; never the default session). The space outside is one of six scenes (violet, emerald, crimson, deep blue, golden twin suns, a singularity with its lensed accretion disk), chosen with the page's 🌌 setting: a new one on every load, or always the one you pick (saved with the ⏱ setting; `?space=1..6` in the address overrides it). Drag the hull name to move the ship; positions are kept in `~/.hivey/agent-map/fleet-settings.json` with the ⏱ setting. Open, compact and clear reach the agent through its own session's socket. The details panel (right-click an agent, or ⓘ) has a 📚 Wiki section: the agent's own `<name>-wiki/` (in its folder, or the folder named after its space under `~/agents` or `~/swarms`), its 8 newest pages and reports and its latest `log.md` entries; click one to open it in Obsidian (`obsidian://open`; a wiki that is not an Obsidian vault yet opens in the default Markdown app). After a /compact the context shown is the compacted size until the agent's next reply. Solo agents, extra sessions in a space and
 each swarm's coordinator get a desk; a swarm's workers and critics stand beside their coordinator's desk.
 
 - **Reads** each desk's terminal (`hivey pane read`, any CLI) and its Claude Code session log (context
   size = input + cache tokens of the last reply, model, last prompt, the session recap, last replies and
-  tools). `office.py run` writes `~/.hivey/agent-map/reports/office/office.json`.
+  tools). `fleet.py run` writes `~/.hivey/agent-map/reports/fleet/fleet.json`.
 - **Summarizes** with Haiku (`claude -p --model haiku`, no tools, no settings, no session saved), in
-  batches of 10, only the desks whose terminal or log changed (`~/.hivey/agent-map/office-cache.json`):
+  batches of 10, only the desks whose terminal or log changed (`~/.hivey/agent-map/fleet-cache.json`):
   current job, a speech-bubble line, up to 3 achievements, next step, what to answer when it waits
   for you, and keep / compact / clear advice. `--no-llm` (or a failed call) falls back to the recap.
-- **Refreshes** while the page is open (the server's office clock; the page polls every 15 s): a live
+- **Refreshes** while the page is open (the server's fleet clock; the page polls every 15 s): a live
   pass every minute and when the page loads (`run --quick`: status, context and terminal are fresh,
   only desks whose status changed go to the model) and a full pass every 5 minutes (every desk whose
   terminal changed), or a full pass now with ⟳ / `r`. The page's ⏱ setting picks every minute (that),
   every 5 min, 15 min or hour (full passes only) or on reload only (no clock: a full pass when the page loads or on ⟳),
-  saved in `~/.hivey/agent-map/office-settings.json`. The header shows the time of the last update, of
+  saved in `~/.hivey/agent-map/fleet-settings.json`. The header shows the time of the last update, of
   the last full summary pass and of the next update.
-- **Page** (titled "hivey fleet", with the hivey logo; the ⚙ button holds the 🎵 music, ⏱ updates and 🌌 background settings): Fleet (Three.js r160, MIT, vendored in `scripts/office/` with RoomEnvironment, OutlineEffect and the bloom
+- **Page** (titled "hivey fleet", with the hivey logo; the ⚙ button holds the 🎵 music, ⏱ updates and 🌌 background settings): Fleet (Three.js r160, MIT, vendored in `scripts/fleet/` with RoomEnvironment, OutlineEffect and the bloom
   post-processing; `ship.js` builds the scene: the deck of a spacecraft floating in front of a galaxy, viewports, hull
   light strips, an observation lounge with a holotable, galley, server racks, plant pods; the crew are mini robots,
   one per desk, glass visor eyes in the status colour, team-coloured ear pods; ✨ HD (bloom) or 🎨 comic, `t`; only working agents move, a blocked one waves, labels
@@ -209,8 +209,8 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   terminal tail). Compact / Clear type `/compact` or `/clear` into an agent that is not working (two
   clicks).
 
-- **Models and music** (`scripts/office/models/`, `music/`, stored as `.b64` because skills install text files;
-  `office.py` decodes them into the page folder): the animated crew robot (RobotExpressive, Tomás Laulhé /
+- **Models and music** (`scripts/fleet/models/`, `music/`, stored as `.b64` because skills install text files;
+  `fleet.py` decodes them into the page folder): the animated crew robot (RobotExpressive, Tomás Laulhé /
   Quaternius, CC0: Idle + nods when working, Wave when blocked, ThumbsUp when done, Sitting when idle), Kenney
   Space Kit and Space Station Kit pieces (CC0: desks, chairs, generators, dishes, small craft, astronauts,
   consoles, crates), licences in `models/LICENSE-*`; 10 MusicGen electronic space tracks (`music/README.txt` has their prompts), 🔇/🎵 or `m`; the 🎵 menu plays a new one each time (moving on when one ends) or always one (saved with the other settings). Browsers allow sound only after you touch the page, so when playing at once is refused the music starts with your first click or key press anywhere.

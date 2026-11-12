@@ -11,7 +11,7 @@
     agent_map.py nightly [--model sonnet] [--no-llm] [--open]
                                                  a full report in ~/.hivey/agent-map/reports/<date>/
     agent_map.py open                            open the latest report (hivey menu → agent jobs)
-    agent_map.py office [open|run] [--no-llm]    the agent office: every live agent at a desk, its current
+    agent_map.py fleet [open|run] [--no-llm]    the agent fleet: every live agent at a desk, its current
                                                  job (terminal + session log, summed up by Sonnet), context
                                                  and compact/clear advice (hivey menu → agent fleet)
     agent_map.py schedule [install|remove|status|offer] [--at 06:30] [--model sonnet]
@@ -1067,6 +1067,8 @@ def main() -> int:
     en.add_argument("folder", nargs="?", default=str(STATE / "reports" / "latest"))
     op = sub.add_parser("open", help="open the latest report (builds the first one if there is none)")
     op.add_argument("--model", default="sonnet")
+    op.add_argument("--no-open", action="store_true", help="build the first report if there is none, open nothing "
+                    "(the fleet page's Jobs tab)")
     sc = sub.add_parser("schedule", help="the nightly launchd run: install | remove | status")
     sc.add_argument("action", choices=["install", "remove", "status", "offer", "token"], nargs="?", default="status")
     sc.add_argument("--command", help='token: the command printing the `claude setup-token` token, '
@@ -1076,7 +1078,7 @@ def main() -> int:
     rf = sub.add_parser("refresh", help="new scan into the latest report's pages, no model (the Refresh button)")
     rf.add_argument("--days", type=int, default=7)
     sub.add_parser("serve", help="serve the report pages on 127.0.0.1 (`open` starts it)")
-    of = sub.add_parser("office", help="the agent office: what every live agent does now (open | run)")
+    of = sub.add_parser("fleet", help="the agent fleet: what every live agent does now (open | run)")
     of.add_argument("action", choices=["open", "run"], nargs="?", default="open")
     of.add_argument("--no-llm", action="store_true", help="run: summaries from the session recap, no model")
     of.add_argument("--model", default="haiku")
@@ -1114,7 +1116,7 @@ def main() -> int:
         return 0
     if a.cmd == "open":
         import report
-        return report.open_latest(a.model)
+        return report.open_latest(a.model, not a.no_open)
     if a.cmd == "schedule":
         import report
         if a.action == "token":
@@ -1134,9 +1136,9 @@ def main() -> int:
     if a.cmd == "serve":
         import serve
         return serve.serve()
-    if a.cmd == "office":
-        import office
-        return office.open_page(a.model) if a.action == "open" else office.run(a.model, not a.no_llm)
+    if a.cmd == "fleet":
+        import fleet
+        return fleet.open_page(a.model) if a.action == "open" else fleet.run(a.model, not a.no_llm)
     if a.cmd == "context":
         return context_cmd(a.agents, a.set)
     if a.cmd == "link":

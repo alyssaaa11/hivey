@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hivey fleet</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐝</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><rect width='40' height='40' rx='9' fill='%239befc8'/><path d='M10 9h7v9h6V9h7v23h-7V22h-6v10h-7z' fill='%23122319'/></svg>">
 <style>
 :root{
   --bg:#0d1119;--panel:#151b27;--panel2:#1b2332;--line:#273246;--text:#e8edf5;--muted:#8d9ab0;
@@ -65,10 +65,10 @@ header{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:
 .ask .go{margin-left:auto;font-size:12px;color:var(--honey);white-space:nowrap}
 /* ---------- views ---------- */
 main{position:relative}
-#office{position:relative;height:calc(100vh - 118px);min-height:420px;overflow:hidden;
+#fleet{position:relative;height:calc(100vh - 118px);min-height:420px;overflow:hidden;
   background:radial-gradient(1200px 600px at 50% 20%,#18202e,#0b0e15)}
-#office canvas{display:block;cursor:grab}
-#office canvas.drag{cursor:grabbing}
+#fleet canvas{display:block;cursor:grab}
+#fleet canvas.drag{cursor:grabbing}
 #labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 .tag{position:absolute;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform}
 .bubble{max-width:230px;padding:7px 10px;border-radius:12px;background:#f8fafc;color:#0f172a;font-size:12px;line-height:1.3;
@@ -152,6 +152,9 @@ main{position:relative}
 .actions button.primary{border-color:rgba(245,184,61,.6)}
 .actions button:disabled{opacity:.35;cursor:not-allowed}
 /* ---------- list ---------- */
+#jobs{display:none;background:#fff}
+#jobs iframe{display:block;width:100%;height:calc(100vh - 70px);border:0}
+body.v-jobs .search{visibility:hidden}
 #list{display:none;padding:12px 18px 40px}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 th{text-align:left;color:var(--muted);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;position:sticky;top:57px;background:var(--bg)}
@@ -188,9 +191,10 @@ td.j{max-width:420px}
   <div class="spacer"></div>
   <input class="search" id="q" placeholder="Search agents, jobs…  ( / )" autocomplete="off">
   <div class="seg" id="views">
-    <button data-v="office" title="Your spaceships, one per hivey session (1)">🚀 Fleet</button>
+    <button data-v="fleet" title="Your spaceships, one per hivey session (1)">🚀 Fleet</button>
     <button data-v="board" title="Cards by what needs you (2)">▦ Board</button>
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
+    <button data-v="jobs" title="Agent jobs: scheduled and background jobs, their map, spend, logs and sessions (4)">📊 Jobs</button>
   </div>
   <button class="iconbtn" id="music" title="Background music on/off (m)">🔇</button>
   <button class="iconbtn" id="refresh" title="Read every terminal and session log again now (r)">⟳</button>
@@ -214,7 +218,7 @@ td.j{max-width:420px}
       </select>
   </label>
   <label><span>⏱ Updates</span>
-      <select class="every" id="every" title="How the office updates itself">
+      <select class="every" id="every" title="How the fleet updates itself">
         <option value="minute">every minute</option>
         <option value="5min">every 5 min</option>
         <option value="15min">every 15 min</option>
@@ -237,17 +241,18 @@ td.j{max-width:420px}
 </div>
 <div id="inbox"></div>
 <main>
-  <section id="office">
+  <section id="fleet">
     <div id="labels"></div>
     <div id="hud"><button id="fit" title="Show everyone (f)">⤢ fit</button><button id="style" title="Comic or realistic look (t)">🎨 comic</button><span>drag to move · scroll to zoom · click an agent to open it in hivey · right-click for details</span></div>
   </section>
   <section id="board"></section>
   <section id="list"></section>
+  <section id="jobs"><iframe id="jobsframe" title="Agent jobs"></iframe></section>
 </main>
 <aside id="drawer"></aside>
 <div id="tip"></div>
 <div id="toast"></div>
 <audio id="bgm" preload="auto"></audio>
-<script type="module" src="./office.js"></script>
+<script type="module" src="./fleet.js"></script>
 </body>
 </html>

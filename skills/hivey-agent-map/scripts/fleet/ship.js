@@ -1,4 +1,4 @@
-// hivey office, spacecraft edition: the deck of a ship, its workstations and its crew of mini robots.
+// hivey fleet, spacecraft edition: the deck of a ship, its workstations and its crew of mini robots.
 // Everything is built from primitives and canvas textures (no image assets): physically based shells,
 // glass visors and emissive LEDs that the bloom pass makes glow.
 import * as THREE from './three.module.min.js';
@@ -24,7 +24,7 @@ export function createShip(opts) {
   let robotScale = 1;
   async function load() {
     const loader = new GLTFLoader();
-    await Promise.all(Object.entries(FILES).map(([k, url]) => loader.loadAsync(url).then(g => { MODELS[k] = g; }).catch(e => console.warn('hivey office: model', k, e))));
+    await Promise.all(Object.entries(FILES).map(([k, url]) => loader.loadAsync(url).then(g => { MODELS[k] = g; }).catch(e => console.warn('hivey fleet: model', k, e))));
     const c = new THREE.Vector3();
     for (const [k, g] of Object.entries(MODELS)) {
       g.scene.updateMatrixWorld(true);

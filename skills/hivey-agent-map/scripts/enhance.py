@@ -1,6 +1,6 @@
 """hivey's layer on top of the archify pages, added after they are finalized:
 
-- a navbar (Stats · Map · Logs) on every page, so each page reaches the others;
+- a navbar (🚀 Fleet · Stats · Map · Logs) on every page, so each page reaches the others;
 - on the map: each job/agent box coloured by its spend in the window (green: none, red: the most),
   with a legend; a hover explanation on each column header; and, in the box's info card, what the
   job or agent does, its tokens, cost, calls, models and last run.
@@ -39,6 +39,7 @@ NAV_CSS = """
   border-bottom:1px solid rgba(127,127,127,.25);background:rgba(127,127,127,.06)}
 .hv-nav a{color:inherit;opacity:.65;text-decoration:none;padding:4px 12px;border-radius:999px}
 .hv-nav a:hover{opacity:1;background:rgba(127,127,127,.14)}
+.hv-nav a.hv-fleet{opacity:1;font-weight:600;margin-right:8px;border:1px solid rgba(127,127,127,.3)}
 .hv-nav a.on{opacity:1;background:rgba(47,111,236,.16);color:#2f6fec}
 .hv-nav .hv-span{display:inline-flex;margin-left:12px;border:1px solid rgba(127,127,127,.3);border-radius:999px;padding:2px}
 .hv-nav .hv-span a{padding:2px 10px;font-weight:600;font-size:12px}
@@ -85,7 +86,10 @@ def nav(active: str, generated: str, days: int = 7) -> str:
     day = days == 1  # the toggle opens the same page in the other window
     toggle = (f'<span class="hv-span"><a href="{active if day else DAY_DIR + "/" + active}"{" class=on" if day else ""}>24 h</a>'
               f'<a href="{"../" + active if day else active}"{"" if day else " class=on"}>7 days</a></span>')
-    return (f'<nav class="hv-nav">{items}{toggle}<span class="hv-when">scan {when}</span>'
+    # back to the fleet page (it shows these pages in its Jobs tab, where the link hides itself)
+    fleet = ('<a class="hv-fleet" href="/fleet/?view=fleet" target="_top" title="The hivey fleet: every live agent now">'
+             '🚀 Fleet</a><script>if(window.top!==window)document.currentScript.previousElementSibling.remove()</script>')
+    return (f'<nav class="hv-nav">{fleet}{items}{toggle}<span class="hv-when">scan {when}</span>'
             '<button class="hv-refresh" type="button" title="Scan again now and reload (free: no model run)" '
             'onclick="hvRefresh(this)">↻ Refresh</button></nav>' + REFRESH_JS)
 

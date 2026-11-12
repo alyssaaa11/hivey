@@ -5,22 +5,26 @@ http://127.0.0.1:<port>/latest/. It listens on 127.0.0.1 only, serves ~/.hivey/a
 has these actions, answered only for the pages it serves (Origin check), so other web pages can't
 trigger them:
 
+  GET  /hv-jobs             the agent jobs pages for the fleet page's Jobs tab: a redirect to the latest
+                            map (else stats, logs, sessions); with no report yet it starts the first build
+                            (`agent_map.py open --no-open`) and answers a page that reloads until it is ready
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
-  POST /hv-office-refresh   `office.py run` in the background (the agent office, /office/)
-  POST /hv-office-action    {"action": "session", "session": "<name>"} shows a hivey session in a terminal (a
+  GET  /fleet/              the agent fleet page (files in reports/fleet/; old /fleet/ links redirect here)
+  POST /hv-fleet-refresh   `fleet.py run` in the background (the agent fleet, /fleet/)
+  POST /hv-fleet-action    {"action": "session", "session": "<name>"} shows a hivey session in a terminal (a
                             new one if none shows it; `hivey session attach` starts a stopped session),
                             {"action": "stop-session", "session": "<name>"} stops a non-default session (all
                             its agents) and closes its terminal windows, or
                             {"id": "wN:p1" | "<session>/wN:p1", "action": "focus" | "compact" | "clear"} for a desk on the
-                            office page: focus opens the agent's terminal in hivey (and brings the
+                            fleet page: focus opens the agent's terminal in hivey (and brings the
                             terminal app forward); compact/clear type /compact or /clear into an agent
                             that is not working
 
-While an office page is open (it polls /office/office.json), a live pass runs every minute (status,
+While a fleet page is open (it polls /fleet/fleet.json), a live pass runs every minute (status,
 context, screen; only desks whose status changed go to the model) and a full re-summary every 5 minutes.
-The office page's ⏱ setting (POST /hv-office-settings {"every": "minute" | "5min" | "15min" | "1h" | "reload"}, saved in
-~/.hivey/agent-map/office-settings.json) picks every minute (above), every 5 / 15 minutes or every hour (full passes only)
-or on reload only (no clock). POST /hv-office-refresh: {} a full pass now (⟳), {"load": true} when a page
+The fleet page's ⏱ setting (POST /hv-fleet-settings {"every": "minute" | "5min" | "15min" | "1h" | "reload"}, saved in
+~/.hivey/agent-map/fleet-settings.json) picks every minute (above), every 5 / 15 minutes or every hour (full passes only)
+or on reload only (no clock). POST /hv-fleet-refresh: {} a full pass now (⟳), {"load": true} when a page
 opens (a quick pass in minute mode, a full one otherwise), {"quick": true} a quick pass.
 It stops after 2 hours unused. Python standard library only.
 """
@@ -41,7 +45,7 @@ import urllib.request
 from pathlib import Path
 
 STATE = Path.home() / ".hivey" / "agent-map"
-OFFICE_SETTINGS = STATE / "office-settings.json"  # {"every": "minute" | ..., "ships": {"<session>": {"x", "z"}}}
+FLEET_SETTINGS = STATE / "fleet-settings.json"  # {"every": "minute" | ..., "ships": {"<session>": {"x", "z"}}}
 EVERY_MODES = ("minute", "5min", "15min", "1h", "reload")
 FULL_EVERY = {"minute": 300, "5min": 300, "15min": 900, "1h": 3600}  # seconds between full passes per mode
 REPORTS = STATE / "reports"
@@ -50,12 +54,13 @@ SCRIPTS = Path(__file__).resolve().parent
 PREFERRED_PORT = 42817  # unregistered and below macOS's temporary-port range, so no other app picks it
 IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
+LEGACY_PAGE = "/office"  # the fleet page's address before it was renamed; redirected to /fleet/
 MARK = b"hivey-agent-map"
-VERSION = b"office-13"  # bump when the server gains actions, so `ensure` replaces an older one
-OFFICE_EVERY = 300  # seconds between full office refreshes (every terminal re-summarized) while its page is open
-OFFICE_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
-OFFICE_WATCHED = 600  # the page counts as open for this long after its last poll
-OFFICE_JSON = REPORTS / "office" / "office.json"
+VERSION = b"fleet-16"  # bump when the server gains actions, so `ensure` replaces an older one
+FLEET_EVERY = 300  # seconds between full fleet refreshes (every terminal re-summarized) while its page is open
+FLEET_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
+FLEET_WATCHED = 600  # the page counts as open for this long after its last poll
+FLEET_JSON = REPORTS / "fleet" / "fleet.json"
 PANE = re.compile(r"^[\w-]{1,24}:[\w-]{1,24}$")
 TERMINAL_APPS = {"Apple_Terminal": "Terminal", "iTerm.app": "iTerm", "ghostty": "Ghostty",
                  "WezTerm": "WezTerm", "WarpTerminal": "Warp", "vscode": "Visual Studio Code"}
@@ -66,16 +71,16 @@ def hivey_bin() -> str | None:
     return exe if exe and os.path.isfile(exe) else shutil.which("hivey")
 
 
-def office_settings() -> dict:
+def fleet_settings() -> dict:
     try:
-        got = json.loads(OFFICE_SETTINGS.read_text())
+        got = json.loads(FLEET_SETTINGS.read_text())
         return got if isinstance(got, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
 def clean_ships(ships: object) -> dict:
-    """{session: {x, z}} where you dragged each ship on the office page (bad entries dropped)."""
+    """{session: {x, z}} where you dragged each ship on the fleet page (bad entries dropped)."""
     out = {}
     for name, p in (ships.items() if isinstance(ships, dict) else []):
         try:
@@ -87,25 +92,25 @@ def clean_ships(ships: object) -> dict:
     return out
 
 
-def office_every() -> str:
-    """The office page's refresh setting (every minute by default)."""
+def fleet_every() -> str:
+    """The fleet page's refresh setting (every minute by default)."""
     try:
-        mode = office_settings().get("every")
+        mode = fleet_settings().get("every")
     except (OSError, ValueError, AttributeError):
         mode = None
     return mode if mode in EVERY_MODES else "minute"
 
 
-def start_office_refresh(llm: bool = True, quick: bool = False) -> None:
-    """office.py run in the background (it holds its own lock, so overlapping starts are dropped)."""
-    cmd = [sys.executable, "-I", str(SCRIPTS / "office.py"), "run"] + ([] if llm else ["--no-llm"]) \
+def start_fleet_refresh(llm: bool = True, quick: bool = False) -> None:
+    """fleet.py run in the background (it holds its own lock, so overlapping starts are dropped)."""
+    cmd = [sys.executable, "-I", str(SCRIPTS / "fleet.py"), "run"] + ([] if llm else ["--no-llm"]) \
         + (["--quick"] if quick else [])
-    with open(STATE / "office.log", "a") as fh:
+    with open(STATE / "fleet.log", "a") as fh:
         subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=fh, stderr=fh, start_new_session=True)
 
 
-def request_office_refresh(port: int) -> None:
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/hv-office-refresh", data=b"{}", method="POST",
+def request_fleet_refresh(port: int) -> None:
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/hv-fleet-refresh", data=b"{}", method="POST",
                                  headers={"Origin": f"http://127.0.0.1:{port}", "Content-Type": "application/json"})
     try:
         urllib.request.urlopen(req, timeout=3).read()
@@ -264,10 +269,10 @@ def raise_terminal(session: str | None = None) -> str:
     return "raised"
 
 
-def office_desk(desk_id: str) -> dict | None:
-    """The desk on the office page with this id (pane id, or "<session>/<pane>" outside the default session)."""
+def fleet_desk(desk_id: str) -> dict | None:
+    """The desk on the fleet page with this id (pane id, or "<session>/<pane>" outside the default session)."""
     try:
-        agents = json.loads(OFFICE_JSON.read_text()).get("agents", [])
+        agents = json.loads(FLEET_JSON.read_text()).get("agents", [])
     except (OSError, ValueError):
         return None
     return next((a for a in agents if a.get("id") == desk_id), None) \
@@ -334,7 +339,7 @@ def stop_session(session: str) -> tuple[bool, str]:
     if not exe or not SESSION_NAME.match(session or ""):
         return False, "unknown session"
     if session == "default":
-        return False, "the default session is not stopped from here (it runs this office); quit it in hivey"
+        return False, "the default session is not stopped from here (it runs this fleet); quit it in hivey"
     ttys = client_ttys(session, only=True)
     p = subprocess.run([exe, "session", "stop", session], capture_output=True, text=True, timeout=60)
     if p.returncode != 0:
@@ -380,7 +385,7 @@ def open_wiki_page(desk: dict, rel: str) -> tuple[bool, str]:
     return True, f"opened (not an Obsidian vault yet: in Obsidian, Open folder as vault → {wiki.get('short')})"
 
 
-def office_action(desk_id: str, action: str, session: str = "", path: str = "") -> tuple[bool, str]:
+def fleet_action(desk_id: str, action: str, session: str = "", path: str = "") -> tuple[bool, str]:
     if action == "session":
         return session_action(session)
     if action == "stop-session":
@@ -388,7 +393,7 @@ def office_action(desk_id: str, action: str, session: str = "", path: str = "") 
     exe = hivey_bin()
     if not exe:
         return False, "hivey not found"
-    desk = office_desk(desk_id)
+    desk = fleet_desk(desk_id)
     pane = (desk or {}).get("pane") or ""
     if not desk or not PANE.match(pane):
         return False, "unknown agent"
@@ -468,8 +473,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     server_version = "hivey-agent-map"
     busy = threading.Lock()
     last_used = time.time()
-    office_polled = 0.0
-    office_full = 0.0  # last full (all re-summarized) office refresh started by this server
+    fleet_polled = 0.0
+    fleet_full = 0.0  # last full (all re-summarized) fleet refresh started by this server
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(REPORTS), **kwargs)
@@ -492,26 +497,60 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         Handler.last_used = time.time()
         if self.path == PING:
             return self.answer(200, MARK + b" " + VERSION, "text/plain")
-        if self.path.split("?")[0] == "/office/office.json":
-            Handler.office_polled = time.time()
+        path, _, query = self.path.partition("?")
+        if path == "/fleet" or path == LEGACY_PAGE or path.startswith(LEGACY_PAGE + "/"):  # old links: /fleet/
+            self.send_response(301)
+            self.send_header("Location", "/fleet/" + ("?" + query if query else ""))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        if path == "/fleet/fleet.json":
+            Handler.fleet_polled = time.time()
+        if self.path.split("?")[0] == "/hv-jobs":
+            return self.jobs()
         return super().do_GET()
+
+    def jobs(self) -> None:
+        """The fleet page's Jobs tab: the latest agent jobs page, or the first report being built."""
+        import report
+        folder = report.latest_report()
+        page = next((p for p in report.PAGES if folder and (folder / p).is_file()), None)
+        if folder and page:
+            rel = "latest" if report.LATEST.exists() and report.LATEST.resolve() == folder.resolve() else folder.name
+            self.send_response(302)
+            self.send_header("Location", f"/{rel}/{page}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        if not report.first_run_busy():
+            log = open(STATE / "first-run.log", "a")
+            subprocess.Popen([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "open", "--no-open"],
+                             stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
+            log.close()
+        body = ("<!doctype html><meta charset=utf-8><meta http-equiv=refresh content=5>"
+                "<body style=\"font:15px system-ui;background:#0b0e15;color:#cbd5e1;display:grid;place-items:center;"
+                "height:90vh;margin:0\"><div style=\"text-align:center\"><div style=\"font-size:34px\">📊</div>"
+                "<p><b>Building your first agent jobs report…</b></p><p style=\"opacity:.7\">Stats, logs and "
+                "sessions take a few seconds; the map is drawn in the background. This page reloads by itself."
+                "</p></div></body>")
+        return self.answer(200, body.encode(), "text/html; charset=utf-8")
 
     def do_POST(self) -> None:
         Handler.last_used = time.time()
         port = self.server.server_address[1]
-        if self.path not in ("/hv-refresh", "/hv-office-refresh", "/hv-office-action", "/hv-office-settings"):
+        if self.path not in ("/hv-refresh", "/hv-fleet-refresh", "/hv-fleet-action", "/hv-fleet-settings"):
             return self.answer(404, b'{"ok":false,"error":"not found"}')
         if self.headers.get("Origin") not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
             return self.answer(403, b'{"ok":false,"error":"only the agent map pages can do this"}')
-        if self.path in ("/hv-office-refresh", "/hv-office-settings"):
+        if self.path in ("/hv-fleet-refresh", "/hv-fleet-settings"):
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)
                 req = json.loads(self.rfile.read(length) or b"{}")
                 req = req if isinstance(req, dict) else {}
             except ValueError:
                 req = {}
-            if self.path == "/hv-office-settings":
-                cur = office_settings()
+            if self.path == "/hv-fleet-settings":
+                cur = fleet_settings()
                 if "every" in req:
                     if req.get("every") not in EVERY_MODES:
                         return self.answer(400, b'{"ok":false,"error":"every: minute, 5min, 15min, 1h or reload"}')
@@ -524,26 +563,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     if not re.fullmatch(r"random|[1-9]|10", str(req["track"])):
                         return self.answer(400, b'{"ok":false,"error":"track: random or 1..10"}')
                     cur["track"] = str(req["track"])
-                if "ships" in req:  # the ship positions you dragged on the office page
+                if "ships" in req:  # the ship positions you dragged on the fleet page
                     cur["ships"] = clean_ships(req["ships"])
-                OFFICE_SETTINGS.write_text(json.dumps(cur))
-                return self.answer(200, json.dumps({"ok": True, "every": office_every(), "space": cur.get("space"), "track": cur.get("track"),
+                FLEET_SETTINGS.write_text(json.dumps(cur))
+                return self.answer(200, json.dumps({"ok": True, "every": fleet_every(), "space": cur.get("space"), "track": cur.get("track"),
                                                     "ships": cur.get("ships", {})}).encode())
-            every = office_every()
+            every = fleet_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
             quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
-            Handler.office_polled = time.time()
+            Handler.fleet_polled = time.time()
             if not quick:
-                Handler.office_full = time.time()
-            start_office_refresh(quick=quick)
+                Handler.fleet_full = time.time()
+            start_fleet_refresh(quick=quick)
             return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
-                                                "space": office_settings().get("space"), "track": office_settings().get("track"),
-                                                "ships": clean_ships(office_settings().get("ships"))}).encode())
-        if self.path == "/hv-office-action":
+                                                "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
+                                                "ships": clean_ships(fleet_settings().get("ships"))}).encode())
+        if self.path == "/hv-fleet-action":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)
                 req = json.loads(self.rfile.read(length) or b"{}")
-                ok, msg = office_action(str(req.get("id") or req.get("pane") or ""), str(req.get("action", "")),
+                ok, msg = fleet_action(str(req.get("id") or req.get("pane") or ""), str(req.get("action", "")),
                                         str(req.get("session") or ""), str(req.get("path") or ""))
             except (ValueError, OSError, subprocess.SubprocessError) as e:
                 ok, msg = False, str(e)[:200]
@@ -563,7 +602,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self.answer(200, json.dumps(body).encode())
 
 
+def migrate_legacy() -> None:
+    """The fleet page was called the agent office: move its saved files to their new names, once."""
+    old = "off" + "ice"  # spelled apart so a search for the old name finds only this migration
+    for name, new in ((f"{old}-settings.json", FLEET_SETTINGS), (f"{old}-cache.json", STATE / "fleet-cache.json"),
+                      (f"{old}.log", STATE / "fleet.log")):
+        src = STATE / name
+        try:
+            if src.is_file() and not new.exists():
+                src.rename(new)
+        except OSError:
+            pass
+    shutil.rmtree(STATE / f"{old}-run", ignore_errors=True)  # an empty working folder, now fleet-run/
+    shutil.rmtree(REPORTS / old, ignore_errors=True)  # the old page and data; fleet.py writes reports/fleet/
+
+
 def serve() -> int:
+    migrate_legacy()
     REPORTS.mkdir(parents=True, exist_ok=True)
     try:
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", PREFERRED_PORT), Handler)
@@ -579,27 +634,27 @@ def serve() -> int:
                 httpd.shutdown()
                 return
 
-    def office_clock() -> None:
-        """While an office page is open: a live pass every minute, a full re-summary every 5 minutes."""
+    def fleet_clock() -> None:
+        """While a fleet page is open: a live pass every minute, a full re-summary every 5 minutes."""
         while True:
             time.sleep(10)
-            every = office_every()
-            if every == "reload" or time.time() - Handler.office_polled > OFFICE_WATCHED:
+            every = fleet_every()
+            if every == "reload" or time.time() - Handler.fleet_polled > FLEET_WATCHED:
                 continue
             try:
-                age = time.time() - OFFICE_JSON.stat().st_mtime
+                age = time.time() - FLEET_JSON.stat().st_mtime
             except OSError:
-                age = OFFICE_EVERY
-            if time.time() - Handler.office_full >= FULL_EVERY.get(every, OFFICE_EVERY):
-                Handler.office_full = time.time()
-                start_office_refresh()
+                age = FLEET_EVERY
+            if time.time() - Handler.fleet_full >= FULL_EVERY.get(every, FLEET_EVERY):
+                Handler.fleet_full = time.time()
+                start_fleet_refresh()
                 time.sleep(30)  # give it time to write before checking the age again
-            elif every == "minute" and age >= OFFICE_LIVE:
-                start_office_refresh(quick=True)
+            elif every == "minute" and age >= FLEET_LIVE:
+                start_fleet_refresh(quick=True)
                 time.sleep(20)
 
     threading.Thread(target=watchdog, daemon=True).start()
-    threading.Thread(target=office_clock, daemon=True).start()
+    threading.Thread(target=fleet_clock, daemon=True).start()
     print(f"agent map pages: http://127.0.0.1:{port}/latest/agent-stats.html", flush=True)
     httpd.serve_forever()
     try:

@@ -1,4 +1,4 @@
-"""The agent office: what every live agent is doing now, drawn as a 3D office of desks.
+"""The agent fleet: what every live agent is doing now, drawn as a 3D fleet of desks.
 
 One desk per agent you talk to in hivey: solo agents, extra sessions in a space, and each swarm's
 coordinator (a swarm's workers and critics are folded into their coordinator's desk as its team).
@@ -16,11 +16,11 @@ desk: the current job, a speech-bubble line, what it achieved, what it waits for
 sent again, in batches, so 100 agents cost a few calls per refresh. Without a model (--no-llm, or the
 call fails) the summary comes from the recap and the last prompt.
 
-Output: ~/.hivey/agent-map/reports/office/office.json, read by office.html (Three.js, vendored), served
+Output: ~/.hivey/agent-map/reports/fleet/fleet.json, read by fleet.html (Three.js, vendored), served
 by serve.py, which reruns this every 5 minutes while the page is open. Python standard library only.
 
-  office.py run [--no-llm] [--quick] [--model haiku]    one refresh (--quick: the 1-minute live pass)
-  office.py open                               start the server, refresh if stale, open the page
+  fleet.py run [--no-llm] [--quick] [--model haiku]    one refresh (--quick: the 1-minute live pass)
+  fleet.py open                               start the server, refresh if stale, open the page
 """
 from __future__ import annotations
 
@@ -45,10 +45,10 @@ import context_window  # noqa: E402
 
 HOME = Path.home()
 STATE = HOME / ".hivey" / "agent-map"
-OUT = STATE / "reports" / "office"
-CACHE = STATE / "office-cache.json"
-LOCK = STATE / "office.lock"
-RUN_DIR = STATE / "office-run"  # neutral cwd for the model calls (no CLAUDE.md, no project)
+OUT = STATE / "reports" / "fleet"
+CACHE = STATE / "fleet-cache.json"
+LOCK = STATE / "fleet.lock"
+RUN_DIR = STATE / "fleet-run"  # neutral cwd for the model calls (no CLAUDE.md, no project)
 
 STANDARD_WINDOW = 200_000
 LARGE_WINDOW = 1_000_000
@@ -94,7 +94,7 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
 
 
-# ---------------------------------------------------------------- who is in the office
+# ---------------------------------------------------------------- who is in the fleet
 
 def hv_sessions(hv: str) -> list[dict]:
     """Every named hivey session: [{name, running, default, socket}] (the default one first)."""
@@ -404,7 +404,7 @@ def window_for(desk: dict, ctx: int) -> int:
 
 # ---------------------------------------------------------------- the summaries
 
-PROMPT = """You are the receptionist of an office of AI coding agents. For each agent below you get its
+PROMPT = """You are the receptionist of a fleet of AI coding agents. For each agent below you get its
 status, its terminal screen (bottom of the screen = now) and, for Claude Code agents, facts from its session
 log. Write what a busy manager needs at a glance. Plain words, no jargon, no markdown.
 
@@ -542,9 +542,11 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
 
 
 def run(model: str = "haiku", use_llm: bool = True, quick: bool = False) -> int:
+    import serve
+    serve.migrate_legacy()
     hv = hivey_bin()
     if not hv:
-        print("office: hivey not found", file=sys.stderr)
+        print("fleet: hivey not found", file=sys.stderr)
         return 1
     STATE.mkdir(parents=True, exist_ok=True)
     try:
@@ -553,7 +555,7 @@ def run(model: str = "haiku", use_llm: bool = True, quick: bool = False) -> int:
         os.close(fd)
     except FileExistsError:
         if time.time() - LOCK.stat().st_mtime < 600:
-            print("office: a refresh is already running")
+            print("fleet: a refresh is already running")
             return 0
         LOCK.unlink(missing_ok=True)
         return run(model, use_llm, quick)
@@ -637,7 +639,7 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
     full_at = now_iso()
     if quick:  # a live pass: the last full summary pass stays the one already on the page
         try:
-            full_at = json.loads((OUT / "office.json").read_text()).get("full_at") or full_at
+            full_at = json.loads((OUT / "fleet.json").read_text()).get("full_at") or full_at
         except (OSError, ValueError):
             pass
     data = {"generated": now_iso(), "kind": "quick" if quick else "full", "full_at": full_at, "seconds": round(time.time() - start, 1), "model": model if use_llm else None,
@@ -648,14 +650,14 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
             "advice": {k: sum(1 for d in people if d["summary"].get("advice") == k and not d.get("asleep"))
                        for k in ("compact", "clear")}}
     write(data)
-    print(f"office: {len(people)} desks, {len(todo) if use_llm else 0} summarized"
+    print(f"fleet: {len(people)} desks, {len(todo) if use_llm else 0} summarized"
           f"{' (' + error + ')' if error else ''} in {data['seconds']}s → {OUT / 'index.html'}")
     return 0
 
 
 def write(data: dict) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    assets = SCRIPTS / "office"  # the page and its modules (Three.js, post-processing, the ship)
+    assets = SCRIPTS / "fleet"  # the page and its modules (Three.js, post-processing, the ship)
     for src in assets.rglob("*"):
         if not src.is_file() or src.name.startswith("."):
             continue
@@ -663,35 +665,35 @@ def write(data: dict) -> None:
         blob = src.read_bytes()
         if rel.suffix == ".b64":  # binary models travel base64 (skills install text files)
             rel, blob = rel.with_suffix(""), base64.b64decode(blob)
-        dst = OUT / ("index.html" if rel.as_posix() == "office.html" else rel)
+        dst = OUT / ("index.html" if rel.as_posix() == "fleet.html" else rel)
         if not dst.is_file() or dst.read_bytes() != blob:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_bytes(blob)
-    tmp = OUT / "office.json.tmp"
+    tmp = OUT / "fleet.json.tmp"
     tmp.write_text(json.dumps(data, ensure_ascii=False))
-    os.replace(tmp, OUT / "office.json")
+    os.replace(tmp, OUT / "fleet.json")
 
 
 def open_page(model: str) -> int:
     import serve
-    data = OUT / "office.json"
+    data = OUT / "fleet.json"
     fresh = data.is_file() and time.time() - data.stat().st_mtime < STALE_SECONDS
     if not fresh:
         run(model, use_llm=False)  # seconds: desks and terminal lines now, summaries follow
     port = serve.ensure()
     if not port:
-        print("office: the local page server did not start (see ~/.hivey/agent-map/server.log)", file=sys.stderr)
+        print("fleet: the local page server did not start (see ~/.hivey/agent-map/server.log)", file=sys.stderr)
         return 1
     if not fresh:
-        serve.request_office_refresh(port)
-    url = f"http://127.0.0.1:{port}/office/"
+        serve.request_fleet_refresh(port)
+    url = f"http://127.0.0.1:{port}/fleet/"
     subprocess.run(["open", url], capture_output=True)
     print(f"agent fleet: {url}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="office.py", description=__doc__.split("\n\n")[0])
+    ap = argparse.ArgumentParser(prog="fleet.py", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd")
     r = sub.add_parser("run")
     r.add_argument("--no-llm", action="store_true")

@@ -1,5 +1,5 @@
-// hivey office: every live agent at a desk. Data: ./office.json (office.py, refreshed every 5 min by
-// serve.py while this page is open). Three.js draws the office; the board and the list are plain HTML.
+// hivey fleet: every live agent at a desk. Data: ./fleet.json (fleet.py, refreshed every 5 min by
+// serve.py while this page is open). Three.js draws the fleet; the board and the list are plain HTML.
 // Click an agent: open its terminal in hivey. Right-click (or ⓘ): details. Only working agents move.
 import * as THREE from './three.module.min.js';
 import { RoomEnvironment } from './RoomEnvironment.js';
@@ -22,13 +22,16 @@ const st = s => STATUS[s] || { label: s || '?', emoji: '•', color: '#64748b' }
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 let data = null, agents = [], selected = null;
-const ui = JSON.parse(localStorage.getItem('hv-office-ship') || '{}');
-ui.view ||= 'office';
+// settings saved before the rename (the page was the agent office) carry over
+const ui = JSON.parse(localStorage.getItem('hv-fleet-ship') || localStorage.getItem('hv-' + 'off' + 'ice-ship') || '{}');
+ui.view ||= 'fleet';
+const VIEWS = ['fleet', 'board', 'list', 'jobs'];
+{ const v = new URLSearchParams(location.search).get('view'); if (VIEWS.includes(v)) ui.view = v; if (v) history.replaceState(null, '', location.pathname); }  // ?view=jobs from the menu or a jobs page
 ui.filter ||= null;
 if (ui.toon === undefined) ui.toon = false;
-const save = () => localStorage.setItem('hv-office-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
-// ship positions also live on the office server, so every browser opens the fleet where you left it
-const saveShips = () => { save(); fetch('/hv-office-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
+const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
+// ship positions also live on the fleet server, so every browser opens the fleet where you left it
+const saveShips = () => { save(); fetch('/hv-fleet-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
 
 // ---------------------------------------------------------------- helpers
 function hue(name) { let h = 0; for (const c of name || '') h = (h * 31 + c.charCodeAt(0)) >>> 0; return h % 360; }
@@ -121,35 +124,35 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') closeShipMen
 async function stopSession(name) {
   toast(`Stopping session ${name}…`);
   try {
-    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop-session', session: name }) });
+    const r = await fetch('/hv-fleet-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop-session', session: name }) });
     const j = await r.json();
     toast(j.message || (j.ok ? `Session ${name} stopped` : `Could not stop session ${name}`));
-    if (j.ok) fetch('/hv-office-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500));
-  } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
+    if (j.ok) fetch('/hv-fleet-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500));
+  } catch (e) { toast('The fleet server is not answering: run `hivey agent-map fleet` again'); }
 }
 // click on a ship's name tag: that hivey session in a terminal (a new one if none shows it; starts a stopped one)
 async function openSession(name, running) {
   warpPing();
   toast(running ? `Opening session ${name}…` : `Starting session ${name}…`);
   try {
-    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'session', session: name }) });
+    const r = await fetch('/hv-fleet-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'session', session: name }) });
     const j = await r.json();
     toast(j.message || (j.ok ? `Session ${name} opened` : `Could not open session ${name}`));
-    if (j.ok && !running) setTimeout(() => fetch('/hv-office-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500)), 4000);
-  } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
+    if (j.ok && !running) setTimeout(() => fetch('/hv-fleet-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500)), 4000);
+  } catch (e) { toast('The fleet server is not answering: run `hivey agent-map fleet` again'); }
 }
 async function act(a, action) {
   if (action === 'focus' || action === 'compact') {
     warpPing();
     toast(action === 'focus' ? `Opening ${a.name} in hivey…` : `Compacting ${a.name}…`);
-    office.flash(a.id);
+    fleet.flash(a.id);
     document.querySelectorAll(`[data-id="${CSS.escape(a.id)}"]`).forEach(el => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
   }
   try {
-    const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, pane: a.pane, action }) });
+    const r = await fetch('/hv-fleet-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, pane: a.pane, action }) });
     const j = await r.json();
     toast(j.ok && action === 'focus' && !/new terminal/.test(j.message || '') ? `${a.name} is open in hivey ↗` : `${a.name}: ${j.message}`);
-  } catch (e) { toast('The office server is not answering: run `hivey agent-map office` again'); }
+  } catch (e) { toast('The fleet server is not answering: run `hivey agent-map fleet` again'); }
 }
 // clear needs a second click within 3 s (no browser dialogs); compact goes at once
 function armed(btn, a, action) {
@@ -197,7 +200,7 @@ function renderHeader() {
   $('#pills').querySelectorAll('.pill').forEach(p => p.onclick = () => { ui.filter = ui.filter === p.dataset.f ? null : p.dataset.f; save(); renderAll(); });
   tickSub();
 }
-let every = 'minute';  // the refresh setting, kept by the office server (shared by every open page)
+let every = 'minute';  // the refresh setting, kept by the fleet server (shared by every open page)
 const EVERY_S = { minute: 60, '5min': 300, '15min': 900, '1h': 3600 };
 function tickSub() {
   if (!data) return;
@@ -309,16 +312,16 @@ function openDrawer(a) {
   const el = $('#drawer');
   el.dataset.id = a.id;
   wireDrawer(a);
-  office.markSelected();
+  fleet.markSelected();
 }
 function wireDrawer(a) {
   $('#drawer').querySelectorAll('[data-wiki]').forEach(l => l.onclick = async e => {
     e.preventDefault(); e.stopPropagation();
     try {
-      const r = await fetch('/hv-office-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, action: 'wiki', path: l.dataset.wiki }) });
+      const r = await fetch('/hv-fleet-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, action: 'wiki', path: l.dataset.wiki }) });
       const j = await r.json();
       toast(j.ok ? `📚 ${j.message}` : `${a.name}: ${j.message}`);
-    } catch (err) { toast('The office server is not answering: run `hivey agent-map fleet` again'); }
+    } catch (err) { toast('The fleet server is not answering: run `hivey agent-map fleet` again'); }
   });
   $('#drawer').querySelectorAll('button[data-act]').forEach(b => b.onclick = e => {
     e.stopPropagation();
@@ -329,11 +332,11 @@ function wireDrawer(a) {
     armed(b, a, k);
   });
 }
-function closeDrawer() { $('#drawer').classList.remove('open'); selected = null; office.markSelected(); }
+function closeDrawer() { $('#drawer').classList.remove('open'); selected = null; fleet.markSelected(); }
 
-// ---------------------------------------------------------------- the 3D office
-const office = (() => {
-  const host = $('#office'), labels = $('#labels');
+// ---------------------------------------------------------------- the 3D fleet
+const fleet = (() => {
+  const host = $('#fleet'), labels = $('#labels');
   let renderer;
   try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); } catch (e) { return { ok: false, build() {}, markSelected() {}, resize() {}, fit() {}, flash() {}, setSpace() {} }; }
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -699,7 +702,7 @@ const office = (() => {
     cam.lookAt(target);
     dirty = true;
   }
-  // fit = project the office's corners into the camera's view and frame them with a margin
+  // fit = project the fleet's corners into the camera's view and frame them with a margin
   function fit() {
     target.set(bounds.cx, 0, bounds.cz);
     placeCam(); cam.updateMatrixWorld();
@@ -864,7 +867,7 @@ const office = (() => {
   let last = 0, lastCode = 0;
   function frame(t) {
     requestAnimationFrame(frame);
-    if (document.hidden || ui.view !== 'office') return;
+    if (document.hidden || ui.view !== 'fleet') return;
     const busy = flashes.length > 0 || (!REDUCED && desks.some(d => d.a.status === 'working' || d.a.status === 'blocked' || d.team.some(m => m.status === 'working')));
     const moving = busy || (!REDUCED && ship.thrusting());
     const dt = Math.min(0.1, (t - (frame.prev || t)) / 1000); frame.prev = t;
@@ -929,33 +932,53 @@ function renderAll() {
   renderHeader();
   renderInbox();
   document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
-  $('#office').style.display = ui.view === 'office' ? '' : 'none';
+  $('#fleet').style.display = ui.view === 'fleet' ? '' : 'none';
   $('#board').style.display = ui.view === 'board' ? 'block' : 'none';
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
-  if (ui.view === 'office') { office.build(agents.filter(visible), data.sessions); office.resize(); }
+  showJobs();
+  if (ui.view === 'fleet') { fleet.build(agents.filter(visible), data.sessions); fleet.resize(); }
   if (ui.view === 'board') renderBoard();
   if (ui.view === 'list') renderList();
   if (selected) { const a = agents.find(x => x.id === selected); if (a && $('#drawer').classList.contains('open')) openDrawer(a); }
 }
+// the agent jobs pages (Map, Stats, Logs, Sessions) in a frame, loaded the first time the tab opens;
+// the server redirects /hv-jobs to the latest report or builds the first one
+function showJobs() {
+  const on = ui.view === 'jobs', frame = $('#jobsframe');
+  document.body.classList.toggle('v-jobs', on);
+  $('#jobs').style.display = on ? 'block' : 'none';
+  if (!on) return;
+  if (!frame.dataset.loaded) {  // an older page server has no /hv-jobs: the latest map straight away
+    frame.dataset.loaded = '1';
+    fetch('/hv-jobs', { cache: 'no-store' }).then(r => { frame.src = r.ok ? r.url : '/latest/agent-map.html'; })
+      .catch(() => { frame.src = '/latest/agent-map.html'; });
+  }
+  fitJobs();
+}
+function fitJobs() {
+  const frame = $('#jobsframe');
+  if (ui.view === 'jobs') frame.style.height = Math.max(420, innerHeight - frame.getBoundingClientRect().top) + 'px';
+}
+addEventListener('resize', fitJobs);
 async function poll() {
   try {
-    if (office.ready) await office.ready.catch(() => {});
-    const r = await fetch('./office.json?ts=' + Date.now(), { cache: 'no-store' });
+    if (fleet.ready) await fleet.ready.catch(() => {});
+    const r = await fetch('./fleet.json?ts=' + Date.now(), { cache: 'no-store' });
     const j = await r.json();
     if (j.generated !== lastGenerated) {
       lastGenerated = j.generated; data = j;
-      if (refreshing && Date.parse(j.generated) > refreshing) { refreshing = false; $('#refresh').innerHTML = '⟳'; toast('Office updated'); }
+      if (refreshing && Date.parse(j.generated) > refreshing) { refreshing = false; $('#refresh').innerHTML = '⟳'; toast('Fleet updated'); }
       renderAll();
     }
-  } catch (e) { console.error('hivey fleet:', e); $('#sub').textContent = 'cannot read office.json: is the office server running? (hivey menu → agent fleet)'; }
+  } catch (e) { console.error('hivey fleet:', e); $('#sub').textContent = 'cannot read fleet.json: is the fleet server running? (hivey menu → agent fleet)'; }
 }
 async function refreshNow() {
   if (refreshing) return;
   refreshing = Date.now();
   $('#refresh').innerHTML = '<span class="spin">⟳</span>';
   tickSub();
-  try { await fetch('/hv-office-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
-  catch (e) { toast('The office server is not answering'); refreshing = false; $('#refresh').innerHTML = '⟳'; }
+  try { await fetch('/hv-fleet-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
+  catch (e) { toast('The fleet server is not answering'); refreshing = false; $('#refresh').innerHTML = '⟳'; }
   setTimeout(() => { if (refreshing) { refreshing = false; $('#refresh').innerHTML = '⟳'; } }, 180000);
 }
 document.querySelectorAll('#views button').forEach(b => b.onclick = () => { ui.view = b.dataset.v; save(); renderAll(); });
@@ -1016,7 +1039,7 @@ $('#track').onchange = e => {
   loadTrack(pickTrack());
   if (!ui.music) setMusic(true); else bgm.play().catch(() => startOnTouch());
   toast(ui.track === 'random' ? `A new track each time (now: ${TRACKS[trackNo - 1][1]})` : `Music: ${TRACKS[trackNo - 1][1]}, always`);
-  post('/hv-office-settings', { track: ui.track }).catch(() => {});
+  post('/hv-fleet-settings', { track: ui.track }).catch(() => {});
 };
 if (ui.music) { loadTrack(pickTrack()); bgm.play().catch(() => startOnTouch()); }
 // only while the page is in front of you: pause when you switch to the terminal or another app or tab
@@ -1024,7 +1047,7 @@ const inFront = () => !document.hidden && document.hasFocus();
 function followFocus() { if (!ui.music) return; if (inFront()) bgm.play().catch(() => {}); else bgm.pause(); }
 addEventListener('blur', followFocus); addEventListener('focus', followFocus);
 document.addEventListener('visibilitychange', followFocus);
-$('#fit').onclick = () => office.fit();
+$('#fit').onclick = () => fleet.fit();
 function toggleStyle() { ui.toon = !ui.toon; save(); $('#style').textContent = ui.toon ? '🎨 comic' : '✨ HD'; renderAll(); }
 $('#style').onclick = toggleStyle;
 $('#style').textContent = ui.toon ? '🎨 comic' : '✨ HD';
@@ -1034,14 +1057,14 @@ addEventListener('keydown', e => {
   if (e.target.matches('input')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
   else if (e.key === 'Escape') closeDrawer();
-  else if (e.key === '1' || e.key === '2' || e.key === '3') { ui.view = ['office', 'board', 'list'][+e.key - 1]; save(); renderAll(); }
+  else if (e.key >= '1' && e.key <= '4') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
   else if (e.key === 'r') refreshNow();
-  else if (e.key === 'f') office.fit();
+  else if (e.key === 'f') fleet.fit();
   else if (e.key === 't') toggleStyle();
   else if (e.key === 'm') setMusic(!ui.music);
 });
-if (!office.ok && ui.view === 'office') ui.view = 'board';
-if (!office.ok) document.querySelector('#views [data-v="office"]').disabled = true;
+if (!fleet.ok && ui.view === 'fleet') ui.view = 'board';
+if (!fleet.ok) document.querySelector('#views [data-v="fleet"]').disabled = true;
 setInterval(poll, 15000);
 setInterval(tickSub, 1000);
 poll();
@@ -1054,26 +1077,26 @@ const SPACE_NAMES = ['violet', 'emerald', 'crimson', 'deep blue', 'golden', 'sin
 $('#space').value = /^[1-6]$/.test(String(ui.space)) ? String(ui.space) : 'random';
 $('#space').onchange = e => {
   ui.space = e.target.value; save();
-  const n = office.setSpace(ui.space);
+  const n = fleet.setSpace(ui.space);
   toast(ui.space === 'random' ? `A new space scene every time you open the page (now: ${SPACE_NAMES[n - 1] || '?'})` : `Background: ${SPACE_NAMES[n - 1]}, always`);
-  post('/hv-office-settings', { space: ui.space }).catch(() => {});
+  post('/hv-fleet-settings', { space: ui.space }).catch(() => {});
 };
-post('/hv-office-refresh', { load: true }).then(j => {
+post('/hv-fleet-refresh', { load: true }).then(j => {
   showEvery(j.every);
   if (j.space && j.space !== String(ui.space || 'random')) {  // the server's choice wins (set in another browser)
     ui.space = j.space; save(); $('#space').value = j.space;
-    if (j.space !== 'random') office.setSpace(j.space);
-  } else if (!j.space && ui.space) post('/hv-office-settings', { space: String(ui.space) }).catch(() => {});
+    if (j.space !== 'random') fleet.setSpace(j.space);
+  } else if (!j.space && ui.space) post('/hv-fleet-settings', { space: String(ui.space) }).catch(() => {});
   if (j.track && j.track !== String(ui.track || 'random')) {  // the music choice made in another browser
     ui.track = j.track; save(); $('#track').value = j.track;
     if (fixedTrack() && fixedTrack() !== trackNo) { loadTrack(fixedTrack()); if (ui.music) bgm.play().catch(() => startOnTouch()); }
-  } else if (!j.track && ui.track) post('/hv-office-settings', { track: String(ui.track) }).catch(() => {});
+  } else if (!j.track && ui.track) post('/hv-fleet-settings', { track: String(ui.track) }).catch(() => {});
   const server = j.ships || {}, local = ui.ships || {};
   if (Object.keys(server).length) {  // the server's positions win; rebuild if they differ from this browser's
     if (JSON.stringify(server) !== JSON.stringify(local)) { ui.ships = server; save(); if (data) renderAll(); }
   } else if (Object.keys(local).length) saveShips();  // first time: hand this browser's positions to the server
   setTimeout(poll, 2500); setTimeout(poll, 8000);
 }).catch(() => {});
-$('#every').onchange = e => post('/hv-office-settings', { every: e.target.value })
+$('#every').onchange = e => post('/hv-fleet-settings', { every: e.target.value })
   .then(j => { showEvery(j.every); toast({ minute: 'Updates every minute (summaries only for agents that changed)', '5min': 'Updates every 5 minutes', '15min': 'Updates every 15 minutes', '1h': 'Updates every hour', reload: 'Updates only when you reload or press ⟳' }[j.every]); })
-  .catch(() => toast('The office server is not answering'));
+  .catch(() => toast('The fleet server is not answering'));

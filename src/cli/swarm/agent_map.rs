@@ -1,12 +1,12 @@
 //! `hivey agent-map`: what runs on this computer, what it costs and how agents feed each other.
 //! The work is done by the `hivey-agent-map` skill's `agent_map.py` (installed with the hivey
-//! skills); this command runs it, so the menu's "agent jobs" and "agent fleet" items and launchd
+//! skills); this command runs it, so the menu's "agent fleet" item (its Jobs tab shows the agent jobs pages) and launchd
 //! can reach it.
 
 const HELP: &str = "\
 usage: hivey agent-map open              open the latest map (its navbar has Stats, Logs, Sessions);
                                          the first time, builds the pages in seconds, the map after
-       hivey agent-map fleet [--no-llm]  the agent fleet (also: office): every live agent at a desk on
+       hivey agent-map fleet [--no-llm]  the agent fleet: every live agent at a desk on
                                          a 3D spaceship, one ship per hivey session, its current job
                                          read from its terminal and session log and summed up by
                                          Haiku, its context and compact/clear advice; click an agent
@@ -22,7 +22,7 @@ usage: hivey agent-map open              open the latest map (its navbar has Sta
        hivey agent-map context [AGENT…] [--set standard|1M]
                                          each agent's context window (list), or set it
        hivey agent-map stats|scan|link|log …   see `hivey agent-map --help-script`
-  Reports: ~/.hivey/agent-map/reports/latest. Also in the hivey menu → agent jobs / agent fleet.";
+  Reports: ~/.hivey/agent-map/reports/latest. Also in the hivey menu → agent fleet (📊 Jobs tab).";
 
 const SCRIPT: &str = "hivey-agent-map/scripts/agent_map.py";
 
@@ -56,12 +56,13 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
     command.arg("-I").arg(&script);
     if args.first().map(String::as_str) == Some("--help-script") {
         command.arg("--help");
-    } else if matches!(args.first().map(String::as_str), Some("office" | "fleet"))
+    } else if matches!(args.first().map(String::as_str), Some("fleet" | "office"))
         && args.len() == 1
     {
-        command.args(["office", "open"]);
-    } else if args.first().map(String::as_str) == Some("fleet") {
-        command.arg("office").args(&args[1..]);
+        command.args(["fleet", "open"]);
+    } else if matches!(args.first().map(String::as_str), Some("fleet" | "office")) {
+        // "office" is the command's name before the rename, kept so older menus still work
+        command.arg("fleet").args(&args[1..]);
     } else {
         command.args(args);
     }

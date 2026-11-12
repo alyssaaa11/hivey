@@ -1497,37 +1497,21 @@ fn global_menu_opens_settings_on_the_pets_tab() {
     ));
 }
 
-/// hivey: the menu's agent jobs item runs `hivey agent-map open` and closes the menu.
+/// hivey: agent jobs live in the agent fleet page's Jobs tab, so the menu has no separate item.
 #[test]
-fn global_menu_opens_the_agent_map() {
-    use super::super::global_menu::{
-        global_menu_items, ClientGlobalMenuAction, AGENT_MAP_SUPPORTED,
-    };
+fn global_menu_has_no_separate_agent_jobs_item() {
+    use super::super::global_menu::global_menu_items;
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));
-    state.set_pane_surface(surface());
-    state.toggle_global_menu();
     let items = global_menu_items(state.snapshot.as_deref().expect("snapshot"));
-    let index = items
+    assert!(!items
         .iter()
-        .position(|(_, action)| *action == ClientGlobalMenuAction::AgentMap);
-    let Some(index) = index.filter(|_| AGENT_MAP_SUPPORTED) else {
-        assert!(index.is_none(), "agent jobs only on macOS");
-        return;
-    };
-    assert_eq!(items[index].0, "agent jobs");
-    let mut outcome = ClientShellInput::default();
-    state.activate_global_menu_item(index, &mut outcome);
-    assert!(state.overlay.is_none());
-    assert!(outcome.actions.iter().any(|action| matches!(
-        action,
-        ClientShellAction::RunHivey(args) if args == &["agent-map", "open"]
-    )));
+        .any(|(label, _)| *label == "agent jobs" || *label == "agent map"));
 }
 
-/// hivey: the menu's agent fleet item runs `hivey agent-map office` and closes the menu.
+/// hivey: the menu's agent fleet item (fleet and jobs in one page) runs `hivey agent-map fleet` and closes the menu.
 #[test]
-fn global_menu_opens_the_agent_office() {
+fn global_menu_opens_the_agent_fleet() {
     use super::super::global_menu::{
         global_menu_items, ClientGlobalMenuAction, AGENT_MAP_SUPPORTED,
     };
@@ -1538,7 +1522,7 @@ fn global_menu_opens_the_agent_office() {
     let items = global_menu_items(state.snapshot.as_deref().expect("snapshot"));
     let index = items
         .iter()
-        .position(|(_, action)| *action == ClientGlobalMenuAction::AgentOffice);
+        .position(|(_, action)| *action == ClientGlobalMenuAction::AgentFleet);
     let Some(index) = index.filter(|_| AGENT_MAP_SUPPORTED) else {
         assert!(index.is_none(), "agent fleet only on macOS");
         return;
@@ -1549,7 +1533,7 @@ fn global_menu_opens_the_agent_office() {
     assert!(state.overlay.is_none());
     assert!(outcome.actions.iter().any(|action| matches!(
         action,
-        ClientShellAction::RunHivey(args) if args == &["agent-map", "office"]
+        ClientShellAction::RunHivey(args) if args == &["agent-map", "fleet"]
     )));
 }
 

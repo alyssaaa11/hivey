@@ -792,10 +792,10 @@ def first_run_busy() -> bool:
         return False
 
 
-def open_latest(model: str) -> int:
+def open_latest(model: str, show: bool = True) -> int:
     folder = latest_report()
     if folder:
-        return 0 if open_page(folder) else 1
+        return 0 if not show or open_page(folder) else 1
     # No report yet: the pages without a model first (seconds), open them, then the map in the background.
     if first_run_busy():  # a second click while the first report is being built
         notify("Your first agent map is still being built; it opens when ready.")
@@ -807,13 +807,13 @@ def open_latest(model: str) -> int:
         subprocess.run([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "refresh"], stdout=fh, stderr=fh,
                        stdin=subprocess.DEVNULL, timeout=600)
         folder = latest_report()
-        if folder:
+        if folder and show:
             open_page(folder)
         # the map needs the model: drawn in the background; the page's Refresh (or reopening) shows it
         bg = subprocess.Popen([sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "nightly", "--model", model],
                               stdout=fh, stderr=fh, stdin=subprocess.DEVNULL, start_new_session=True)
     FIRST_RUN.write_text(json.dumps({"pid": bg.pid, "started": time.time()}))
-    if folder:
+    if folder and show:
         notify("Stats, logs and sessions are open; the map is being drawn (a few minutes).")
     print("first report: pages built; the map is being drawn in the background (log: ~/.hivey/agent-map/first-run.log)")
     return 0

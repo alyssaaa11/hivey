@@ -1,4 +1,4 @@
-Background music for the hivey agent office: generated locally with Meta MusicGen (large, MLX) for hivey,
+Background music for the hivey agent fleet: generated locally with Meta MusicGen (large, MLX) for hivey,
 28 s each, loudness-normalized. The page plays a new one each time (moving on when one ends) or always the
 one picked in its 🎵 menu.
 

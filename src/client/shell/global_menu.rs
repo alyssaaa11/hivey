@@ -8,10 +8,9 @@ pub(super) enum ClientGlobalMenuAction {
     Pets,
     /// hivey: quiet mode on/off (no voice, no sounds, Slack posts held)
     Quiet,
-    /// hivey: "agent jobs", the latest agent map report: scheduled and background jobs (`hivey agent-map open`)
-    AgentMap,
-    /// hivey: open the agent fleet, what every live agent does now (`hivey agent-map fleet`)
-    AgentOffice,
+    /// hivey: open the agent fleet, what every live agent does now, with the agent jobs pages
+    /// (scheduled and background jobs) in its Jobs tab (`hivey agent-map fleet`)
+    AgentFleet,
 }
 
 /// hivey: the agent map reads launchd and opens its pages with `open`, so macOS only.
@@ -71,8 +70,7 @@ pub(super) fn global_menu_items(
         ClientGlobalMenuAction::Quiet,
     ));
     if AGENT_MAP_SUPPORTED {
-        items.push(("agent jobs", ClientGlobalMenuAction::AgentMap));
-        items.push(("agent fleet", ClientGlobalMenuAction::AgentOffice));
+        items.push(("agent fleet", ClientGlobalMenuAction::AgentFleet));
     }
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));
@@ -146,16 +144,10 @@ impl ClientShellState {
                 self.open_settings_overlay();
                 self.select_settings_section(ClientSettingsSection::Pets, outcome);
             }
-            ClientGlobalMenuAction::AgentMap => {
+            ClientGlobalMenuAction::AgentFleet => {
                 outcome.actions.push(ClientShellAction::RunHivey(vec![
                     "agent-map".to_string(),
-                    "open".to_string(),
-                ]))
-            }
-            ClientGlobalMenuAction::AgentOffice => {
-                outcome.actions.push(ClientShellAction::RunHivey(vec![
-                    "agent-map".to_string(),
-                    "office".to_string(),
+                    "fleet".to_string(),
                 ]))
             }
             ClientGlobalMenuAction::Quiet => {}
