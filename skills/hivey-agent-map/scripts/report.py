@@ -424,6 +424,9 @@ already built: do not touch stats.archify.md or agent-stats.html.
    in its own box, or folded into a box with related jobs (e.g. "5 git backups", "11 trading jobs", "4 X
    jobs") or into the box of the agent it belongs to (links_candidates.belongs_to); map-meta.json refs
    (step 3) list every job id a box stands for. Fold more when space runs out, never drop a job.
+   Never fold an agent or swarm into a job's box: a job that feeds its agent (a links_confirmed link)
+   gets its own box with an arrow into the agent's box; otherwise it merges into the agent's box,
+   named after the agent ("+ nightly 02:45" in its sublabel).
    Keep at most 25 nodes on 5 stages x rows 0-4;
    refresh the numbers in the cards (automated spend, models in use, needs attention).
 3. Descriptions: every node in snapshot.json has a "description" (what it does). snapshot.json
@@ -621,13 +624,16 @@ def start_time_labels(spec: dict, meta: dict, snap: dict) -> dict[str, list[str]
     owned: dict[str, list[str]] = {}
     for b in (snap.get("links_candidates") or {}).get("belongs_to") or []:
         owned.setdefault(b.get("agent", ""), []).append(b.get("job", ""))
+    boxes = {str(n.get("id")) for n in spec.get("nodes") or []}
+    own_box = {r for k, v in (meta.get("nodes") or {}).items() if k in boxes for r in (v or {}).get("refs") or [] if r in jobs}
     out = {}
     for n in spec.get("nodes") or []:
         sub = str(n.get("sublabel", ""))
         if n.get("type") == "database" or re.search(r"\b\d\d:\d\d\b", sub):
             continue
         refs = ((meta.get("nodes") or {}).get(n.get("id")) or {}).get("refs") or []
-        ids = [r for r in refs if r in jobs] or [j for r in refs for j in owned.get(r, []) if j in jobs]
+        # an agent's box borrows the times of its jobs, except jobs drawn in a box of their own
+        ids = [r for r in refs if r in jobs] or [j for r in refs for j in owned.get(r, []) if j in jobs and j not in own_box]
         starts = [s for s in (job_start(jobs[j].get("schedule", "")) for j in dict.fromkeys(ids)) if s]
         if not starts:
             continue
