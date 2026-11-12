@@ -26,6 +26,7 @@ let data = null, agents = [], selected = null;
 const ui = JSON.parse(localStorage.getItem('hv-fleet-ship') || localStorage.getItem('hv-' + 'off' + 'ice-ship') || '{}');
 ui.view ||= 'fleet';
 const VIEWS = ['fleet', 'board', 'list', 'jobs'];
+let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
 { const v = new URLSearchParams(location.search).get('view'); if (VIEWS.includes(v)) ui.view = v; if (v) history.replaceState(null, '', location.pathname); }  // ?view=jobs from the menu or a jobs page
 ui.filter ||= null;
 if (ui.toon === undefined) ui.toon = false;
@@ -219,10 +220,15 @@ function renderInbox() {
   const asked = agents.filter(a => !a.asleep && a.status !== 'blocked' && a.status !== 'working' && a.summary?.needs_you);
   const need = [...blocked, ...asked];
   const lead = [blocked.length ? `✋ ${blocked.length} blocked` : '', asked.length ? `<span style="color:var(--honey)">💬 ${asked.length} asked you</span>` : ''].filter(Boolean).join('<br>');
-  $('#inbox').innerHTML = need.length ? `<span class="lead">${lead}</span>` + need.map(a =>
+  const failed = health?.failed || [];
+  const jobs = failed.length ? `<div class="ask job" id="jobchip" title="Open the Jobs tab: what failed and its log"><span class="em">❌</span>
+     <div class="t"><b>${failed.length} scheduled job${failed.length === 1 ? '' : 's'} failing</b>${esc(failed.slice(0, 3).map(j => j.name).join(', ') + (failed.length > 3 ? '…' : ''))}</div><span class="go">jobs ↗</span></div>` : '';
+  $('#inbox').innerHTML = (need.length ? `<span class="lead">${lead}</span>` + need.map(a =>
     `<div class="ask ${a.status === 'blocked' ? '' : 'soft'}" data-id="${esc(a.id)}" title="Click: open in hivey · right-click: details"><span class="em">${esc(a.emoji)}</span>
-     <div class="t"><b>${esc(a.name)}</b>${esc(a.summary?.needs_you || a.summary?.bubble || 'waiting in its terminal')}</div><span class="go">open ↗</span></div>`).join('') : '';
+     <div class="t"><b>${esc(a.name)}</b>${esc(a.summary?.needs_you || a.summary?.bubble || 'waiting in its terminal')}</div><span class="go">open ↗</span></div>`).join('') : '') + jobs;
   wireActions($('#inbox'));
+  const chip = $('#jobchip');
+  if (chip) chip.onclick = () => { ui.view = 'jobs'; save(); renderAll(); };
 }
 
 // ---------------------------------------------------------------- board & list
@@ -948,6 +954,7 @@ function showJobs() {
   document.body.classList.toggle('v-jobs', on);
   $('#jobs').style.display = on ? 'block' : 'none';
   if (!on) return;
+  if (Date.now() - healthAt > 60000) pollHealth();
   if (!frame.dataset.loaded) {  // an older page server has no /hv-jobs: the latest map straight away
     frame.dataset.loaded = '1';
     fetch('/hv-jobs', { cache: 'no-store' }).then(r => { frame.src = r.ok ? r.url : '/latest/agent-map.html'; })
@@ -955,6 +962,45 @@ function showJobs() {
   }
   fitJobs();
 }
+// scheduled jobs that failed (non-zero exit) or need a check, live from the page server: a count on the
+// Jobs tab, a chip in the top strip and a banner over the jobs pages (the nightly report is a day old)
+async function pollHealth() {
+  healthAt = Date.now();
+  try {
+    const r = await fetch('/hv-job-health', { cache: 'no-store' });
+    if (!r.ok) return;  // an older page server has no /hv-job-health
+    health = await r.json();
+  } catch { return; }
+  renderHealth();
+  renderInbox();
+}
+function healthRow(j, soft) {
+  const err = j.error || j.words || j.status;
+  const errs = (j.errors || []).filter(e => e !== j.error);
+  return `<details class="${soft ? 'soft' : ''}"><summary><b>${soft ? '⚠️' : '❌'} ${esc(j.name)}</b>
+    <span class="m">${esc(j.status)} · ${esc(j.kind.split(' ')[0])} ${esc(j.schedule)}${j.when ? ' · ' + esc(String(j.when).replace('T', ' ')) : ''}</span>
+    <span class="e">${esc(err)}</span></summary><div class="body">
+    ${errs.length ? `<ul>${errs.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}
+    ${j.log ? `<div class="m">log: <code>${esc(j.log)}</code></div>` : '<div class="m">no log file</div>'}
+    ${j.tail?.length ? `<pre>${esc(j.tail.join('\n'))}</pre>` : ''}</div></details>`;
+}
+function renderHealth() {
+  const btn = document.querySelector('#views button[data-v="jobs"]'), box = $('#jobhealth');
+  if (!btn || !box || !health) return;
+  const failed = health.failed || [], check = health.check || [];
+  btn.innerHTML = '📊 Jobs' + (failed.length ? `<span class="jbad" title="${failed.length} scheduled job(s) failed on their last run">${failed.length}</span>`
+    : check.length ? `<span class="jbad soft" title="${check.length} scheduled job(s) need a check">${check.length}</span>` : '');
+  const at = health.checked ? new Date(health.checked).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  box.classList.toggle('ok', health.ok && !failed.length && !check.length);
+  if (!health.ok) box.innerHTML = `<span class="err">Could not check the scheduled jobs: ${esc(health.error || '?')}</span>`;
+  else if (!failed.length && !check.length) box.innerHTML = `✅ All ${health.total} scheduled jobs ran cleanly · checked ${at}`;
+  else box.innerHTML =
+    (failed.length ? `<h4>❌ ${failed.length} scheduled job${failed.length === 1 ? '' : 's'} failed on the last run <span class="m" style="font-weight:400;color:var(--muted)">· checked ${at} · click one for its errors and log</span></h4>` + failed.map(j => healthRow(j, false)).join('') : '') +
+    (check.length ? `<details style="border:0;background:none"><summary><h4 class="soft" style="margin:6px 0 0">⚠️ ${check.length} more to check (not loaded, missed a run, or errors in the log but exited ok)</h4></summary>` + check.map(j => healthRow(j, true)).join('') + '</details>' : '');
+  fitJobs();
+}
+pollHealth();
+setInterval(pollHealth, 5 * 60 * 1000);
 function fitJobs() {
   const frame = $('#jobsframe');
   if (ui.view === 'jobs') frame.style.height = Math.max(420, innerHeight - frame.getBoundingClientRect().top) + 'px';

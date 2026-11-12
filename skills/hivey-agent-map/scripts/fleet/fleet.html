@@ -155,6 +155,27 @@ main{position:relative}
 #jobs{display:none;background:#fff}
 #jobs iframe{display:block;width:100%;height:calc(100vh - 70px);border:0}
 body.v-jobs .search{visibility:hidden}
+/* failing scheduled jobs, live from /hv-job-health: a banner over the jobs pages and a count on the tab */
+#jobhealth{background:var(--bg);color:var(--text);padding:10px 18px;border-bottom:1px solid var(--line);max-height:46vh;overflow:auto}
+#jobhealth:empty{display:none}
+#jobhealth.ok{padding:6px 18px;color:var(--muted);font-size:12.5px}
+#jobhealth h4{margin:0 0 6px;font-size:14px;color:var(--block)}
+#jobhealth h4.soft{color:var(--honey);margin-top:10px}
+#jobhealth details{border:1px solid rgba(251,113,133,.35);background:rgba(251,113,133,.07);border-radius:10px;margin:5px 0;font-size:12.5px}
+#jobhealth details.soft{border-color:rgba(245,184,61,.3);background:rgba(245,184,61,.05)}
+#jobhealth summary{cursor:pointer;padding:6px 10px;list-style:none;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#jobhealth summary::-webkit-details-marker{display:none}
+#jobhealth summary b{white-space:nowrap}
+#jobhealth summary .m{color:var(--muted);white-space:nowrap}
+#jobhealth summary .e{color:#fecdd3;word-break:break-word}
+#jobhealth details.soft summary .e{color:#fde68a}
+#jobhealth .body{padding:0 10px 9px}
+#jobhealth ul{margin:4px 0;padding-left:18px;color:#fecdd3}
+#jobhealth pre{background:#0a0e15;border:1px solid var(--line);border-radius:8px;padding:8px;font:11px/1.35 ui-monospace,Menlo,monospace;
+  white-space:pre-wrap;max-height:220px;overflow:auto;color:#c9d4e3;margin:6px 0 0}
+#views .jbad{margin-left:5px;padding:0 6px;border-radius:999px;background:var(--block);color:#1b0b10;font-size:11px;font-weight:700}
+#views .jbad.soft{background:var(--honey)}
+.ask.job{border-color:rgba(251,113,133,.5);cursor:pointer}
 #list{display:none;padding:12px 18px 40px}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 th{text-align:left;color:var(--muted);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;position:sticky;top:57px;background:var(--bg)}
@@ -247,7 +268,7 @@ td.j{max-width:420px}
   </section>
   <section id="board"></section>
   <section id="list"></section>
-  <section id="jobs"><iframe id="jobsframe" title="Agent jobs"></iframe></section>
+  <section id="jobs"><div id="jobhealth"></div><iframe id="jobsframe" title="Agent jobs"></iframe></section>
 </main>
 <aside id="drawer"></aside>
 <div id="tip"></div>

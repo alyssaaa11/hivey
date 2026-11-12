@@ -107,12 +107,18 @@ def log_path(command: str) -> str | None:
 
 def _is_err(line: str) -> bool:
     # "N Failed downloads:" is yfinance warning about delisted tickers, not a failed run
-    return bool(re.search(r"error|traceback|exception|failed|fatal", line, re.I)
+    return bool(re.search(r"error|traceback|exception|failed|fatal|✗", line, re.I)
                 and not re.search(r"\b0 failed|failed:? 0\b|0 errors?\b|errors?:? 0\b|rerun picks|failed downloads?:",
                                   line, re.I))
 
 
+# an error line that names a cause (an HTTP status, a fatal git error, a Python exception...), preferred
+# over headings like "Failed updates:" as the one-line reason a job failed
+CAUSE_RE = re.compile(r"\b[45]\d\d\b|fatal|\w(Error|Exception)\b|denied|forbid|timed? ?out|not found|no such|"
+                      r"unauthori[sz]ed|refused|could not|cannot|can't", re.I)
+
 # the first and last line of an uncaught Python traceback; an uncaught one always exits non-zero
+TRACE_BODY_RE = re.compile(r'^\s*(raise\b|File "|~*\^)')  # a traceback's source and caret lines
 CRASH_RE = re.compile(r"^\s*(Traceback \(most recent call last\)|[\w.]+(Error|Exception|Interrupt|Exit)\b)")
 
 
@@ -142,11 +148,14 @@ def log_info(path: str | None, exit_code: int | None = None) -> dict:
         # follows is history, not a current problem (a Baserow timeout stayed flagged after good runs)
         ok = re.compile(r"\b(success(ful(ly)?)?|succeeded|finished|completed?|done|wrote|all ok)\b", re.I)
         last_ok = max((i for i, l in enumerate(tail) if ok.search(l) and not _is_err(l)), default=-1)
-        errs = [l.strip() for l in tail[last_ok + 1:] if _is_err(l)]
+        # a run that exited non-zero failed even if it printed "All done!" at the end (the nightly
+        # upgrade does): its error lines count wherever they are in the tail
+        errs = [l.strip() for l in tail[(0 if exit_code else last_ok + 1):] if _is_err(l)]
         if exit_code == 0:  # the latest run exited 0, so any traceback still in the tail is from an earlier run
-            errs = [l for l in errs if not CRASH_RE.match(l)]
+            errs = [l for l in errs if not CRASH_RE.match(l) and not TRACE_BODY_RE.match(l)]
         if errs:
-            info["last_error"] = errs[-1][:200]
+            causes = [e for e in errs if CAUSE_RE.search(e) and not e.rstrip().endswith(":")]
+            info["last_error"] = (causes or errs)[-1][:200]
             info["errors"] = list(dict.fromkeys(e[:200] for e in errs))[-5:]
         info["tail"] = tail
     except OSError:
@@ -269,7 +278,8 @@ def launchd_jobs() -> list[dict]:
         jobs.append({
             "id": f"launchd:{label}", "name": re.sub(r"^com\.(jcsancho|hivey)\.", "", label), "kind": "launchd",
             "schedule": sched, "command": cmd, "agent": job_agent(cmd, d.get("WorkingDirectory")),
-            "status": state, **log_info(d.get("StandardOutPath") or d.get("StandardErrorPath")),
+            "status": state, **log_info(d.get("StandardOutPath") or d.get("StandardErrorPath"),
+                                        int(code) if re.fullmatch(r"-?\d+", code) else None),
         })
         mod = jobs[-1].get("log_modified")
         if period_h and mod and dt.datetime.now() - dt.datetime.fromisoformat(mod) > dt.timedelta(hours=period_h):

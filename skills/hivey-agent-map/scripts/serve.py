@@ -8,6 +8,9 @@ trigger them:
   GET  /hv-jobs             the agent jobs pages for the fleet page's Jobs tab: a redirect to the latest
                             map (else stats, logs, sessions); with no report yet it starts the first build
                             (`agent_map.py open --no-open`) and answers a page that reloads until it is ready
+  GET  /hv-job-health       scheduled jobs whose latest run failed (non-zero exit) or needs a check (not
+                            loaded, missed its run, errors in its log), from a jobs-only scan (~0.1 s, no
+                            model), with each one's error lines and log tail: the Jobs tab's warnings
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
   GET  /fleet/              the agent fleet page (files in reports/fleet/; old /fleet/ links redirect here)
   POST /hv-fleet-refresh   `fleet.py run` in the background (the agent fleet, /fleet/)
@@ -56,7 +59,7 @@ IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 LEGACY_PAGE = "/office"  # the fleet page's address before it was renamed; redirected to /fleet/
 MARK = b"hivey-agent-map"
-VERSION = b"fleet-16"  # bump when the server gains actions, so `ensure` replaces an older one
+VERSION = b"fleet-17"  # bump when the server gains actions, so `ensure` replaces an older one
 FLEET_EVERY = 300  # seconds between full fleet refreshes (every terminal re-summarized) while its page is open
 FLEET_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 FLEET_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -508,7 +511,33 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             Handler.fleet_polled = time.time()
         if self.path.split("?")[0] == "/hv-jobs":
             return self.jobs()
+        if path == "/hv-job-health":
+            return self.job_health()
         return super().do_GET()
+
+    def job_health(self) -> None:
+        """Failing scheduled jobs, live (the nightly report is up to a day old)."""
+        port = self.server.server_address[1]
+        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):  # log tails stay local
+            return self.answer(403, b'{"ok":false,"error":"local pages only"}')
+        try:
+            import agent_map
+            import report
+            jobs = agent_map.cron_jobs() + agent_map.launchd_jobs()
+        except Exception as e:  # a broken scan must not take the fleet page down
+            return self.answer(200, json.dumps({"ok": False, "error": str(e)[:300]}).encode())
+        out = {"ok": True, "checked": time.strftime("%Y-%m-%dT%H:%M"), "total": len(jobs), "failed": [], "check": []}
+        for j in jobs:
+            emo, words = report.job_state(j)
+            if emo not in ("❌", "⚠️"):
+                continue
+            failed = j.get("status", "").startswith("exit")
+            out["failed" if failed else "check"].append({
+                "name": j["name"], "kind": j["kind"], "schedule": j.get("schedule", ""), "status": j.get("status"),
+                "words": words, "error": j.get("last_error", ""), "errors": j.get("errors", []),
+                "log": j.get("log", ""), "when": j.get("last_run") or j.get("log_modified") or "",
+                "tail": (j.get("tail") or [])[-15:]})
+        return self.answer(200, json.dumps(out).encode())
 
     def jobs(self) -> None:
         """The fleet page's Jobs tab: the latest agent jobs page, or the first report being built."""
