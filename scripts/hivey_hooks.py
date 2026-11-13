@@ -339,6 +339,18 @@ edit("src/ui/panes.rs",
         }
         buf.set_stringn(
             start_x,""")
+edit("src/ui/panes.rs",
+     """            .and_then(|terminal| terminal.border_label(app.show_agent_labels_on_pane_borders))
+            .and_then(|label| pane_border_title(&label, info.rect.width, info.is_focused))""",
+     """            .and_then(|terminal| {
+                // hivey: the pane's auto name (its current job) comes first on the border.
+                crate::swarm::autoname::border_label(
+                    terminal.metadata_tokens.get(crate::swarm::autoname::TOKEN),
+                    terminal.border_label(app.show_agent_labels_on_pane_borders),
+                )
+            })
+            .and_then(|label| pane_border_title(&label, info.rect.width, info.is_focused))""",
+     marker="crate::swarm::autoname::border_label(")
 print("border color hooks applied")
 
 # ---------------------------------------------------------------------------

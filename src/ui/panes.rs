@@ -744,7 +744,13 @@ fn render_pane_border_titles(
         let Some(title) = ws
             .pane_state(info.id)
             .and_then(|pane| app.terminals.get(&pane.attached_terminal_id))
-            .and_then(|terminal| terminal.border_label(app.show_agent_labels_on_pane_borders))
+            .and_then(|terminal| {
+                // hivey: the pane's auto name (its current job) comes first on the border.
+                crate::swarm::autoname::border_label(
+                    terminal.metadata_tokens.get(crate::swarm::autoname::TOKEN),
+                    terminal.border_label(app.show_agent_labels_on_pane_borders),
+                )
+            })
             .and_then(|label| pane_border_title(&label, info.rect.width, info.is_focused))
         else {
             continue;

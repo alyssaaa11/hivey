@@ -182,6 +182,10 @@ Profiles → Keyboard → "Use Option as Meta key"; iTerm2: Profiles → Keys �
   (`ui.swarm_sidebar = true`).
 - **Pane titles:** `◆ coordinator · app · opus` (gold master, blue workers, purple critic,
   gray `▷` scripts/addons). `✉2` means two messages are waiting for that agent.
+- **Auto pane names:** every Claude Code or Codex pane, in every session, is named after the job
+  it's doing now, in at most 3 words (`fix login bug · ● web · app · opus`). When a new request
+  comes in, a small Haiku call (`claude -p`) renames the pane. Names are kept per agent session in
+  `pane-names.json` in the session folder. `HIVEY_AUTO_PANE_NAMES=0` turns it off.
 - **Dashboard pane:** each agent's state and for how long, token bars, a tokens-per-10 s chart,
   budget, task counts and recent messages. `q` closes it;
   `hivey swarm addon <swarm> hivey.dashboard` reopens it.

@@ -101,6 +101,7 @@ struct State {
 }
 
 pub(crate) fn start(api_tx: ApiRequestSender) {
+    super::autoname::start(api_tx.clone());
     let (wake, wake_rx) = mpsc::channel();
     let mut state = State {
         // Per session: each `hivey --session <name>` (e.g. one per project) has its own swarms.
