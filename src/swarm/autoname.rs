@@ -73,10 +73,18 @@ struct Namer {
 
 impl Namer {
     fn load(cache_path: PathBuf) -> Self {
-        let names = std::fs::read_to_string(&cache_path)
+        let mut names: HashMap<String, Named> = std::fs::read_to_string(&cache_path)
             .ok()
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default();
+        // Names cached by an older build may break today's rules (e.g. hyphenated).
+        names.retain(|_, named| match clean_name(&named.name) {
+            Some(name) => {
+                named.name = name;
+                true
+            }
+            None => false,
+        });
         Self {
             cache_path,
             names,
@@ -314,7 +322,7 @@ fn ask_model(recent: &Recent) -> Option<String> {
         "Name a terminal pane after the job its coding agent is doing now, in at most 3 words \
          (e.g. \"auto pane names\", \"fix login bug\", \"pharma market research\"). Base it on \
          the latest request, using the earlier ones and the reply only as context. Reply with \
-         only the name: lowercase, no quotes, no punctuation.\n\n",
+         only the name: lowercase words separated by spaces, no hyphens, quotes or punctuation.\n\n",
     );
     for (i, request) in recent.prompts.iter().enumerate() {
         let tag = if i + 1 == recent.prompts.len() {
@@ -396,7 +404,8 @@ fn claude_bin() -> PathBuf {
 fn clean_name(raw: &str) -> Option<String> {
     let line = raw.lines().map(str::trim).rfind(|line| !line.is_empty())?;
     let words = line
-        .split_whitespace()
+        // Hyphenated or snake_case answers (`fix-login-bug`) still count word by word.
+        .split(|c: char| c.is_whitespace() || c == '-' || c == '_')
         .map(|word| {
             word.trim_matches(|c: char| !c.is_alphanumeric())
                 .to_lowercase()
@@ -481,7 +490,7 @@ mod tests {
     fn clean_name_keeps_three_plain_words() {
         assert_eq!(
             clean_name("Sure!\n\"Auto-Name Hivey Panes Now.\"\n").as_deref(),
-            Some("auto-name hivey panes")
+            Some("auto name hivey")
         );
         assert_eq!(clean_name("  \n "), None);
         assert_eq!(clean_name("“...”"), None);
