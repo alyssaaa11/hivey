@@ -971,7 +971,7 @@ function showJobs() {
 // right. One list on the fleet server (fleet-settings.json), so every browser sees it; agents add theirs from
 // the shell with `hivey agent-map dashboard add NAME URL` (hivey-dashboards skill). A dashboard with a login
 // token opens through /hv-dashboard-open, which adds the token: the page itself never sees tokens.
-let dashes = null, dashStatus = {}, dashForm = null, dashArm = false, dashAt = 0, dashBuilt = false;
+let dashes = null, dashStatus = {}, dashForm = null, dashArm = false, dashAt = 0, dashBuilt = false, dashDefault = false;
 function showDash() {
   const on = ui.view === 'dash';
   document.body.classList.toggle('v-dash', on);
@@ -982,16 +982,17 @@ function showDash() {
 }
 async function loadDash() {  // the list may have changed from the terminal; then which ones answer
   dashAt = Date.now();
-  try { const j = await post('/hv-fleet-settings', {}); if (Array.isArray(j.dashboards)) dashes = j.dashboards; } catch { }
+  try { const j = await post('/hv-fleet-settings', {}); if (Array.isArray(j.dashboards)) dashes = j.dashboards; dashDefault = !!j.default_token; } catch { }
   renderDash();
   try {
     const r = await fetch('/hv-dashboard-status', { cache: 'no-store' });
     if (r.ok) { dashStatus = (await r.json()).status || {}; renderDash(); }
   } catch { }
 }
-async function saveDash(list, msg, select) {
+async function saveDash(list, msg, select, deftoken) {
   try {
-    const j = await post('/hv-fleet-settings', { dashboards: list });
+    const j = await post('/hv-fleet-settings', deftoken ? { dashboards: list, dashboard_token: deftoken } : { dashboards: list });
+    dashDefault = !!j.default_token;
     if (!Array.isArray(j.dashboards)) throw new Error('old server');
     dashes = j.dashboards; dashForm = null; dashArm = false;
     if (select === 'last' && dashes.length) select = dashes[dashes.length - 1].id;
@@ -1010,7 +1011,7 @@ function buildDash() {
       <div class="dlist" id="dlist"></div>
       <div class="dfoot">Agents add theirs: <code>hivey agent-map dashboard add NAME URL</code>, or ask any agent “add this dashboard to the agent fleet”.</div></div>
     <div class="dmain"><div class="dbar" id="dbar"></div><div class="dview"><iframe id="dframe" title="Dashboard" referrerpolicy="no-referrer"></iframe><div class="dmsg" id="dmsg" hidden></div></div></div>`;
-  $('#dadd').onclick = () => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', token: '', vercel: false }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
+  $('#dadd').onclick = () => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', token: '' }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
   $('#dlist').onclick = e => {
     const it = e.target.closest('.ditem');
     if (!it) return;
@@ -1030,20 +1031,25 @@ function foldDash(on) { $('#dash').classList.toggle('fold', on); localStorage.se
 function maxDash(on) { $('#dash').classList.toggle('max', on); if (!on) fitDash(); renderDash(); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#dash')?.classList.contains('max')) maxDash(false); });
 function dashFormHtml(f) {
-  const saved = f.id && f.login;
+  // Login: none, your default dashboard token (one EnvSave key that opens all your dashboards), or a token for this one
+  const mode = f.mode || (f.login === 'default' ? 'default' : f.login ? 'own' : f.id ? 'none' : (dashDefault ? 'default' : 'none'));
+  const saved = f.id && f.login && f.login !== 'default';
   return `<form class="dform" id="dform"><h3>${f.id ? 'Edit ' + esc(f.name) : 'Add a dashboard'}</h3>
     <label>Name</label><input type="text" name="name" value="${esc(f.name)}" placeholder="Trading dashboard" required>
     <label>URL</label><input type="url" name="url" value="${esc(f.url)}" placeholder="https://…" required>
     <label>Agent</label><input type="text" name="agent" value="${esc(f.agent)}" placeholder="the agent that keeps it (optional)">
     <label>Note</label><input type="text" name="note" value="${esc(f.note)}" placeholder="what it shows (optional)">
-    <label>Login token</label><input type="password" name="token" value="${esc(f.token || '')}" autocomplete="off"
-      placeholder="${saved ? (f.login === 'envsave' ? 'EnvSave key saved: leave empty to keep it' : 'token saved: leave empty to keep it') : 'optional: a token or an EnvSave key es_…'}">
-    <div class="hint">Opening the dashboard adds it to the URL, so a dashboard that takes a token logs you in by itself.
-      An EnvSave key (<code>es_…</code>) keeps the token in your vault. Saved on this Mac only, never shown again.</div>
-    ${saved ? `<label class="chk"><input type="checkbox" name="drop"> remove the saved token</label>` : ''}
-    <label class="chk"><input type="checkbox" name="vercel" ${f.token_param === 'x-vercel-protection-bypass' || f.vercel ? 'checked' : ''}>
-      behind Vercel's login: the token is its Protection Bypass secret</label>
-    <label>Token parameter</label><input type="text" name="token_param" value="${esc(f.token_param && f.token_param !== 'x-vercel-protection-bypass' ? f.token_param : '')}" placeholder="token (the URL parameter the dashboard reads)">
+    <label>Login</label><span class="chk" style="grid-column:auto;flex-wrap:wrap;gap:12px">
+      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="none" ${mode === 'none' ? 'checked' : ''}> none</label>
+      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> my dashboard token</label>
+      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="own" ${mode === 'own' ? 'checked' : ''}> a token for this one</label></span>
+    ${mode === 'default' && !dashDefault ? `<label>Your token</label><input type="password" name="deftoken" value="${esc(f.deftoken || '')}" autocomplete="off" placeholder="EnvSave key es_… (saved once, used by all your dashboards)" required>` : ''}
+    ${mode === 'own' ? `<label>Token</label><input type="password" name="token" value="${esc(f.token || '')}" autocomplete="off"
+      placeholder="${saved ? 'token saved: leave empty to keep it' : 'an EnvSave key es_… or the token'}" ${saved ? '' : 'required'}>
+    <label>Parameter</label><input type="text" name="token_param" value="${esc(f.token_param || '')}" placeholder="token (the URL parameter the dashboard reads)">` : ''}
+    <div class="hint">Opening the dashboard adds the token to its URL (<code>?token=…</code>), so a dashboard with token login logs you in by
+      itself. ${dashDefault ? 'Your dashboard token is saved; ' : ''}tokens stay on this Mac and are never shown again. Agents build this login into
+      the dashboards they make (hivey-dashboards skill).</div>
     <div class="btns"><button class="primary" type="submit">${f.id ? 'Save' : 'Add dashboard'}</button><button type="button" id="dcancel">Cancel</button></div></form>`;
 }
 function renderDash() {
@@ -1059,8 +1065,9 @@ function renderDash() {
   $('#dlist').innerHTML = dashes === null ? '<div class="meta" style="padding:8px">loading…</div>'
     : !list.length ? '<div class="meta" style="padding:8px">No dashboards yet. Press <b>+ Add</b>.</div>'
     : list.map(d => {
-      const s = dashStatus[d.id], cls = !s ? '' : !s.ok ? 'down' : s.login === 'vercel' && !d.login ? 'warn' : 'up';
-      const tip = !s ? 'checking…' : !s.ok ? `not answering: ${s.error || s.code}` : `up · ${s.code} · ${s.ms} ms`;
+      const s = dashStatus[d.id], cls = !s ? '' : !s.ok ? 'down' : s.elsewhere || s.frame === false ? 'warn' : 'up';
+      const tip = !s ? 'checking…' : !s.ok ? `not answering: ${s.error || s.code}` : s.elsewhere ? `sends you to ${s.elsewhere} (a login wall?)`
+        : s.frame === false ? 'opens only in a new tab' : `up · ${s.code} · ${s.ms} ms`;
       let origin = ''; try { origin = new URL(d.url).origin; } catch { }
       return `<div class="ditem ${d.id === ui.dash && !(dashForm && !dashForm.id) ? 'sel' : ''}" data-id="${esc(d.id)}" title="${esc(d.note || d.url)}">
         <div class="fav">${origin ? `<img src="${esc(origin)}/favicon.ico" alt="" onerror="this.replaceWith('🖥')">` : '🖥'}</div>
@@ -1093,9 +1100,9 @@ function renderDash() {
   const blocked = s && s.ok && s.frame === false;
   if (blocked) {  // the site refuses to be shown inside another page (or Vercel's login does)
     msg.hidden = false;
-    msg.innerHTML = `<div><b>${esc(cur.name)} can't be shown inside the fleet page</b><br>${s.login === 'vercel' && !cur.login
-      ? 'It is behind Vercel\'s login. Edit it and add its <b>Protection Bypass for Automation</b> secret as the login token (tick “behind Vercel\'s login”); then it opens right here, logged in.'
-      : 'The site does not allow being framed by other pages.'}<br><button id="dtab2">Open in a new tab ↗</button></div>`;
+    msg.innerHTML = `<div><b>${esc(cur.name)} can't be shown inside the fleet page</b><br>${s.elsewhere
+      ? `It sends you to <b>${esc(s.elsewhere)}</b> first, a login page that refuses frames. Turn that hosting login off (for a Vercel project: Settings → Deployment Protection) and give the dashboard token login instead (hivey-dashboards skill).`
+      : 'The site does not allow being shown inside other pages (X-Frame-Options or frame-ancestors).'}<br><button id="dtab2">Open in a new tab ↗</button></div>`;
     $('#dtab2').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
     frame.removeAttribute('src'); frame.dataset.src = '';
     return;
@@ -1110,21 +1117,23 @@ function wireDashBar(folded, maxed) {
 function wireDashForm(list) {
   const f = $('#dform');
   $('#dcancel').onclick = () => { dashForm = null; $('#dmsg').innerHTML = ''; renderDash(); };
-  f.oninput = () => { const v = Object.fromEntries(new FormData(f)); Object.assign(dashForm, v, { vercel: !!v.vercel }); };
+  f.oninput = () => Object.assign(dashForm, Object.fromEntries(new FormData(f)));
+  f.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { Object.assign(dashForm, Object.fromEntries(new FormData(f))); $('#dmsg').innerHTML = ''; renderDash(); });
   f.onsubmit = e => {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(f));
     let url = v.url.trim();
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     try { new URL(url); } catch { toast('That URL does not look right'); return; }
-    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(),
-      token_param: v.vercel ? 'x-vercel-protection-bypass' : v.token_param.trim() };
-    if (v.token.trim()) entry.token = v.token.trim();  // no "token" key: the server keeps the saved one
-    else if (v.drop) entry.token = '';
+    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(), token_param: (v.token_param || '').trim() };
+    if (v.mode === 'none') entry.token = '';
+    else if (v.mode === 'default') entry.token = 'default';
+    else if ((v.token || '').trim()) entry.token = v.token.trim();  // no "token" key: the server keeps the saved one
+    else if (dashForm.login === 'default' || !dashForm.login) { toast('Type the token for this dashboard'); return; }
     const id = dashForm.id;
     const next = id ? list.map(d => d.id === id ? { id, ...entry } : d) : [...list, entry];
     $('#dmsg').innerHTML = '';
-    saveDash(next, id ? `Saved ${entry.name}` : `Added ${entry.name}`, id || 'last');
+    saveDash(next, id ? `Saved ${entry.name}` : `Added ${entry.name}`, id || 'last', (v.deftoken || '').trim());
   };
 }
 // scheduled jobs that failed (non-zero exit) or need a check, live from the page server: a count on the
@@ -1294,7 +1303,7 @@ $('#space').onchange = e => {
 };
 post('/hv-fleet-refresh', { load: true }).then(j => {
   showEvery(j.every);
-  if (Array.isArray(j.dashboards)) { dashes = j.dashboards; renderDash(); }
+  if (Array.isArray(j.dashboards)) { dashes = j.dashboards; dashDefault = !!j.default_token; renderDash(); }
   if (j.space && j.space !== String(ui.space || 'random')) {  // the server's choice wins (set in another browser)
     ui.space = j.space; save(); $('#space').value = j.space;
     if (j.space !== 'random') fleet.setSpace(j.space);

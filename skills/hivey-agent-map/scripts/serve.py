@@ -14,7 +14,8 @@ trigger them:
   GET  /hv-dashboard-status is each dashboard on the fleet page's 🖥 Dashboards tab up: {id: {ok, code | error,
                             ms, frame}}, checked in parallel from this Mac (dashboards.py; the list itself is in
                             fleet-settings.json, POST /hv-fleet-settings {"dashboards": [...]} replaces it; the
-                            page never sees tokens, so an entry sent back without "token" keeps its saved one)
+                            page never sees tokens, so an entry sent back without "token" keeps its saved one;
+                            {"dashboard_token": "es_…"} sets the default token `"token": "default"` uses, write-only)
   GET  /hv-dashboard-open?id=<id>  a redirect to that dashboard with its login token added (the frame's src)
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
   GET  /fleet/              the agent fleet page (files in reports/fleet/; old /fleet/ links redirect here)
@@ -64,7 +65,7 @@ IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 LEGACY_PAGE = "/office"  # the fleet page's address before it was renamed; redirected to /fleet/
 MARK = b"hivey-agent-map"
-VERSION = b"fleet-18"  # bump when the server gains actions, so `ensure` replaces an older one
+VERSION = b"fleet-19"  # bump when the server gains actions, so `ensure` replaces an older one
 FLEET_EVERY = 300  # seconds between full fleet refreshes (every terminal re-summarized) while its page is open
 FLEET_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 FLEET_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -641,10 +642,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 import dashboards
                 if "dashboards" in req:  # the Dashboards tab's list, replaced whole (bad entries dropped, tokens kept)
                     cur["dashboards"] = dashboards.clean(req["dashboards"], dashboards.clean(cur.get("dashboards")))
+                if isinstance(req.get("dashboard_token"), str) and req["dashboard_token"].strip():  # write-only
+                    cur["dashboard_token"] = req["dashboard_token"].strip()[:4000]
                 dashboards.write(cur)  # owner-only: it can hold dashboard tokens
                 return self.answer(200, json.dumps({"ok": True, "every": fleet_every(), "space": cur.get("space"), "track": cur.get("track"),
                                                     "ships": cur.get("ships", {}),
-                                                    "dashboards": dashboards.public(dashboards.clean(cur.get("dashboards")))}).encode())
+                                                    "dashboards": dashboards.public(dashboards.clean(cur.get("dashboards"))),
+                                                    "default_token": bool(cur.get("dashboard_token"))}).encode())
             every = fleet_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
             quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
@@ -655,7 +659,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
                                                 "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
                                                 "ships": clean_ships(fleet_settings().get("ships")),
-                                                "dashboards": dashboards_public()}).encode())
+                                                "dashboards": dashboards_public(),
+                                                "default_token": bool(fleet_settings().get("dashboard_token"))}).encode())
         if self.path == "/hv-fleet-action":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)

@@ -163,13 +163,19 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
             include_str!("../../../skills/hivey-context7/SKILL.md"),
         )],
     ),
-    // The fleet page's Dashboards list, managed from any agent (`hivey agent-map dashboard …`).
+    // Dashboards with the token login, and the fleet page's Dashboards list (`hivey agent-map dashboard …`).
     (
         "hivey-dashboards",
-        &[(
-            "SKILL.md",
-            include_str!("../../../skills/hivey-dashboards/SKILL.md"),
-        )],
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-dashboards/SKILL.md"),
+            ),
+            (
+                "references/token-login.md",
+                include_str!("../../../skills/hivey-dashboards/references/token-login.md"),
+            ),
+        ],
     ),
     // What runs on this Mac (jobs, agents), its token cost, and how agents feed each other;
     // hivey_spend.py is the spend log scripts call after each direct API call.

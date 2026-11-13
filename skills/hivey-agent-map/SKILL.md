@@ -222,11 +222,13 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   in a frame on the right (⟳, Open in tab ↗, Edit, Remove), with a live up/down dot per dashboard (`GET
   /hv-dashboard-status`, checked from this Mac). The list is in `fleet-settings.json` under `dashboards`
   (owner-only file); **+ Add** on the page or `hivey agent-map dashboard add|list|edit|remove …` (`scripts/dashboards.py`,
-  the `hivey-dashboards` skill) edit the same list. A dashboard can carry a login token (a value or an EnvSave
-  `es_…` key): the frame opens `GET /hv-dashboard-open?id=…`, which redirects to its URL with the token added as a
-  query parameter (`token_param`, default `token`), so the page never holds tokens. A site behind Vercel's login
-  is flagged (it refuses frames); its Protection Bypass for Automation secret with `--vercel` opens it in the
-  frame, logged in. Sites that forbid framing show an Open in tab button instead.
+  the `hivey-dashboards` skill) edit the same list. A dashboard can carry a login token: `default` (the user's
+  default dashboard token, `dashboard_token` in the settings file, an EnvSave key that opens all their dashboards),
+  its own EnvSave `es_…` key, or a value. The frame opens `GET /hv-dashboard-open?id=…`, which redirects to its URL
+  with the token added as a query parameter (`token_param`, default `token`), so the page never holds tokens; the
+  dashboard trades it for its own session cookie (token login: hivey-dashboards skill, `references/token-login.md`).
+  A site that sends you to another site first (a hosting login wall) or forbids framing shows why and an Open in
+  tab button.
 - **CEO**: the space named `ceo` gets the captain's bridge, its own room in the ship's nose (gold trim, main
   viewscreen); its master sits at the captain's console.
 

@@ -7,7 +7,8 @@ removes them (POST /hv-fleet-settings {"dashboards": [...]}). An agent that buil
 registers it from the shell:
 
   python3 -I dashboards.py add "Trading dashboard" https://example.vercel.app --agent trading-strategies
-  python3 -I dashboards.py add "Trading dashboard" https://example.vercel.app --token es_… --vercel
+  python3 -I dashboards.py add "Trading dashboard" https://example.vercel.app --token default
+  python3 -I dashboards.py token es_…                       (your default dashboard token; `token` shows it)
   python3 -I dashboards.py list [--json]
   python3 -I dashboards.py edit "Trading dashboard" --name "Paper trading" --url https://… --note "…"
   python3 -I dashboards.py remove "Trading dashboard"      (by name, id or URL)
@@ -16,11 +17,11 @@ The same commands run as `hivey agent-map dashboard add|list|edit|remove …` (t
 `add` with a name or URL already in the list updates that entry.
 
 Logins: a dashboard can carry a token. Opening it (GET /hv-dashboard-open?id=…) redirects to its URL with
-the token added as a query parameter (`token_param`, default `token`), so a dashboard that accepts a token
-logs you in by itself. The token is a literal value or an EnvSave opaque key (`es_…`, read with
-`envsave get` when the dashboard opens; no Touch ID). It is never sent to the page's list. For a site behind
-Vercel's login (Deployment Protection), use its "Protection Bypass for Automation" secret with --vercel:
-the parameter becomes `x-vercel-protection-bypass` plus a bypass cookie that also works in the frame.
+the token added as a query parameter (`token_param`, default `token`), so a dashboard with token login
+(the hivey-dashboards skill's references/token-login.md) logs you in by itself. The token is a literal value,
+an EnvSave opaque key (`es_…`, read with `envsave get` when the dashboard opens; no Touch ID), or `default`:
+your default dashboard token (one EnvSave key, `dashboard_token` in the settings file) that opens all your
+dashboards, so changing it updates every one. Tokens are never sent to the page's list.
 Python standard library only.
 """
 from __future__ import annotations
@@ -42,7 +43,7 @@ from pathlib import Path
 SETTINGS = Path.home() / ".hivey" / "agent-map" / "fleet-settings.json"
 MAX = 100
 LIMITS = {"name": 80, "url": 2000, "agent": 80, "note": 300}
-VERCEL = "x-vercel-protection-bypass"
+DEFAULT = "default"  # the token value meaning "my default dashboard token"
 PARAM = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 FIELDS = ("name", "url", "agent", "note", "token", "token_param")
 
@@ -100,7 +101,7 @@ def public(items: list[dict]) -> list[dict]:
     for d in items:
         p = {k: v for k, v in d.items() if k != "token"}
         tok = d.get("token") or ""
-        p["login"] = "" if not tok else "envsave" if tok.startswith("es_") else "token"
+        p["login"] = "" if not tok else DEFAULT if tok == DEFAULT else "envsave" if tok.startswith("es_") else "token"
         out.append(p)
     return out
 
@@ -132,11 +133,9 @@ def _match(d: dict, key: str) -> bool:
     return k in (d["id"].lower(), d["name"].lower(), d["url"].lower().rstrip("/"), d["url"].lower())
 
 
-def _changes(name=None, url=None, agent=None, note=None, token=None, token_param=None, vercel=False) -> dict:
+def _changes(name=None, url=None, agent=None, note=None, token=None, token_param=None) -> dict:
     ch = {k: v for k, v in dict(name=name, url=url, agent=agent, note=note, token=token, token_param=token_param).items()
           if v is not None}
-    if vercel:
-        ch["token_param"] = VERCEL
     if "url" in ch and not valid_url(ch["url"]):
         raise ValueError(f"not an http(s) URL: {ch['url']}")
     if ch.get("token_param") and not PARAM.match(ch["token_param"]):
@@ -145,9 +144,8 @@ def _changes(name=None, url=None, agent=None, note=None, token=None, token_param
 
 
 def add(name: str, url: str, agent: str = "", note: str = "", token: str | None = None,
-        token_param: str | None = None, vercel: bool = False) -> dict:
-    ch = _changes(name=name, url=url, agent=agent or None, note=note or None, token=token,
-                  token_param=token_param, vercel=vercel)
+        token_param: str | None = None) -> dict:
+    ch = _changes(name=name, url=url, agent=agent or None, note=note or None, token=token, token_param=token_param)
     items = load()
     for i, d in enumerate(items):
         if _match(d, name) or _match(d, url.rstrip("/")):
@@ -179,11 +177,30 @@ def remove(key: str) -> bool:
     return True
 
 
+def default_token() -> str:
+    """Your default dashboard token: an EnvSave key (es_…) or a value, "" when none is set."""
+    return str(_settings().get("dashboard_token") or "").strip()
+
+
+def set_default_token(token: str) -> None:
+    cur = _settings()
+    if token:
+        cur["dashboard_token"] = token.strip()[:4000]
+    else:
+        cur.pop("dashboard_token", None)
+    write(cur)
+
+
 _resolved: dict[str, tuple[float, str]] = {}
 
 
 def resolve(token: str) -> str:
-    """A literal token as is; an EnvSave opaque key read with `envsave get es_…` (cached for 10 minutes)."""
+    """A literal token as is; an EnvSave opaque key read with `envsave get es_…` (cached for 10 minutes);
+    "default" is your default dashboard token."""
+    if token == DEFAULT:
+        token = default_token()
+        if not token or token == DEFAULT:
+            raise RuntimeError("no default dashboard token yet: `hivey agent-map dashboard token es_…`")
     if not token.startswith("es_"):
         return token
     hit = _resolved.get(token)
@@ -207,8 +224,6 @@ def open_url(d: dict) -> str:
         return d["url"]
     param = d.get("token_param") or "token"
     extra = [(param, resolve(d["token"]))]
-    if param == VERCEL:  # a SameSite=None bypass cookie, so pages inside the fleet's frame stay logged in
-        extra.append(("x-vercel-set-bypass-cookie", "samesitenone"))
     u = urllib.parse.urlsplit(d["url"])
     q = [(k, v) for k, v in urllib.parse.parse_qsl(u.query, keep_blank_values=True) if k not in dict(extra)]
     return urllib.parse.urlunsplit(u._replace(query=urllib.parse.urlencode(q + extra)))
@@ -245,15 +260,13 @@ def _probe(d: dict) -> dict:
     except (urllib.error.URLError, OSError, ValueError) as e:
         return {"ok": False, "error": str(getattr(e, "reason", e))[:120], "ms": round((time.time() - start) * 1000)}
     out = {"ok": code < 500, "code": code, "ms": round((time.time() - start) * 1000), "frame": _frameable(headers)}
-    host = urllib.parse.urlsplit(final).netloc
-    if host.endswith("vercel.com") and host != urllib.parse.urlsplit(d["url"]).netloc:
-        out["login"] = "vercel"  # Deployment Protection: needs the bypass secret (--vercel) to open in the frame
-        out["frame"] = False
+    if urllib.parse.urlsplit(final).netloc != urllib.parse.urlsplit(d["url"]).netloc:
+        out["elsewhere"] = urllib.parse.urlsplit(final).netloc  # sent to another site, e.g. a hosting login wall
     return out
 
 
 def status() -> dict:
-    """{id: {ok, code | error, ms, frame, login?}} for every dashboard, checked in parallel."""
+    """{id: {ok, code | error, ms, frame, elsewhere?}} for every dashboard, checked in parallel."""
     items = load()
     if not items:
         return {}
@@ -267,9 +280,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def login_args(p) -> None:
-        p.add_argument("--token", help="login token: the value or an EnvSave opaque key es_… (\"\" removes it)")
+        p.add_argument("--token", help="login token: default (your default dashboard token), an EnvSave key es_… "
+                                       "or a value (\"\" removes it)")
         p.add_argument("--token-param", help="the query parameter the dashboard reads it from (default token)")
-        p.add_argument("--vercel", action="store_true", help="the token is Vercel's Protection Bypass secret")
 
     a = sub.add_parser("add", help="add a dashboard (or update the one with this name or URL)")
     a.add_argument("name")
@@ -286,15 +299,25 @@ def main(argv: list[str] | None = None) -> int:
     login_args(ed)
     rm = sub.add_parser("remove")
     rm.add_argument("key", help="name, id or URL")
+    tk = sub.add_parser("token", help="show or set your default dashboard token (used by --token default)")
+    tk.add_argument("value", nargs="?", help="an EnvSave key es_… (best) or the token itself")
+    tk.add_argument("--clear", action="store_true")
     args = ap.parse_args(argv)
+    if args.cmd == "token":
+        if args.clear or args.value:
+            set_default_token("" if args.clear else args.value)
+        cur = default_token()
+        print(f"default dashboard token: {cur[:8] + '…' if cur.startswith('es_') else ('set (a raw value)' if cur else 'none')}"
+              + ("" if cur else "  (set it: hivey agent-map dashboard token es_…)"))
+        return 0
     try:
         if args.cmd == "add":
-            d = add(args.name, args.url, args.agent, args.note, args.token, args.token_param, args.vercel)
+            d = add(args.name, args.url, args.agent, args.note, args.token, args.token_param)
             print(f"saved {d['name']} → {d['url']}{' (with login token)' if d['token'] else ''} (fleet page → 🖥 Dashboards)")
             return 0
         if args.cmd == "edit":
             d = edit(args.key, name=args.name, url=args.url, agent=args.agent, note=args.note, token=args.token,
-                     token_param=args.token_param, vercel=args.vercel)
+                     token_param=args.token_param)
             if not d:
                 print(f"dashboards: no dashboard named {args.key}", file=sys.stderr)
                 return 1
