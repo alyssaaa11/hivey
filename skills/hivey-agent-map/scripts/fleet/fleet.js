@@ -976,7 +976,7 @@ function showDash() {
   const on = ui.view === 'dash';
   document.body.classList.toggle('v-dash', on);
   $('#dash').classList.toggle('on', on);
-  if (!on) return;
+  if (!on) { $('#dash').classList.remove('max'); return; }
   renderDash();
   if (Date.now() - dashAt > 20000) loadDash();
 }
@@ -1017,7 +1017,18 @@ function buildDash() {
     ui.dash = it.dataset.id; saveDashSel(); dashForm = null; dashArm = false; renderDash();
   };
   dashBuilt = true;
+  $('#dash').classList.toggle('fold', localStorage.getItem('hv-fleet-dash-fold') === '1');
 }
+// the frame fills the window below the header; the list can fold away; ⛶ covers the whole window (Esc leaves)
+function fitDash() {
+  const box = $('#dash');
+  if (ui.view !== 'dash' || !box || box.classList.contains('max')) return;
+  box.style.height = Math.max(360, innerHeight - (box.getBoundingClientRect().top + scrollY)) + 'px';
+}
+addEventListener('resize', fitDash);
+function foldDash(on) { $('#dash').classList.toggle('fold', on); localStorage.setItem('hv-fleet-dash-fold', on ? '1' : '0'); renderDash(); }
+function maxDash(on) { $('#dash').classList.toggle('max', on); if (!on) fitDash(); renderDash(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#dash')?.classList.contains('max')) maxDash(false); });
 function dashFormHtml(f) {
   const saved = f.id && f.login;
   return `<form class="dform" id="dform"><h3>${f.id ? 'Edit ' + esc(f.name) : 'Add a dashboard'}</h3>
@@ -1038,6 +1049,9 @@ function dashFormHtml(f) {
 function renderDash() {
   if (ui.view !== 'dash') return;
   if (!dashBuilt) buildDash();
+  requestAnimationFrame(fitDash);
+  const folded = $('#dash').classList.contains('fold'), maxed = $('#dash').classList.contains('max');
+  const sideBtns = `<button class="ic" id="dfold" title="${folded || maxed ? 'Show the dashboard list' : 'Hide the list: the dashboard gets the full width'}">${folded || maxed ? '☰' : '⟨'}</button>`;
   const list = dashes || [];
   if (!list.find(d => d.id === ui.dash) && list.length) ui.dash = list[0].id;
   const cur = list.find(d => d.id === ui.dash);
@@ -1056,19 +1070,22 @@ function renderDash() {
   // the bar and the frame on the right
   const bar = $('#dbar'), frame = $('#dframe'), msg = $('#dmsg');
   if (dashForm) {
-    bar.innerHTML = `<span class="t">${dashForm.id ? 'Edit dashboard' : 'New dashboard'}</span>`;
+    bar.innerHTML = sideBtns + `<span class="t">${dashForm.id ? 'Edit dashboard' : 'New dashboard'}</span>`;
+    wireDashBar(folded, maxed);
     if (!msg.querySelector('#dform')) { msg.innerHTML = dashFormHtml(dashForm); wireDashForm(list); }
     msg.hidden = false; msg.style.display = 'block'; msg.style.overflow = 'auto';
     return;
   }
   msg.style.display = ''; msg.style.overflow = '';
   if (msg.querySelector('#dform')) msg.innerHTML = '';
-  if (!cur) { bar.innerHTML = ''; msg.hidden = false; msg.innerHTML = dashes === null ? '' : '<div><b>No dashboards yet</b><br>Add the dashboards your agents keep, and open them all from here.<br><button id="dfirst">+ Add a dashboard</button></div>';
+  if (!cur) { bar.innerHTML = sideBtns; wireDashBar(folded, maxed); msg.hidden = false; msg.innerHTML = dashes === null ? '' : '<div><b>No dashboards yet</b><br>Add the dashboards your agents keep, and open them all from here.<br><button id="dfirst">+ Add a dashboard</button></div>';
     $('#dfirst')?.addEventListener('click', () => $('#dadd').click()); frame.removeAttribute('src'); frame.dataset.src = ''; return; }
   const s = dashStatus[cur.id];
-  bar.innerHTML = `<span class="t">${esc(cur.name)}</span><span class="m">${esc(cur.note || dashHost(cur.url))}</span>
-    <button id="dreload" title="Load it again">⟳</button><button id="dtab" title="Open in a new browser tab">Open in tab ↗</button>
+  bar.innerHTML = sideBtns + `<span class="t">${esc(cur.name)}</span><span class="m">${esc(cur.note || dashHost(cur.url))}</span>
+    <button id="dreload" title="Load it again">⟳</button><button class="ic" id="dmax" title="${maxed ? 'Back to the fleet page (Esc)' : 'Full window: the dashboard covers the whole page (Esc to leave)'}">${maxed ? '✕' : '⛶'}</button><button id="dtab" title="Open in a new browser tab">Open in tab ↗</button>
     <button id="dedit">Edit</button><button id="ddel" class="${dashArm ? 'arm' : ''}">${dashArm ? 'Remove?' : 'Remove'}</button>`;
+  wireDashBar(folded, maxed);
+  $('#dmax').onclick = () => maxDash(!maxed);
   $('#dreload').onclick = () => { frame.dataset.src = ''; renderDash(); };
   $('#dtab').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
   $('#dedit').onclick = () => { dashForm = { ...cur }; renderDash(); };
@@ -1086,6 +1103,9 @@ function renderDash() {
   msg.hidden = true;
   const src = dashOpenUrl(cur);
   if (frame.dataset.src !== src + '#' + cur.id) { frame.dataset.src = src + '#' + cur.id; frame.src = src; }
+}
+function wireDashBar(folded, maxed) {
+  $('#dfold').onclick = () => { if (maxed) { $('#dash').classList.remove('max'); foldDash(false); } else foldDash(!folded); };
 }
 function wireDashForm(list) {
   const f = $('#dform');

@@ -183,6 +183,12 @@ body.v-jobs .search{visibility:hidden}
 #dash{display:none;height:calc(100vh - 58px)}
 #dash.on{display:flex}
 body.v-dash .search{visibility:hidden}
+body.v-dash #inbox{display:none}
+/* the list folds away (☰ brings it back) and ⛶ gives the dashboard the whole window */
+#dash.fold .dside{display:none}
+#dash.max{position:fixed;inset:0;z-index:45;height:100vh!important}
+#dash.max .dside{display:none}
+#dash .dbar .ic{padding:4px 8px;font-size:13px;line-height:1}
 #dash .dside{flex:none;width:290px;border-right:1px solid var(--line);display:flex;flex-direction:column;background:var(--panel)}
 #dash .dside .hd{display:flex;align-items:center;gap:8px;padding:12px 12px 8px}
 #dash .dside .hd h2{margin:0;font-size:15px;flex:1}
