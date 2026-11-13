@@ -34,7 +34,8 @@ Professional "harness" look: a dark graphite satin sphere (key light upper-left,
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hivey System.app` and `dist/HiveySystem.zip` for sharing. Run after every change.
 
 ## Behavior
-- Click = chat box above the pet (`HiveyChat`): Enter sends to the hivey agent (`hivey msg send hivey/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
+- Click = the action picked in right-click → On click ▸ (`PetClick`, shared): **Open agent fleet** (default; `hivey agent-map fleet` reloads and fronts the fleet tab already open in Chrome, or opens it in a new Chrome window) or **Open chat box**. The menu also has "Open agent fleet" and "Chat with hivey" items, whatever the click does.
+- Chat box above the pet (`HiveyChat`): Enter sends to the hivey agent (`hivey msg send hivey/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hivey repo (`pets/hivey-dot/`). Built and installed by `hivey pet use hivey-dot` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiveyWatch.swift`.
 - Right-click: hivey status line ("hivey: N agents, M working"), Watch hivey, Speak aloud, Effects (preview only) ▸ (plays the pet's moves; nothing happens in hivey), Switch pet ▸ (Hivey / Hivey Prompt / Hivey, via `hivey pet use`), Turn off pet (`hivey pet off`), Quit.
 - Watches hivey through the shared `HiveyWatcher` (every 2s: `hivey swarm list --json` + `hivey msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.
@@ -43,7 +44,7 @@ Professional "harness" look: a dark graphite satin sphere (key light upper-left,
 - Event CLI: `Hivey.app/Contents/MacOS/hivey agent|leave|swarm|pulse|done ["text"]` (DistributedNotification `com.hivey.pet.event`).
 - On launch: fades in, small restrained lift + mint glow, says "Welcome! I'm Hivey." (bubble + voice). Always visible, floats above windows, on all Spaces.
 - Idle: agents travel the signal wave (`signalPoint`, depth-sorted behind/in front of Hivey), breathing, blinking, eyes follow the cursor, occasional message pulse between agents.
-- Click = small lift + glow, and the chat box opens (see above).
+- Click = small lift + glow, then the click action (see above).
 - Effects (preview only) ▸: New agent (dot flies out, max 9), Swarm formation (dots arc above Hivey, frequent pulses, 5s), Task finished (lift + glow), Quit.
 - A crew-motion variant (no orbit; idle groups, errands, listen/swarm/tidy formations) was tried on 2026-10-02 and rejected — user prefers the orbit.
 - Drag = move (position autosaved as `HiveyPet`).

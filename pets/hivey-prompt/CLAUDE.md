@@ -35,7 +35,8 @@ A three-dimensional satin sphere: deep charcoal-teal body, crisp mint `>_` face,
 - `build.sh` — builds universal (arm64 + x86_64, macOS 12+) ad-hoc-signed `Hivey Prompt.app` and `dist/HiveyPrompt.zip`. Run after every change.
 
 ## Behavior
-- Click = chat box above the pet (`HiveyChat`): Enter sends to the hivey agent (`hivey msg send hivey/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
+- Click = the action picked in right-click → On click ▸ (`PetClick`, shared): **Open agent fleet** (default; `hivey agent-map fleet` reloads and fronts the fleet tab already open in Chrome, or opens it in a new Chrome window) or **Open chat box**. The menu also has "Open agent fleet" and "Chat with hivey" items, whatever the click does.
+- Chat box above the pet (`HiveyChat`): Enter sends to the hivey agent (`hivey msg send hivey/master`), Esc / clicking away closes; the agent's reply to `human` is shown in the bubble and said aloud. Drag still moves the pet.
 - Lives in the hivey repo (`pets/hivey-prompt/`). Built and installed by `hivey pet use hivey-prompt` (into `~/Applications`; the other pets are quit); `./build.sh` compiles `main.swift` with the shared `../shared/HiveyWatch.swift`.
 - Right-click: hivey status line ("hivey: N agents, M working"), Watch hivey, Speak aloud, Effects (preview only) ▸ (plays the pet's moves; nothing happens in hivey), Switch pet ▸ (Hivey / Hivey Prompt / Hivey, via `hivey pet use`), Turn off pet (`hivey pet off`), Quit.
 - Watches hivey through the shared `HiveyWatcher` (every 2s: `hivey swarm list --json` + `hivey msg log --json`, default session, never starts a server, nothing replayed on first look). Spoken aloud: "<slug> is starting.", "<agent> needs you.", "<agent> replied."; "<agent> finished." is bubble-only; one line per look, most urgent first.

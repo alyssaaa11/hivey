@@ -17,7 +17,10 @@ Desktop pets that act out what hivey's agents do. Choose one (or none) with `hiv
 - `pet.py`: `hivey pet` (build, install to `~/Applications`, switch, off, show). The
   choice is in `~/.hivey/pet.json`; `hivey update` runs `hivey pet refresh` to rebuild it when
   its source changed.
-- Chat: clicking a pet opens `HiveyChat` (a box above it); Enter sends the text to the hivey
+- Click: right-click → On click ▸ picks what a click does (`PetClick`, shared): open the agent fleet
+  (default; `hivey agent-map fleet` refreshes and fronts the fleet tab already open in Chrome, or opens
+  it in a new Chrome window) or the chat box. The menu's "Open agent fleet" and "Chat with hivey" items do either anytime.
+- Chat: "Chat with hivey" (or a click, when picked) opens `HiveyChat` (a box above it); Enter sends the text to the hivey
   agent (`hivey msg send hivey/master`), whose reply to `human` the pet shows and says
   (`replyLine`). Other agents' replies are announced as "<agent> replied.".
 - Lifecycle: every hivey window writes `~/.hivey/windows/<pid>` while open and runs

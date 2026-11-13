@@ -674,6 +674,61 @@ def write(data: dict) -> None:
     os.replace(tmp, OUT / "fleet.json")
 
 
+# A fleet tab already open in Chrome is reloaded and brought to the front; otherwise Chrome
+# opens it in a new window of its own (not a tab in one of the user's windows). Without Chrome (or without permission to script it) the default browser opens it.
+CHROME_FOCUS_SCRIPT = """
+on run argv
+  set theURL to item 1 of argv
+  tell application "Google Chrome"
+    repeat with w in windows
+      set i to 0
+      repeat with t in tabs of w
+        set i to i + 1
+        set u to URL of t
+        if (u starts with "http://127.0.0.1:" or u starts with "http://localhost:") and (u contains "/fleet" or u contains "/office") then
+          try
+            set minimized of w to false
+          end try
+          set active tab index of w to i
+          set index of w to 1
+          tell t to reload
+          activate
+          return "refreshed the open tab"
+        end if
+      end repeat
+    end repeat
+    set w to make new window
+    set URL of active tab of w to theURL
+    activate
+    return "opened a new Chrome window"
+  end tell
+end run
+"""
+
+
+def chrome_running() -> bool:
+    p = subprocess.run(["pgrep", "-x", "Google Chrome"], capture_output=True)
+    return p.returncode == 0
+
+
+def show_in_browser(url: str) -> str:
+    """Puts the fleet page in front of the user: the open Chrome tab refreshed, or a new window."""
+    if sys.platform == "darwin":
+        if chrome_running():
+            try:
+                p = subprocess.run(["osascript", "-e", CHROME_FOCUS_SCRIPT, url],
+                                   capture_output=True, text=True, timeout=20)
+                if p.returncode == 0:
+                    return p.stdout.strip() or "opened in Chrome"
+            except subprocess.TimeoutExpired:
+                pass
+        elif subprocess.run(["open", "-na", "Google Chrome", "--args", "--new-window", url],
+                            capture_output=True).returncode == 0:
+            return "opened a new Chrome window"
+    subprocess.run(["open", url], capture_output=True)
+    return "opened in the default browser"
+
+
 def open_page(model: str) -> int:
     import serve
     data = OUT / "fleet.json"
@@ -687,8 +742,8 @@ def open_page(model: str) -> int:
     if not fresh:
         serve.request_fleet_refresh(port)
     url = f"http://127.0.0.1:{port}/fleet/"
-    subprocess.run(["open", url], capture_output=True)
-    print(f"agent fleet: {url}")
+    how = show_in_browser(url)
+    print(f"agent fleet: {url} ({how})")
     return 0
 
 

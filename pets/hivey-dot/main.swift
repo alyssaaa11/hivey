@@ -508,6 +508,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let hiveyItem = NSMenuItem(title: "hivey: looking…", action: nil, keyEquivalent: "")
     private let watcher = HiveyWatcher()
     private let chat = HiveyChat()
+    private lazy var clicks = PetClickMenu(
+        chat: { [weak self] in guard let self else { return }; chat.toggle(above: window) },
+        say: { [weak self] in self?.say($0, aloud: false) })
     private lazy var switcher = PetSwitcher(current: "hivey-dot", say: { [weak self] in self?.say($0, aloud: false) },
                                             turnOffHere: { [weak self] in self?.turnOff() })
     private var watching: Bool {
@@ -561,14 +564,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         effectsItem.submenu = effects
         menu.addItem(effectsItem)
         menu.addItem(.separator())
+        clicks.addItems(to: menu)
+        menu.addItem(.separator())
         switcher.addItems(to: menu)
         menu.addItem(withTitle: "Quit Hivey", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         pet.menu = menu
-        // Click: talk to the hivey agent (a chat box above the pet); drag still moves it
+        // Click: the agent fleet page or the chat box (On click ▸); drag still moves it
         pet.onPoke = { [weak self] in
             guard let self else { return }
             pet.celebrate()
-            chat.toggle(above: window)
+            clicks.click()   // right-click → On click ▸: agent fleet (default) or chat box
         }
         chat.say = { [weak self] text, aloud in self?.say(text, aloud: aloud) }
         chat.onSent = { [weak self] in self?.pet.pulse() }

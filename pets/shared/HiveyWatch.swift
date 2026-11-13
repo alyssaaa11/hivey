@@ -242,28 +242,102 @@ final class PetSwitcher: NSObject {
     @objc private func turnOff() {
         if !runHivey(["pet", "off"]) { turnOffHere() }
     }
+}
 
-    /// Runs `hivey <args>` detached (it may outlive this pet); false when hivey isn't installed.
-    private func runHivey(_ args: [String]) -> Bool {
-        guard let hivey = HiveyWatcher().findHivey() else { return false }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: hivey)
-        p.arguments = args
-        p.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
-        // What happened lands in ~/.hivey/pet.log (a switch builds for a minute; errors matter)
-        let log = URL(fileURLWithPath: NSHomeDirectory() + "/.hivey/pet.log")
-        try? FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
-        if let handle = try? FileHandle(forWritingTo: log) {
-            handle.seekToEndOfFile()
-            handle.write(Data("\n\(Date()) hivey \(args.joined(separator: " "))\n".utf8))
-            p.standardOutput = handle
-            p.standardError = handle
-        } else {
-            p.standardOutput = FileHandle.nullDevice
-            p.standardError = FileHandle.nullDevice
+/// Runs `hivey <args>` detached (it may outlive this pet); false when hivey isn't installed.
+func runHivey(_ args: [String]) -> Bool {
+    guard let hivey = HiveyWatcher().findHivey() else { return false }
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: hivey)
+    p.arguments = args
+    p.currentDirectoryURL = URL(fileURLWithPath: NSHomeDirectory())
+    // What happened lands in ~/.hivey/pet.log (a switch builds for a minute; errors matter)
+    let log = URL(fileURLWithPath: NSHomeDirectory() + "/.hivey/pet.log")
+    try? FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+    if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil) }
+    if let handle = try? FileHandle(forWritingTo: log) {
+        handle.seekToEndOfFile()
+        handle.write(Data("\n\(Date()) hivey \(args.joined(separator: " "))\n".utf8))
+        p.standardOutput = handle
+        p.standardError = handle
+    } else {
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+    }
+    return (try? p.run()) != nil
+}
+
+// MARK: - What a click on the pet does
+
+/// The pet's click action, picked in its right-click menu (On click ▸) and kept per pet.
+enum PetClick: String, CaseIterable {
+    /// Bring up the agent fleet page: the Chrome tab already showing it, refreshed, or a new one
+    case fleet
+    /// The chat box above the pet (`HiveyChat`)
+    case chat
+
+    var title: String {
+        switch self {
+        case .fleet: return "Open agent fleet"
+        case .chat: return "Open chat box"
         }
-        return (try? p.run()) != nil
+    }
+
+    static var current: PetClick {
+        get { UserDefaults.standard.string(forKey: "clickAction").flatMap(PetClick.init) ?? .fleet }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "clickAction") }
+    }
+}
+
+/// "Open agent fleet", "Chat with hivey" and "On click ▸" for a pet's right-click menu, and the
+/// click itself. The fleet runs `hivey agent-map fleet`, which reloads and fronts an open fleet
+/// tab in Chrome or opens one.
+final class PetClickMenu: NSObject {
+    private let chat: () -> Void
+    private let say: (String) -> Void
+    private var choiceItems: [NSMenuItem] = []
+
+    /// `chat`: open/close the chat box; `say`: a bubble line from the pet
+    init(chat: @escaping () -> Void, say: @escaping (String) -> Void) {
+        self.chat = chat
+        self.say = say
+    }
+
+    func click() {
+        switch PetClick.current {
+        case .fleet: openFleet()
+        case .chat: chat()
+        }
+    }
+
+    func addItems(to menu: NSMenu) {
+        menu.addItem(withTitle: "Open agent fleet", action: #selector(fleetItem), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Chat with hivey", action: #selector(chatItem), keyEquivalent: "").target = self
+        let onClick = NSMenuItem(title: "On click", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        for action in PetClick.allCases {
+            let item = submenu.addItem(withTitle: action.title, action: #selector(choose(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = action.rawValue
+            item.state = action == PetClick.current ? .on : .off
+            choiceItems.append(item)
+        }
+        onClick.submenu = submenu
+        menu.addItem(onClick)
+    }
+
+    func openFleet() {
+        guard runHivey(["agent-map", "fleet"]) else { say("I need hivey to open the fleet."); return }
+        say("Opening the agent fleet…")
+    }
+
+    @objc private func fleetItem() { openFleet() }
+    @objc private func chatItem() { chat() }
+
+    @objc private func choose(_ item: NSMenuItem) {
+        guard let raw = item.representedObject as? String, let action = PetClick(rawValue: raw) else { return }
+        PetClick.current = action
+        for choice in choiceItems { choice.state = choice.representedObject as? String == raw ? .on : .off }
     }
 }
 
