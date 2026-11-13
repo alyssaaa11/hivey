@@ -28,9 +28,9 @@ ui.view ||= 'fleet';
 const VIEWS = ['fleet', 'board', 'list', 'jobs'];
 let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
 { const v = new URLSearchParams(location.search).get('view'); if (VIEWS.includes(v)) ui.view = v; if (v) history.replaceState(null, '', location.pathname); }  // ?view=jobs from the menu or a jobs page
-ui.filter ||= null;
+ui.filter = null;  // a status filter lasts until reload: a reload always shows every agent
 if (ui.toon === undefined) ui.toon = false;
-const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, filter: ui.filter, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
+const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
 // ship positions also live on the fleet server, so every browser opens the fleet where you left it
 const saveShips = () => { save(); fetch('/hv-fleet-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
 
@@ -211,9 +211,13 @@ function tickSub() {
   const at = iso => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?';
   const full = data.full_at && data.full_at !== data.generated
     ? ` · <span title="Last pass that re-summarized every agent whose terminal changed">summaries ${at(data.full_at)} (${ago(data.full_at)})</span>` : '';
-  $('#sub').innerHTML = `${n} agent${n === 1 ? '' : 's'} · <span title="Last time every terminal and session log was read">updated ${at(data.generated)} (${ago(data.generated)})</span>${full} · ` +
+  const shown = agents.filter(visible).length;
+  const only = shown < n ? `<span class="filtered">showing ${shown} of ${n}${ui.filter ? ` (${ui.filter})` : ''} <button id="showall" title="Clear the filter and the search">show all</button></span> · ` : '';
+  $('#sub').innerHTML = only + `${n} agent${n === 1 ? '' : 's'} · <span title="Last time every terminal and session log was read">updated ${at(data.generated)} (${ago(data.generated)})</span>${full} · ` +
     (refreshing ? '<span class="spin">⟳</span> reading terminals…' : every === 'reload' ? 'updates when you reload or press ⟳' : next > 0 ? `next ${at(new Date(Date.now() + next * 1000).toISOString())} (in ${mm}:${String(ss).padStart(2, '0')})` : 'refreshing soon') +
     (data.error ? ` · <span class="err" title="${esc(data.error)}">summaries from the recap (model call failed)</span>` : '');
+  const all = $('#showall');
+  if (all) all.onclick = () => { ui.filter = null; $('#q').value = ''; save(); renderAll(); };
 }
 function renderInbox() {
   const blocked = agents.filter(a => a.status === 'blocked' && !a.asleep);
