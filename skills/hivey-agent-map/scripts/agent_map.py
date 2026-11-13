@@ -1050,6 +1050,9 @@ def context_cmd(agents: list, size: str | None) -> int:
 
 
 def main() -> int:
+    if sys.argv[1:2] in (["dashboard"], ["dashboards"]):  # the fleet page's Dashboards list, from the shell
+        import dashboards
+        return dashboards.main(sys.argv[2:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan")

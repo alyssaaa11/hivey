@@ -218,6 +218,15 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   Quaternius, CC0: Idle + nods when working, Wave when blocked, ThumbsUp when done, Sitting when idle), Kenney
   Space Kit and Space Station Kit pieces (CC0: desks, chairs, generators, dishes, small craft, astronauts,
   consoles, crates), licences in `models/LICENSE-*`; 10 MusicGen electronic space tracks (`music/README.txt` has their prompts), 🔇/🎵 or `m`; the 🎵 menu plays a new one each time (moving on when one ends) or always one (saved with the other settings). Browsers allow sound only after you touch the page, so when playing at once is refused the music starts with your first click or key press anywhere.
+- **🖥 Dashboards tab** (key 5): the dashboards the user's agents keep, listed on the left; the one you pick loads
+  in a frame on the right (⟳, Open in tab ↗, Edit, Remove), with a live up/down dot per dashboard (`GET
+  /hv-dashboard-status`, checked from this Mac). The list is in `fleet-settings.json` under `dashboards`
+  (owner-only file); **+ Add** on the page or `hivey agent-map dashboard add|list|edit|remove …` (`scripts/dashboards.py`,
+  the `hivey-dashboards` skill) edit the same list. A dashboard can carry a login token (a value or an EnvSave
+  `es_…` key): the frame opens `GET /hv-dashboard-open?id=…`, which redirects to its URL with the token added as a
+  query parameter (`token_param`, default `token`), so the page never holds tokens. A site behind Vercel's login
+  is flagged (it refuses frames); its Protection Bypass for Automation secret with `--vercel` opens it in the
+  frame, logged in. Sites that forbid framing show an Open in tab button instead.
 - **CEO**: the space named `ceo` gets the captain's bridge, its own room in the ship's nose (gold trim, main
   viewscreen); its master sits at the captain's console.
 

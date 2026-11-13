@@ -25,7 +25,7 @@ let data = null, agents = [], selected = null;
 // settings saved before the rename (the page was the agent office) carry over
 const ui = JSON.parse(localStorage.getItem('hv-fleet-ship') || localStorage.getItem('hv-' + 'off' + 'ice-ship') || '{}');
 ui.view ||= 'fleet';
-const VIEWS = ['fleet', 'board', 'list', 'jobs'];
+const VIEWS = ['fleet', 'board', 'list', 'jobs', 'dash'];
 let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
 { const v = new URLSearchParams(location.search).get('view'); if (VIEWS.includes(v)) ui.view = v; if (v) history.replaceState(null, '', location.pathname); }  // ?view=jobs from the menu or a jobs page
 ui.filter = null;  // a status filter lasts until reload: a reload always shows every agent
@@ -946,6 +946,7 @@ function renderAll() {
   $('#board').style.display = ui.view === 'board' ? 'block' : 'none';
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
   showJobs();
+  showDash();
   if (ui.view === 'fleet') { fleet.build(agents.filter(visible), data.sessions); fleet.resize(); }
   if (ui.view === 'board') renderBoard();
   if (ui.view === 'list') renderList();
@@ -965,6 +966,146 @@ function showJobs() {
       .catch(() => { frame.src = '/latest/agent-map.html'; });
   }
   fitJobs();
+}
+// 🖥 Dashboards: the dashboards your agents keep, listed on the left; the one you pick shows in a frame on the
+// right. One list on the fleet server (fleet-settings.json), so every browser sees it; agents add theirs from
+// the shell with `hivey agent-map dashboard add NAME URL` (hivey-dashboards skill). A dashboard with a login
+// token opens through /hv-dashboard-open, which adds the token: the page itself never sees tokens.
+let dashes = null, dashStatus = {}, dashForm = null, dashArm = false, dashAt = 0, dashBuilt = false;
+function showDash() {
+  const on = ui.view === 'dash';
+  document.body.classList.toggle('v-dash', on);
+  $('#dash').classList.toggle('on', on);
+  if (!on) return;
+  renderDash();
+  if (Date.now() - dashAt > 20000) loadDash();
+}
+async function loadDash() {  // the list may have changed from the terminal; then which ones answer
+  dashAt = Date.now();
+  try { const j = await post('/hv-fleet-settings', {}); if (Array.isArray(j.dashboards)) dashes = j.dashboards; } catch { }
+  renderDash();
+  try {
+    const r = await fetch('/hv-dashboard-status', { cache: 'no-store' });
+    if (r.ok) { dashStatus = (await r.json()).status || {}; renderDash(); }
+  } catch { }
+}
+async function saveDash(list, msg, select) {
+  try {
+    const j = await post('/hv-fleet-settings', { dashboards: list });
+    if (!Array.isArray(j.dashboards)) throw new Error('old server');
+    dashes = j.dashboards; dashForm = null; dashArm = false;
+    if (select === 'last' && dashes.length) select = dashes[dashes.length - 1].id;
+    if (select !== undefined) { ui.dash = select; saveDashSel(); }
+    if (msg) toast(msg);
+    $('#dframe').dataset.src = '';  // the URL or token may have changed: load it again
+    renderDash(); loadDash();
+  } catch { toast('Could not save: the fleet server is not answering (or is too old: reload after hivey update)'); }
+}
+const saveDashSel = () => localStorage.setItem('hv-fleet-dash', ui.dash || '');
+ui.dash = localStorage.getItem('hv-fleet-dash') || '';
+function dashHost(u) { try { return new URL(u).host; } catch { return u; } }
+const dashOpenUrl = d => d.login ? '/hv-dashboard-open?id=' + encodeURIComponent(d.id) : d.url;
+function buildDash() {
+  $('#dash').innerHTML = `<div class="dside"><div class="hd"><h2>🖥 Dashboards</h2><button class="add" id="dadd" title="Add a dashboard">+ Add</button></div>
+      <div class="dlist" id="dlist"></div>
+      <div class="dfoot">Agents add theirs: <code>hivey agent-map dashboard add NAME URL</code>, or ask any agent “add this dashboard to the agent fleet”.</div></div>
+    <div class="dmain"><div class="dbar" id="dbar"></div><div class="dview"><iframe id="dframe" title="Dashboard" referrerpolicy="no-referrer"></iframe><div class="dmsg" id="dmsg" hidden></div></div></div>`;
+  $('#dadd').onclick = () => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', token: '', vercel: false }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
+  $('#dlist').onclick = e => {
+    const it = e.target.closest('.ditem');
+    if (!it) return;
+    ui.dash = it.dataset.id; saveDashSel(); dashForm = null; dashArm = false; renderDash();
+  };
+  dashBuilt = true;
+}
+function dashFormHtml(f) {
+  const saved = f.id && f.login;
+  return `<form class="dform" id="dform"><h3>${f.id ? 'Edit ' + esc(f.name) : 'Add a dashboard'}</h3>
+    <label>Name</label><input type="text" name="name" value="${esc(f.name)}" placeholder="Trading dashboard" required>
+    <label>URL</label><input type="url" name="url" value="${esc(f.url)}" placeholder="https://…" required>
+    <label>Agent</label><input type="text" name="agent" value="${esc(f.agent)}" placeholder="the agent that keeps it (optional)">
+    <label>Note</label><input type="text" name="note" value="${esc(f.note)}" placeholder="what it shows (optional)">
+    <label>Login token</label><input type="password" name="token" value="${esc(f.token || '')}" autocomplete="off"
+      placeholder="${saved ? (f.login === 'envsave' ? 'EnvSave key saved: leave empty to keep it' : 'token saved: leave empty to keep it') : 'optional: a token or an EnvSave key es_…'}">
+    <div class="hint">Opening the dashboard adds it to the URL, so a dashboard that takes a token logs you in by itself.
+      An EnvSave key (<code>es_…</code>) keeps the token in your vault. Saved on this Mac only, never shown again.</div>
+    ${saved ? `<label class="chk"><input type="checkbox" name="drop"> remove the saved token</label>` : ''}
+    <label class="chk"><input type="checkbox" name="vercel" ${f.token_param === 'x-vercel-protection-bypass' || f.vercel ? 'checked' : ''}>
+      behind Vercel's login: the token is its Protection Bypass secret</label>
+    <label>Token parameter</label><input type="text" name="token_param" value="${esc(f.token_param && f.token_param !== 'x-vercel-protection-bypass' ? f.token_param : '')}" placeholder="token (the URL parameter the dashboard reads)">
+    <div class="btns"><button class="primary" type="submit">${f.id ? 'Save' : 'Add dashboard'}</button><button type="button" id="dcancel">Cancel</button></div></form>`;
+}
+function renderDash() {
+  if (ui.view !== 'dash') return;
+  if (!dashBuilt) buildDash();
+  const list = dashes || [];
+  if (!list.find(d => d.id === ui.dash) && list.length) ui.dash = list[0].id;
+  const cur = list.find(d => d.id === ui.dash);
+  // the list on the left
+  $('#dlist').innerHTML = dashes === null ? '<div class="meta" style="padding:8px">loading…</div>'
+    : !list.length ? '<div class="meta" style="padding:8px">No dashboards yet. Press <b>+ Add</b>.</div>'
+    : list.map(d => {
+      const s = dashStatus[d.id], cls = !s ? '' : !s.ok ? 'down' : s.login === 'vercel' && !d.login ? 'warn' : 'up';
+      const tip = !s ? 'checking…' : !s.ok ? `not answering: ${s.error || s.code}` : `up · ${s.code} · ${s.ms} ms`;
+      let origin = ''; try { origin = new URL(d.url).origin; } catch { }
+      return `<div class="ditem ${d.id === ui.dash && !(dashForm && !dashForm.id) ? 'sel' : ''}" data-id="${esc(d.id)}" title="${esc(d.note || d.url)}">
+        <div class="fav">${origin ? `<img src="${esc(origin)}/favicon.ico" alt="" onerror="this.replaceWith('🖥')">` : '🖥'}</div>
+        <div class="tx"><div class="nm"><span class="dot ${cls}" title="${esc(tip)}"></span>${esc(d.name)}${d.login ? ' <span title="opens with its login token">🔑</span>' : ''}</div>
+        <div class="host">${esc(d.agent ? '🤖 ' + d.agent + ' · ' : '')}${esc(dashHost(d.url))}</div></div></div>`;
+    }).join('');
+  // the bar and the frame on the right
+  const bar = $('#dbar'), frame = $('#dframe'), msg = $('#dmsg');
+  if (dashForm) {
+    bar.innerHTML = `<span class="t">${dashForm.id ? 'Edit dashboard' : 'New dashboard'}</span>`;
+    if (!msg.querySelector('#dform')) { msg.innerHTML = dashFormHtml(dashForm); wireDashForm(list); }
+    msg.hidden = false; msg.style.display = 'block'; msg.style.overflow = 'auto';
+    return;
+  }
+  msg.style.display = ''; msg.style.overflow = '';
+  if (msg.querySelector('#dform')) msg.innerHTML = '';
+  if (!cur) { bar.innerHTML = ''; msg.hidden = false; msg.innerHTML = dashes === null ? '' : '<div><b>No dashboards yet</b><br>Add the dashboards your agents keep, and open them all from here.<br><button id="dfirst">+ Add a dashboard</button></div>';
+    $('#dfirst')?.addEventListener('click', () => $('#dadd').click()); frame.removeAttribute('src'); frame.dataset.src = ''; return; }
+  const s = dashStatus[cur.id];
+  bar.innerHTML = `<span class="t">${esc(cur.name)}</span><span class="m">${esc(cur.note || dashHost(cur.url))}</span>
+    <button id="dreload" title="Load it again">⟳</button><button id="dtab" title="Open in a new browser tab">Open in tab ↗</button>
+    <button id="dedit">Edit</button><button id="ddel" class="${dashArm ? 'arm' : ''}">${dashArm ? 'Remove?' : 'Remove'}</button>`;
+  $('#dreload').onclick = () => { frame.dataset.src = ''; renderDash(); };
+  $('#dtab').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
+  $('#dedit').onclick = () => { dashForm = { ...cur }; renderDash(); };
+  $('#ddel').onclick = () => { if (!dashArm) { dashArm = true; renderDash(); return; } saveDash(list.filter(x => x.id !== cur.id), `Removed ${cur.name}`); };
+  const blocked = s && s.ok && s.frame === false;
+  if (blocked) {  // the site refuses to be shown inside another page (or Vercel's login does)
+    msg.hidden = false;
+    msg.innerHTML = `<div><b>${esc(cur.name)} can't be shown inside the fleet page</b><br>${s.login === 'vercel' && !cur.login
+      ? 'It is behind Vercel\'s login. Edit it and add its <b>Protection Bypass for Automation</b> secret as the login token (tick “behind Vercel\'s login”); then it opens right here, logged in.'
+      : 'The site does not allow being framed by other pages.'}<br><button id="dtab2">Open in a new tab ↗</button></div>`;
+    $('#dtab2').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
+    frame.removeAttribute('src'); frame.dataset.src = '';
+    return;
+  }
+  msg.hidden = true;
+  const src = dashOpenUrl(cur);
+  if (frame.dataset.src !== src + '#' + cur.id) { frame.dataset.src = src + '#' + cur.id; frame.src = src; }
+}
+function wireDashForm(list) {
+  const f = $('#dform');
+  $('#dcancel').onclick = () => { dashForm = null; $('#dmsg').innerHTML = ''; renderDash(); };
+  f.oninput = () => { const v = Object.fromEntries(new FormData(f)); Object.assign(dashForm, v, { vercel: !!v.vercel }); };
+  f.onsubmit = e => {
+    e.preventDefault();
+    const v = Object.fromEntries(new FormData(f));
+    let url = v.url.trim();
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    try { new URL(url); } catch { toast('That URL does not look right'); return; }
+    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(),
+      token_param: v.vercel ? 'x-vercel-protection-bypass' : v.token_param.trim() };
+    if (v.token.trim()) entry.token = v.token.trim();  // no "token" key: the server keeps the saved one
+    else if (v.drop) entry.token = '';
+    const id = dashForm.id;
+    const next = id ? list.map(d => d.id === id ? { id, ...entry } : d) : [...list, entry];
+    $('#dmsg').innerHTML = '';
+    saveDash(next, id ? `Saved ${entry.name}` : `Added ${entry.name}`, id || 'last');
+  };
 }
 // scheduled jobs that failed (non-zero exit) or need a check, live from the page server: a count on the
 // Jobs tab, a chip in the top strip and a banner over the jobs pages (the nightly report is a day old)
@@ -1107,7 +1248,7 @@ addEventListener('keydown', e => {
   if (e.target.matches('input')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
   else if (e.key === 'Escape') closeDrawer();
-  else if (e.key >= '1' && e.key <= '4') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
+  else if (e.key >= '1' && e.key <= '5') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
   else if (e.key === 'r') refreshNow();
   else if (e.key === 'f') fleet.fit();
   else if (e.key === 't') toggleStyle();
@@ -1133,6 +1274,7 @@ $('#space').onchange = e => {
 };
 post('/hv-fleet-refresh', { load: true }).then(j => {
   showEvery(j.every);
+  if (Array.isArray(j.dashboards)) { dashes = j.dashboards; renderDash(); }
   if (j.space && j.space !== String(ui.space || 'random')) {  // the server's choice wins (set in another browser)
     ui.space = j.space; save(); $('#space').value = j.space;
     if (j.space !== 'random') fleet.setSpace(j.space);

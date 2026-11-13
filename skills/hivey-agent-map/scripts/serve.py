@@ -11,6 +11,11 @@ trigger them:
   GET  /hv-job-health       scheduled jobs whose latest run failed (non-zero exit) or needs a check (not
                             loaded, missed its run, errors in its log), from a jobs-only scan (~0.1 s, no
                             model), with each one's error lines and log tail: the Jobs tab's warnings
+  GET  /hv-dashboard-status is each dashboard on the fleet page's 🖥 Dashboards tab up: {id: {ok, code | error,
+                            ms, frame}}, checked in parallel from this Mac (dashboards.py; the list itself is in
+                            fleet-settings.json, POST /hv-fleet-settings {"dashboards": [...]} replaces it; the
+                            page never sees tokens, so an entry sent back without "token" keeps its saved one)
+  GET  /hv-dashboard-open?id=<id>  a redirect to that dashboard with its login token added (the frame's src)
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
   GET  /fleet/              the agent fleet page (files in reports/fleet/; old /fleet/ links redirect here)
   POST /hv-fleet-refresh   `fleet.py run` in the background (the agent fleet, /fleet/)
@@ -59,7 +64,7 @@ IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 LEGACY_PAGE = "/office"  # the fleet page's address before it was renamed; redirected to /fleet/
 MARK = b"hivey-agent-map"
-VERSION = b"fleet-17"  # bump when the server gains actions, so `ensure` replaces an older one
+VERSION = b"fleet-18"  # bump when the server gains actions, so `ensure` replaces an older one
 FLEET_EVERY = 300  # seconds between full fleet refreshes (every terminal re-summarized) while its page is open
 FLEET_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 FLEET_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -80,6 +85,11 @@ def fleet_settings() -> dict:
         return got if isinstance(got, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def dashboards_public() -> list:
+    import dashboards
+    return dashboards.public(dashboards.load())
 
 
 def clean_ships(ships: object) -> dict:
@@ -513,6 +523,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.jobs()
         if path == "/hv-job-health":
             return self.job_health()
+        if path == "/hv-dashboard-status":
+            return self.dashboard_status()
+        if path == "/hv-dashboard-open":
+            return self.dashboard_open(query)
         return super().do_GET()
 
     def job_health(self) -> None:
@@ -538,6 +552,36 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 "log": j.get("log", ""), "when": j.get("last_run") or j.get("log_modified") or "",
                 "tail": (j.get("tail") or [])[-15:]})
         return self.answer(200, json.dumps(out).encode())
+
+    def dashboard_status(self) -> None:
+        """Which of the saved dashboards answer right now (the dots on the Dashboards tab)."""
+        port = self.server.server_address[1]
+        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+            return self.answer(403, b'{"ok":false,"error":"local pages only"}')
+        import dashboards
+        return self.answer(200, json.dumps({"ok": True, "status": dashboards.status()}).encode())
+
+    def dashboard_open(self, query: str) -> None:
+        """The frame (or new tab) for one dashboard: a redirect to its URL with its token, for this page only."""
+        port = self.server.server_address[1]
+        if self.headers.get("Host") not in (f"127.0.0.1:{port}", f"localhost:{port}") or \
+                self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none"):
+            return self.answer(403, b"only the fleet page can open its dashboards", "text/plain")
+        import dashboards
+        d = dashboards.find(urllib.parse.parse_qs(query).get("id", [""])[0])
+        if not d:
+            return self.answer(404, b"no such dashboard", "text/plain")
+        try:
+            url = dashboards.open_url(d)
+        except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+            return self.answer(500, f"cannot read the login token: {e}".encode(), "text/plain; charset=utf-8")
+        self.send_response(302)
+        self.send_header("Location", url)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        return None
 
     def jobs(self) -> None:
         """The fleet page's Jobs tab: the latest agent jobs page, or the first report being built."""
@@ -573,7 +617,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.answer(403, b'{"ok":false,"error":"only the agent map pages can do this"}')
         if self.path in ("/hv-fleet-refresh", "/hv-fleet-settings"):
             try:
-                length = min(int(self.headers.get("Content-Length") or 0), 4096)
+                length = min(int(self.headers.get("Content-Length") or 0), 262144)  # the dashboards list
                 req = json.loads(self.rfile.read(length) or b"{}")
                 req = req if isinstance(req, dict) else {}
             except ValueError:
@@ -594,9 +638,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     cur["track"] = str(req["track"])
                 if "ships" in req:  # the ship positions you dragged on the fleet page
                     cur["ships"] = clean_ships(req["ships"])
-                FLEET_SETTINGS.write_text(json.dumps(cur))
+                import dashboards
+                if "dashboards" in req:  # the Dashboards tab's list, replaced whole (bad entries dropped, tokens kept)
+                    cur["dashboards"] = dashboards.clean(req["dashboards"], dashboards.clean(cur.get("dashboards")))
+                dashboards.write(cur)  # owner-only: it can hold dashboard tokens
                 return self.answer(200, json.dumps({"ok": True, "every": fleet_every(), "space": cur.get("space"), "track": cur.get("track"),
-                                                    "ships": cur.get("ships", {})}).encode())
+                                                    "ships": cur.get("ships", {}),
+                                                    "dashboards": dashboards.public(dashboards.clean(cur.get("dashboards")))}).encode())
             every = fleet_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
             quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
@@ -606,7 +654,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             start_fleet_refresh(quick=quick)
             return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
                                                 "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
-                                                "ships": clean_ships(fleet_settings().get("ships"))}).encode())
+                                                "ships": clean_ships(fleet_settings().get("ships")),
+                                                "dashboards": dashboards_public()}).encode())
         if self.path == "/hv-fleet-action":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)

@@ -19,6 +19,9 @@ usage: hivey agent-map open              open the latest map (its navbar has Sta
                                          the nightly launchd run (com.hivey.agent-map)
        hivey agent-map schedule token --command \"envsave get es_…\"
                                          long-lived Claude login (claude setup-token) for the run
+       hivey agent-map dashboard add NAME URL [--agent A] [--note N] | list [--json]
+                                 | edit NAME [--name|--url|--agent|--note …] | remove NAME
+                                         the dashboards on the fleet page's 🖥 Dashboards tab
        hivey agent-map context [AGENT…] [--set standard|1M]
                                          each agent's context window (list), or set it
        hivey agent-map stats|scan|link|log …   see `hivey agent-map --help-script`

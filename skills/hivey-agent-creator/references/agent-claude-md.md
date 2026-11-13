@@ -35,6 +35,9 @@ for Codex, Grok and agy** below when the agent isn't on Claude Code.
 - **Spend:** a script you write that calls an LLM API directly (not through Claude Code, Codex
   or Grok CLI) logs each call with `hivey_spend.record(response, agent="<agent name>")` from
   `~/.claude/skills/hivey-agent-map/scripts/hivey_spend.py`, so the agent map counts its cost.
+- **Dashboards:** when you build or deploy a dashboard, report site or web view, register it on
+  the agent fleet so the user finds it with the others: `hivey agent-map dashboard add "<name>"
+  <url> --agent <agent name> --note "<what it shows>"` (`hivey-dashboards` skill).
 - Ask before anything destructive or outward-facing (deleting data, publishing, sending
   email or posts, spending money). Draft first, then ask.
 - Commit your work in this folder; never push.
