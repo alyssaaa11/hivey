@@ -1031,8 +1031,9 @@ function foldDash(on) { $('#dash').classList.toggle('fold', on); localStorage.se
 function maxDash(on) { $('#dash').classList.toggle('max', on); if (!on) fitDash(); renderDash(); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#dash')?.classList.contains('max')) maxDash(false); });
 function dashFormHtml(f) {
-  // Login: none, your default dashboard token (one EnvSave key that opens all your dashboards), or a token for this one
-  const mode = f.mode || (f.login === 'default' ? 'default' : f.login ? 'own' : f.id ? 'none' : (dashDefault ? 'default' : 'none'));
+  // Login: on by default; your default dashboard token (one EnvSave key that opens all your dashboards) or a token for this one
+  const use = f.uselogin !== undefined ? f.uselogin : f.id ? !!f.login : true;
+  const mode = f.mode || (f.login && f.login !== 'default' ? 'own' : 'default');
   const saved = f.id && f.login && f.login !== 'default';
   return `<form class="dform" id="dform"><h3>${f.id ? 'Edit ' + esc(f.name) : 'Add a dashboard'}</h3>
     <label>Name</label><input type="text" name="name" value="${esc(f.name)}" placeholder="Trading dashboard" required>
@@ -1040,11 +1041,12 @@ function dashFormHtml(f) {
     <label>Agent</label><input type="text" name="agent" value="${esc(f.agent)}" placeholder="the agent that keeps it (optional)">
     <label>Note</label><input type="text" name="note" value="${esc(f.note)}" placeholder="what it shows (optional)">
     <label>Login</label><span class="chk" style="grid-column:auto;flex-wrap:wrap;gap:12px">
-      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="none" ${mode === 'none' ? 'checked' : ''}> none</label>
-      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> my dashboard token</label>
-      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="own" ${mode === 'own' ? 'checked' : ''}> a token for this one</label></span>
-    ${mode === 'default' && !dashDefault ? `<label>Your token</label><input type="password" name="deftoken" value="${esc(f.deftoken || '')}" autocomplete="off" placeholder="EnvSave key es_… (saved once, used by all your dashboards)" required>` : ''}
-    ${mode === 'own' ? `<label>Token</label><input type="password" name="token" value="${esc(f.token || '')}" autocomplete="off"
+      <label class="chk" style="grid-column:auto" title="Untick for a dashboard that opens without a token"><input type="checkbox" name="uselogin" ${use ? 'checked' : ''}> login token</label>
+      ${use ? `<label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> my dashboard token</label>
+      <label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="own" ${mode === 'own' ? 'checked' : ''}> a token for this one</label>` : ''}</span>
+    ${use && mode === 'default' ? `<label>Your token</label><input type="password" name="deftoken" value="${esc(f.deftoken || '')}" autocomplete="off"
+      placeholder="${dashDefault ? 'saved: leave empty to keep it, or type a new EnvSave key es_…' : 'EnvSave key es_… (saved once, used by all your dashboards)'}" ${dashDefault ? '' : 'required'}>` : ''}
+    ${use && mode === 'own' ? `<label>Token</label><input type="password" name="token" value="${esc(f.token || '')}" autocomplete="off"
       placeholder="${saved ? 'token saved: leave empty to keep it' : 'an EnvSave key es_… or the token'}" ${saved ? '' : 'required'}>
     <label>Parameter</label><input type="text" name="token_param" value="${esc(f.token_param || '')}" placeholder="token (the URL parameter the dashboard reads)">` : ''}
     <div class="hint">Opening the dashboard adds the token to its URL (<code>?token=…</code>), so a dashboard with token login logs you in by
@@ -1118,7 +1120,8 @@ function wireDashForm(list) {
   const f = $('#dform');
   $('#dcancel').onclick = () => { dashForm = null; $('#dmsg').innerHTML = ''; renderDash(); };
   f.oninput = () => Object.assign(dashForm, Object.fromEntries(new FormData(f)));
-  f.querySelectorAll('input[name=mode]').forEach(r => r.onchange = () => { Object.assign(dashForm, Object.fromEntries(new FormData(f))); $('#dmsg').innerHTML = ''; renderDash(); });
+  const redraw = () => { Object.assign(dashForm, Object.fromEntries(new FormData(f)), { uselogin: f.uselogin.checked }); $('#dmsg').innerHTML = ''; renderDash(); };
+  f.querySelectorAll('input[name=mode], input[name=uselogin]').forEach(r => r.onchange = redraw);
   f.onsubmit = e => {
     e.preventDefault();
     const v = Object.fromEntries(new FormData(f));
@@ -1126,7 +1129,7 @@ function wireDashForm(list) {
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     try { new URL(url); } catch { toast('That URL does not look right'); return; }
     const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(), token_param: (v.token_param || '').trim() };
-    if (v.mode === 'none') entry.token = '';
+    if (!f.uselogin.checked) entry.token = '';
     else if (v.mode === 'default') entry.token = 'default';
     else if ((v.token || '').trim()) entry.token = v.token.trim();  // no "token" key: the server keeps the saved one
     else if (dashForm.login === 'default' || !dashForm.login) { toast('Type the token for this dashboard'); return; }

@@ -93,6 +93,12 @@ def dashboards_public() -> list:
     return dashboards.public(dashboards.load())
 
 
+def has_default_token() -> bool:
+    """Is there a default dashboard token (saved, or built in for this user)?"""
+    import dashboards
+    return bool(dashboards.default_token())
+
+
 def clean_ships(ships: object) -> dict:
     """{session: {x, z}} where you dragged each ship on the fleet page (bad entries dropped)."""
     out = {}
@@ -658,7 +664,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self.answer(200, json.dumps({"ok": True, "every": fleet_every(), "space": cur.get("space"), "track": cur.get("track"),
                                                     "ships": cur.get("ships", {}),
                                                     "dashboards": dashboards.public(dashboards.clean(cur.get("dashboards"))),
-                                                    "default_token": bool(cur.get("dashboard_token"))}).encode())
+                                                    "default_token": bool(dashboards.default_token())}).encode())
             every = fleet_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
             quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
@@ -670,7 +676,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                 "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
                                                 "ships": clean_ships(fleet_settings().get("ships")),
                                                 "dashboards": dashboards_public(),
-                                                "default_token": bool(fleet_settings().get("dashboard_token"))}).encode())
+                                                "default_token": has_default_token()}).encode())
         if self.path == "/hv-fleet-action":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)

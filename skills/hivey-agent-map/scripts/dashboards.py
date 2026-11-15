@@ -20,16 +20,19 @@ Logins: a dashboard can carry a token. Opening it (GET /hv-dashboard-open?id=…
 the token added as a query parameter (`token_param`, default `token`), so a dashboard with token login
 (the hivey-dashboards skill's references/token-login.md) logs you in by itself. The token is a literal value,
 an EnvSave opaque key (`es_…`, read with `envsave get` when the dashboard opens; no Touch ID), or `default`:
-your default dashboard token (one EnvSave key, `dashboard_token` in the settings file) that opens all your
-dashboards, so changing it updates every one. Tokens are never sent to the page's list.
+your default dashboard token (one EnvSave key, `dashboard_token` in the settings file, else the one built in
+for your user in USER_TOKENS) that opens all your dashboards, so changing it updates every one. A new
+dashboard uses it unless you say it needs no login (`--no-token`). Tokens are never sent to the page's list.
 Python standard library only.
 """
 from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import getpass
 import json
 import os
+import pwd
 import re
 import shutil
 import subprocess
@@ -46,6 +49,13 @@ LIMITS = {"name": 80, "url": 2000, "agent": 80, "note": 300}
 DEFAULT = "default"  # the token value meaning "my default dashboard token"
 PARAM = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 FIELDS = ("name", "url", "agent", "note", "token", "token_param")
+# Each known user's default dashboard token (their DASHBOARD_TOKEN_<USER> EnvSave key), used until they save
+# their own (`dashboard token es_…`, or the Edit form). Matched on the Mac login and full name. Anyone else
+# types theirs once in the form, and it is saved for next time.
+USER_TOKENS = (
+    (("jcsancho", "jose"), "es_AN_xOxHk9IU6KbcaRxXEndz0xHcHj0NKIRnb79Iq2QV7Hr6f"),
+    (("alyssa",), "es_8AC8PzeSobAcZMD1PV6gnZwo7bezsQkiQoswZu7BZqbgecKb"),
+)
 
 
 def _settings() -> dict:
@@ -152,7 +162,7 @@ def add(name: str, url: str, agent: str = "", note: str = "", token: str | None 
             items[i] = {**d, **ch, "id": d["id"]}
             break
     else:
-        items.append(ch)
+        items.append({"token": DEFAULT, **ch})  # a new dashboard logs in with your default token unless told not to
     saved = save(items)
     return next(d for d in saved if d["url"] == url or d["name"] == name)
 
@@ -177,9 +187,21 @@ def remove(key: str) -> bool:
     return True
 
 
+def builtin_token() -> str:
+    """The default dashboard token built in for this Mac's user (USER_TOKENS), "" for anyone else."""
+    try:
+        user = getpass.getuser()
+        who = f"{user} {pwd.getpwnam(user).pw_gecos}".lower()
+    except (KeyError, OSError):
+        who = os.environ.get("USER", "").lower()
+    words = set(re.findall(r"[a-z0-9]+", who))
+    return next((tok for names, tok in USER_TOKENS if any(n in words for n in names)), "")
+
+
 def default_token() -> str:
-    """Your default dashboard token: an EnvSave key (es_…) or a value, "" when none is set."""
-    return str(_settings().get("dashboard_token") or "").strip()
+    """Your default dashboard token: the one you saved, else your built-in one; an EnvSave key (es_…) or a
+    value, "" when there is none."""
+    return str(_settings().get("dashboard_token") or "").strip() or builtin_token()
 
 
 def set_default_token(token: str) -> None:
@@ -283,6 +305,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--token", help="login token: default (your default dashboard token), an EnvSave key es_… "
                                        "or a value (\"\" removes it)")
         p.add_argument("--token-param", help="the query parameter the dashboard reads it from (default token)")
+        p.add_argument("--no-token", dest="token", action="store_const", const="",
+                       help="it needs no login token (a new dashboard uses your default token otherwise)")
 
     a = sub.add_parser("add", help="add a dashboard (or update the one with this name or URL)")
     a.add_argument("name")
@@ -307,7 +331,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.clear or args.value:
             set_default_token("" if args.clear else args.value)
         cur = default_token()
+        built = cur and not str(_settings().get("dashboard_token") or "").strip()
         print(f"default dashboard token: {cur[:8] + '…' if cur.startswith('es_') else ('set (a raw value)' if cur else 'none')}"
+              + (" (built in for this user)" if built else "")
               + ("" if cur else "  (set it: hivey agent-map dashboard token es_…)"))
         return 0
     try:

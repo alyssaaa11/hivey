@@ -27,7 +27,10 @@ shell, so this skill and the page always agree.
 ## How the login works
 
 Each user has one **dashboard token** (EnvSave key `DASHBOARD_TOKEN_<USER>`, 32+ characters) that opens
-all their dashboards. hivey saves it once as the *default dashboard token*; a dashboard registered with
+all their dashboards. hivey keeps it as the *default dashboard token*: Jose's and Alyssa's keys are built in
+(`USER_TOKENS` in `dashboards.py`, matched on the Mac user), anyone else types theirs once in the form and it
+is saved for next time; either can be changed later in a dashboard's Edit form or with `dashboard token es_…`.
+A new dashboard logs in with it by default; untick "login token" (or `--no-token`) for one that needs none; a dashboard registered with
 `--token default` opens as `https://<site>/?token=<it>`, and the site trades the token for its own session
 cookie. No hosting login (no Vercel Deployment Protection): it refuses frames, and the token login protects
 the site instead. Tokens never reach the page; the local fleet server adds them when a dashboard opens.
@@ -55,6 +58,7 @@ hivey agent-map dashboard add "Trading dashboard" https://trading.example.app \
     --agent trading-strategies --note "paper accounts, trades and job status" --token default
 hivey agent-map dashboard edit "Trading dashboard" --name "Paper trading" --url https://new.example.app
 hivey agent-map dashboard edit "Trading dashboard" --token default   # or es_… for its own token, "" for none
+hivey agent-map dashboard add "Status page" https://status.example.app --no-token   # opens without a login
 hivey agent-map dashboard remove "Paper trading"   # by name, id or URL; removes the card only
 hivey agent-map dashboard token                    # is a default dashboard token set?
 hivey agent-map dashboard token es_…               # set it (the user's DASHBOARD_TOKEN_<USER> key)
