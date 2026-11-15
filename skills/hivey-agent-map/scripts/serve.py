@@ -450,6 +450,14 @@ def running(current_only: bool = True) -> int | None:
     return port if body == MARK + b" " + VERSION or not current_only else None
 
 
+def server_hivey() -> str | None:
+    """The hivey binary the running server reads agents and sessions with."""
+    try:
+        return json.loads(INFO.read_text()).get("hivey")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def port_free(port: int) -> bool:
     import socket
     with socket.socket() as sock:
@@ -463,9 +471,11 @@ def port_free(port: int) -> bool:
 def ensure() -> int | None:
     """The running server's port, starting one in the background when there is none."""
     port = running()
-    if port and (port == PREFERRED_PORT or not port_free(PREFERRED_PORT)):
+    if port and (port == PREFERRED_PORT or not port_free(PREFERRED_PORT)) and server_hivey() == hivey_bin():
         return port
-    if port or running(current_only=False):  # older version, or on another port while ours is free
+    # older version, on another port while ours is free, or reading another hivey (a dev build started
+    # it: that binary talks to the hivey-dev server, so the fleet would show its agents, not yours)
+    if port or running(current_only=False):
         try:
             os.kill(int(json.loads(INFO.read_text())["pid"]), 15)
             time.sleep(0.3)
@@ -708,7 +718,7 @@ def serve() -> int:
     except OSError:  # taken: any free port
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     port = httpd.server_address[1]
-    INFO.write_text(json.dumps({"port": port, "pid": os.getpid()}))
+    INFO.write_text(json.dumps({"port": port, "pid": os.getpid(), "hivey": hivey_bin()}))
 
     def watchdog() -> None:
         while True:
