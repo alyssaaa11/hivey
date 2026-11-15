@@ -59,6 +59,7 @@ hivey agent-map dashboard add "Trading dashboard" https://trading.example.app \
 hivey agent-map dashboard edit "Trading dashboard" --name "Paper trading" --url https://new.example.app
 hivey agent-map dashboard edit "Trading dashboard" --token default   # or es_… for its own token, "" for none
 hivey agent-map dashboard add "Status page" https://status.example.app --no-token   # opens without a login
+hivey agent-map dashboard edit "Status page" --open tab   # clicking it opens a new browser tab (--open page: back inside)
 hivey agent-map dashboard remove "Paper trading"   # by name, id or URL; removes the card only
 hivey agent-map dashboard token                    # is a default dashboard token set?
 hivey agent-map dashboard token es_…               # set it (the user's DASHBOARD_TOKEN_<USER> key)
@@ -84,6 +85,8 @@ hivey agent-map dashboard token es_…               # set it (the user's DASHBO
 The page says why. "Sends you to another site": a hosting login wall (turn it off and use the token login);
 "does not allow being shown inside other pages": remove `X-Frame-Options` / `frame-ancestors` from the
 site. A red dot means the site did not answer, or its token could not be read.
-claude.ai artifact links (`claude.ai/artifact/…`, `claude.ai/public/artifacts/…`, `/embed` too) can never
-show in the frame (claude.ai sends `frame-ancestors 'self'`). Registering them is fine: the page says so and
-its "Open in a new tab" button opens them.
+Each dashboard opens either inside the page (default) or in a new tab (form: Open → in a new tab, or
+`--open tab`): clicking a tab one in the list opens it straight away, with no frame and no frame error. Use a
+tab for any site that refuses frames. claude.ai artifact links (`claude.ai/artifact/…`,
+`claude.ai/public/artifacts/…`, `/embed` too) never show in a frame (`frame-ancestors 'self'`), so new ones
+get a tab automatically.

@@ -1011,11 +1011,13 @@ function buildDash() {
       <div class="dlist" id="dlist"></div>
       <div class="dfoot">Agents add theirs: <code>hivey agent-map dashboard add NAME URL</code>, or ask any agent “add this dashboard to the agent fleet”.</div></div>
     <div class="dmain"><div class="dbar" id="dbar"></div><div class="dview"><iframe id="dframe" title="Dashboard" referrerpolicy="no-referrer"></iframe><div class="dmsg" id="dmsg" hidden></div></div></div>`;
-  $('#dadd').onclick = () => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', token: '' }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
+  $('#dadd').onclick = () => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', token: '', open: '' }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
   $('#dlist').onclick = e => {
     const it = e.target.closest('.ditem');
     if (!it) return;
     ui.dash = it.dataset.id; saveDashSel(); dashForm = null; dashArm = false; renderDash();
+    const d = (dashes || []).find(x => x.id === it.dataset.id);
+    if (d && d.open === 'tab') window.open(dashOpenUrl(d), '_blank', 'noopener');
   };
   dashBuilt = true;
   $('#dash').classList.toggle('fold', localStorage.getItem('hv-fleet-dash-fold') === '1');
@@ -1040,6 +1042,9 @@ function dashFormHtml(f) {
     <label>URL</label><input type="url" name="url" value="${esc(f.url)}" placeholder="https://…" required>
     <label>Agent</label><input type="text" name="agent" value="${esc(f.agent)}" placeholder="the agent that keeps it (optional)">
     <label>Note</label><input type="text" name="note" value="${esc(f.note)}" placeholder="what it shows (optional)">
+    <label>Open</label><span class="chk" style="grid-column:auto;flex-wrap:wrap;gap:12px" title="A new tab is quicker for sites that refuse to be shown inside other pages (claude.ai artifacts, many logins)">
+      <label class="chk" style="grid-column:auto"><input type="radio" name="open" value="" ${f.open !== 'tab' ? 'checked' : ''}> inside this page</label>
+      <label class="chk" style="grid-column:auto"><input type="radio" name="open" value="tab" ${f.open === 'tab' ? 'checked' : ''}> in a new tab</label></span>
     <label>Login</label><span class="chk" style="grid-column:auto;flex-wrap:wrap;gap:12px">
       <label class="chk" style="grid-column:auto" title="Untick for a dashboard that opens without a token"><input type="checkbox" name="uselogin" ${use ? 'checked' : ''}> login token</label>
       ${use ? `<label class="chk" style="grid-column:auto"><input type="radio" name="mode" value="default" ${mode === 'default' ? 'checked' : ''}> my dashboard token</label>
@@ -1071,9 +1076,9 @@ function renderDash() {
       const tip = !s ? 'checking…' : !s.ok ? `not answering: ${s.error || s.code}` : s.elsewhere ? `sends you to ${s.elsewhere} (a login wall?)`
         : s.frame === false ? 'opens only in a new tab' : `up · ${s.code} · ${s.ms} ms`;
       let origin = ''; try { origin = new URL(d.url).origin; } catch { }
-      return `<div class="ditem ${d.id === ui.dash && !(dashForm && !dashForm.id) ? 'sel' : ''}" data-id="${esc(d.id)}" title="${esc(d.note || d.url)}">
+      return `<div class="ditem ${d.id === ui.dash && !(dashForm && !dashForm.id) ? 'sel' : ''}" data-id="${esc(d.id)}" title="${esc((d.note || d.url) + (d.open === 'tab' ? ' · click: opens in a new tab' : ''))}">
         <div class="fav">${origin ? `<img src="${esc(origin)}/favicon.ico" alt="" onerror="this.replaceWith('🖥')">` : '🖥'}</div>
-        <div class="tx"><div class="nm"><span class="dot ${cls}" title="${esc(tip)}"></span>${esc(d.name)}${d.login ? ' <span title="opens with its login token">🔑</span>' : ''}</div>
+        <div class="tx"><div class="nm"><span class="dot ${cls}" title="${esc(tip)}"></span>${esc(d.name)}${d.login ? ' <span title="opens with its login token">🔑</span>' : ''}${d.open === 'tab' ? ' <span title="opens in a new tab">↗</span>' : ''}</div>
         <div class="host">${esc(d.agent ? '🤖 ' + d.agent + ' · ' : '')}${esc(dashHost(d.url))}</div></div></div>`;
     }).join('');
   // the bar and the frame on the right
@@ -1099,6 +1104,13 @@ function renderDash() {
   $('#dtab').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
   $('#dedit').onclick = () => { dashForm = { ...cur }; renderDash(); };
   $('#ddel').onclick = () => { if (!dashArm) { dashArm = true; renderDash(); return; } saveDash(list.filter(x => x.id !== cur.id), `Removed ${cur.name}`); };
+  if (cur.open === 'tab') {  // set to open in a new tab: the click on the list opened it; no frame, no frame error
+    msg.hidden = false;
+    msg.innerHTML = `<div><b>${esc(cur.name)} opens in a new tab</b><br>Clicking it in the list opens it in a new browser tab. To show it here instead: Edit → Open: inside this page.<br><button id="dtab2">Open it again ↗</button></div>`;
+    $('#dtab2').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
+    frame.removeAttribute('src'); frame.dataset.src = '';
+    return;
+  }
   const blocked = s && s.ok && s.frame === false;
   if (blocked) {  // the site refuses to be shown inside another page (or Vercel's login does)
     msg.hidden = false;
@@ -1106,7 +1118,7 @@ function renderDash() {
       ? `It sends you to <b>${esc(s.elsewhere)}</b> first, a login page that refuses frames. Turn that hosting login off (for a Vercel project: Settings → Deployment Protection) and give the dashboard token login instead (hivey-dashboards skill).`
       : /(^|\.)claude\.(ai|site)$/i.test(dashHost(cur.url))
       ? 'claude.ai artifacts can\'t be shown inside another page. Open it in a new tab instead.'
-      : 'The site does not allow being shown inside other pages (X-Frame-Options or frame-ancestors).'}<br><button id="dtab2">Open in a new tab ↗</button></div>`;
+      : 'The site does not allow being shown inside other pages (X-Frame-Options or frame-ancestors).'}<br><span class="meta">Edit → Open: in a new tab, and clicking it opens it straight away.</span><br><button id="dtab2">Open in a new tab ↗</button></div>`;
     $('#dtab2').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
     frame.removeAttribute('src'); frame.dataset.src = '';
     return;
@@ -1130,7 +1142,7 @@ function wireDashForm(list) {
     let url = v.url.trim();
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     try { new URL(url); } catch { toast('That URL does not look right'); return; }
-    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(), token_param: (v.token_param || '').trim() };
+    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(), token_param: (v.token_param || '').trim(), open: v.open === 'tab' ? 'tab' : '' };
     if (!f.uselogin.checked) entry.token = '';
     else if (v.mode === 'default') entry.token = 'default';
     else if ((v.token || '').trim()) entry.token = v.token.trim();  // no "token" key: the server keeps the saved one

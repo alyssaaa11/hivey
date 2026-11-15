@@ -1,6 +1,6 @@
 """The dashboards your agents keep: one list, shown on the fleet page's 🖥 Dashboards tab.
 
-Each entry is {"id", "name", "url", "agent", "note", "token", "token_param"}; they live in
+Each entry is {"id", "name", "url", "agent", "note", "token", "token_param", "open"}; they live in
 ~/.hivey/agent-map/fleet-settings.json (owner-only) under "dashboards", so every browser sees the same list.
 The page lists them on the left and shows the one you pick in a frame on the right; it adds, edits and
 removes them (POST /hv-fleet-settings {"dashboards": [...]}). An agent that builds or deploys a dashboard
@@ -48,7 +48,8 @@ MAX = 100
 LIMITS = {"name": 80, "url": 2000, "agent": 80, "note": 300}
 DEFAULT = "default"  # the token value meaning "my default dashboard token"
 PARAM = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
-FIELDS = ("name", "url", "agent", "note", "token", "token_param")
+FIELDS = ("name", "url", "agent", "note", "token", "token_param", "open")
+OPEN_MODES = ("", "tab")  # "" shows it inside the fleet page, "tab" opens it straight in a new browser tab
 # Each known user's default dashboard token (their DASHBOARD_TOKEN_<USER> EnvSave key), used until they save
 # their own (`dashboard token es_…`, or the Edit form). Matched on the Mac login and full name. Anyone else
 # types theirs once in the form, and it is saved for next time.
@@ -94,6 +95,8 @@ def clean(items: object, old: list[dict] | None = None) -> list[dict]:
         e["token"] = str(token or "").strip()[:4000]
         param = str(d.get("token_param") or (prev.get("token_param") if "token_param" not in d else "") or "").strip()
         e["token_param"] = param if PARAM.match(param) else ""
+        mode = str(d["open"] if "open" in d else prev.get("open", "") or "").strip().lower()
+        e["open"] = mode if mode in OPEN_MODES else ""
         base = _slug(str(d.get("id") or "") or e["name"])
         i, n = base, 2
         while i in ids:
@@ -143,9 +146,13 @@ def _match(d: dict, key: str) -> bool:
     return k in (d["id"].lower(), d["name"].lower(), d["url"].lower().rstrip("/"), d["url"].lower())
 
 
-def _changes(name=None, url=None, agent=None, note=None, token=None, token_param=None) -> dict:
-    ch = {k: v for k, v in dict(name=name, url=url, agent=agent, note=note, token=token, token_param=token_param).items()
-          if v is not None}
+def _changes(name=None, url=None, agent=None, note=None, token=None, token_param=None, open_in=None) -> dict:
+    ch = {k: v for k, v in dict(name=name, url=url, agent=agent, note=note, token=token, token_param=token_param,
+                                open=open_in).items() if v is not None}
+    if "open" in ch:
+        ch["open"] = {"page": "", "frame": "", "inside": ""}.get(ch["open"].strip().lower(), ch["open"].strip().lower())
+        if ch["open"] not in OPEN_MODES:
+            raise ValueError(f"--open must be page or tab, not {open_in}")
     if "url" in ch and not valid_url(ch["url"]):
         raise ValueError(f"not an http(s) URL: {ch['url']}")
     if ch.get("token_param") and not PARAM.match(ch["token_param"]):
@@ -153,16 +160,24 @@ def _changes(name=None, url=None, agent=None, note=None, token=None, token_param
     return ch
 
 
+def never_framed(url: str) -> bool:
+    """Sites known to refuse every frame, so a new dashboard there opens in a tab (claude.ai artifacts)."""
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return host in ("claude.ai", "claude.site") or host.endswith((".claude.ai", ".claude.site"))
+
+
 def add(name: str, url: str, agent: str = "", note: str = "", token: str | None = None,
-        token_param: str | None = None) -> dict:
-    ch = _changes(name=name, url=url, agent=agent or None, note=note or None, token=token, token_param=token_param)
+        token_param: str | None = None, open_in: str | None = None) -> dict:
+    ch = _changes(name=name, url=url, agent=agent or None, note=note or None, token=token, token_param=token_param,
+                  open_in=open_in)
     items = load()
     for i, d in enumerate(items):
         if _match(d, name) or _match(d, url.rstrip("/")):
             items[i] = {**d, **ch, "id": d["id"]}
             break
     else:
-        items.append({"token": DEFAULT, **ch})  # a new dashboard logs in with your default token unless told not to
+        # a new dashboard logs in with your default token unless told not to; claude.ai never frames, so: a tab
+        items.append({"token": DEFAULT, "open": "tab" if never_framed(url) else "", **ch})
     saved = save(items)
     return next(d for d in saved if d["url"] == url or d["name"] == name)
 
@@ -307,6 +322,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--token-param", help="the query parameter the dashboard reads it from (default token)")
         p.add_argument("--no-token", dest="token", action="store_const", const="",
                        help="it needs no login token (a new dashboard uses your default token otherwise)")
+        p.add_argument("--open", choices=("page", "tab"),
+                       help="page: show it inside the fleet page (default); tab: clicking it opens a new browser tab")
 
     a = sub.add_parser("add", help="add a dashboard (or update the one with this name or URL)")
     a.add_argument("name")
@@ -316,7 +333,7 @@ def main(argv: list[str] | None = None) -> int:
     login_args(a)
     ls = sub.add_parser("list")
     ls.add_argument("--json", action="store_true")
-    ed = sub.add_parser("edit", help="change a dashboard's name, URL, agent, note or token")
+    ed = sub.add_parser("edit", help="change a dashboard's name, URL, agent, note, token or where it opens")
     ed.add_argument("key", help="name, id or URL")
     for f in ("name", "url", "agent", "note"):
         ed.add_argument(f"--{f}")
@@ -338,16 +355,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         if args.cmd == "add":
-            d = add(args.name, args.url, args.agent, args.note, args.token, args.token_param)
-            print(f"saved {d['name']} → {d['url']}{' (with login token)' if d['token'] else ''} (fleet page → 🖥 Dashboards)")
+            d = add(args.name, args.url, args.agent, args.note, args.token, args.token_param, args.open)
+            print(f"saved {d['name']} → {d['url']}{' (with login token)' if d['token'] else ''}{' (opens in a new tab)' if d['open'] else ''} (fleet page → 🖥 Dashboards)")
             return 0
         if args.cmd == "edit":
             d = edit(args.key, name=args.name, url=args.url, agent=args.agent, note=args.note, token=args.token,
-                     token_param=args.token_param)
+                     token_param=args.token_param, open_in=args.open)
             if not d:
                 print(f"dashboards: no dashboard named {args.key}", file=sys.stderr)
                 return 1
-            print(f"saved {d['name']} → {d['url']}{' (with login token)' if d['token'] else ''}")
+            print(f"saved {d['name']} → {d['url']}{' (with login token)' if d['token'] else ''}{' (opens in a new tab)' if d['open'] else ''}")
             return 0
     except ValueError as e:
         print(f"dashboards: {e}", file=sys.stderr)
@@ -359,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             for d in items:
                 print(f"{d['name']:<28} {d['url']}" + (f"  [{d['agent']}]" if d["agent"] else "")
-                      + (f"  🔑 {d['login']}" if d["login"] else ""))
+                      + (f"  🔑 {d['login']}" if d["login"] else "") + ("  ↗ tab" if d.get("open") == "tab" else ""))
             if not items:
                 print("no dashboards yet (fleet page → 🖥 Dashboards → + Add, or `hivey agent-map dashboard add NAME URL`)")
         return 0

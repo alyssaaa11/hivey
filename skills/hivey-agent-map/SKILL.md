@@ -228,7 +228,8 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   with the token added as a query parameter (`token_param`, default `token`), so the page never holds tokens; the
   dashboard trades it for its own session cookie (token login: hivey-dashboards skill, `references/token-login.md`).
   A site that sends you to another site first (a hosting login wall) or forbids framing shows why and an Open in
-  tab button.
+  tab button. Each dashboard's `open` is `""` (inside the page) or `"tab"` (clicking it in the list opens a new
+  browser tab, no frame; form Open → in a new tab, or `--open tab|page`); new claude.ai links default to a tab.
 - **CEO**: the space named `ceo` gets the captain's bridge, its own room in the ship's nose (gold trim, main
   viewscreen); its master sits at the captain's console.
 
