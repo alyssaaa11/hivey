@@ -1104,6 +1104,8 @@ function renderDash() {
     msg.hidden = false;
     msg.innerHTML = `<div><b>${esc(cur.name)} can't be shown inside the fleet page</b><br>${s.elsewhere
       ? `It sends you to <b>${esc(s.elsewhere)}</b> first, a login page that refuses frames. Turn that hosting login off (for a Vercel project: Settings → Deployment Protection) and give the dashboard token login instead (hivey-dashboards skill).`
+      : /(^|\.)claude\.(ai|site)$/i.test(dashHost(cur.url))
+      ? 'claude.ai artifacts can\'t be shown inside another page. Open it in a new tab instead.'
       : 'The site does not allow being shown inside other pages (X-Frame-Options or frame-ancestors).'}<br><button id="dtab2">Open in a new tab ↗</button></div>`;
     $('#dtab2').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
     frame.removeAttribute('src'); frame.dataset.src = '';

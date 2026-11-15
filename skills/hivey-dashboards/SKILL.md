@@ -84,3 +84,6 @@ hivey agent-map dashboard token es_…               # set it (the user's DASHBO
 The page says why. "Sends you to another site": a hosting login wall (turn it off and use the token login);
 "does not allow being shown inside other pages": remove `X-Frame-Options` / `frame-ancestors` from the
 site. A red dot means the site did not answer, or its token could not be read.
+claude.ai artifact links (`claude.ai/artifact/…`, `claude.ai/public/artifacts/…`, `/embed` too) can never
+show in the frame (claude.ai sends `frame-ancestors 'self'`). Registering them is fine: the page says so and
+its "Open in a new tab" button opens them.
