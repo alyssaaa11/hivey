@@ -65,7 +65,24 @@ IDLE_SECONDS = 2 * 3600
 PING = "/hv-ping"
 LEGACY_PAGE = "/office"  # the fleet page's address before it was renamed; redirected to /fleet/
 MARK = b"hivey-agent-map"
-VERSION = b"fleet-19"  # bump when the server gains actions, so `ensure` replaces an older one
+
+
+def code_stamp() -> str:
+    """A short hash of the server's Python files: a `hivey update` that changes any of them changes it."""
+    import hashlib
+    h = hashlib.sha1()
+    for f in sorted(SCRIPTS.glob("*.py")):
+        try:
+            h.update(f.name.encode() + f.read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()[:10]
+
+
+# `ensure` replaces a server whose version differs, and a running server restarts itself once its files change
+# (bump the number when the server gains actions; the code hash catches every other change)
+STAMP = code_stamp()
+VERSION = b"fleet-19-" + STAMP.encode()
 FLEET_EVERY = 300  # seconds between full fleet refreshes (every terminal re-summarized) while its page is open
 FLEET_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
 FLEET_WATCHED = 600  # the page counts as open for this long after its last poll
@@ -720,16 +737,26 @@ def serve() -> int:
     migrate_legacy()
     REPORTS.mkdir(parents=True, exist_ok=True)
     try:
-        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", PREFERRED_PORT), Handler)
+        # a restart after an update keeps its port, so open pages keep talking to it
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ.pop("HV_AGENT_MAP_PORT", "") or PREFERRED_PORT)),
+                                                Handler)
     except OSError:  # taken: any free port
         httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     port = httpd.server_address[1]
     INFO.write_text(json.dumps({"port": port, "pid": os.getpid(), "hivey": hivey_bin()}))
 
+    restart = threading.Event()
+
     def watchdog() -> None:
         while True:
             time.sleep(60)
-            if time.time() - Handler.last_used > IDLE_SECONDS and not Handler.busy.locked():
+            if Handler.busy.locked():
+                continue
+            if time.time() - Handler.last_used > IDLE_SECONDS:
+                httpd.shutdown()
+                return
+            if code_stamp() != STAMP:  # a hivey update changed the scripts: restart on the new code
+                restart.set()
                 httpd.shutdown()
                 return
 
@@ -756,6 +783,11 @@ def serve() -> int:
     threading.Thread(target=fleet_clock, daemon=True).start()
     print(f"agent map pages: http://127.0.0.1:{port}/latest/agent-stats.html", flush=True)
     httpd.serve_forever()
+    httpd.server_close()
+    if restart.is_set():  # same port and pid: open pages keep working and pick up the new code
+        print("agent map server: its scripts changed (hivey update), restarting", flush=True)
+        os.environ["HV_AGENT_MAP_PORT"] = str(port)
+        os.execv(sys.executable, [sys.executable, "-I", str(SCRIPTS / "agent_map.py"), "serve"])
     try:
         if json.loads(INFO.read_text()).get("pid") == os.getpid():
             INFO.unlink()
