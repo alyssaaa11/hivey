@@ -22,7 +22,9 @@ allowed-tools:
 The agent fleet page (hivey menu → agent fleet, or `hivey agent-map fleet`) has a **🖥 Dashboards** tab:
 the user's dashboards listed on the left with a live up/down dot, and the one they pick loaded in a frame
 on the right, logged in. The same list is edited from the page (**+ Add**, Edit, Remove) and from the
-shell, so this skill and the page always agree.
+shell, so this skill and the page always agree. Dashboards are grouped in **topic folders** (**+ Folder** on
+the page; drag a dashboard onto a folder, or pick one in the bar's 📁 menu or the Edit form; a search box
+appears once there are 6+ dashboards).
 
 ## How the login works
 
@@ -61,6 +63,9 @@ hivey agent-map dashboard edit "Trading dashboard" --token default   # or es_…
 hivey agent-map dashboard add "Status page" https://status.example.app --no-token   # opens without a login
 hivey agent-map dashboard edit "Status page" --open tab   # clicking it opens a new browser tab (--open page: back inside)
 hivey agent-map dashboard remove "Paper trading"   # by name, id or URL; removes the card only
+hivey agent-map dashboard add "Trading dashboard" https://… --folder Trading   # file it in a topic folder
+hivey agent-map dashboard edit "Paper trading" --folder ""    # take it out of its folder
+hivey agent-map dashboard folder list | add NAME | rename OLD NEW | remove NAME   # remove keeps its dashboards
 hivey agent-map dashboard token                    # is a default dashboard token set?
 hivey agent-map dashboard token es_…               # set it (the user's DASHBOARD_TOKEN_<USER> key)
 ```
@@ -71,6 +76,8 @@ hivey agent-map dashboard token es_…               # set it (the user's DASHBO
   stable production URL (`vercel project ls` in the project folder, its README) over a preview URL.
 - `--agent` is the agent that keeps the dashboard (its folder name); leave it out for the user's own.
   `--note` is one short line on what it shows.
+- `--folder` files it by topic. Run `folder list` first and reuse an existing folder (matched without
+  regard to case) instead of inventing a near-duplicate; a new name creates the folder.
 - `--token default` uses the default dashboard token, so changing that key later updates every dashboard.
   A dashboard that needs a different token gets its own EnvSave key (`--token es_…`); a raw value works
   but lands in the settings file and your shell history. `--token-param` changes the URL parameter

@@ -195,6 +195,33 @@ body.v-dash #inbox{display:none}
 #dash .dside .hd h2{margin:0;font-size:15px;flex:1}
 #dash .add{background:var(--honey);color:#1b1405;border:0;border-radius:9px;padding:6px 11px;font-weight:650;font-size:12.5px}
 #dash .dlist{flex:1;overflow-y:auto;padding:4px 8px 10px;display:flex;flex-direction:column;gap:4px}
+#dash .addf{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:5px 9px;font-weight:600;font-size:12px}
+#dash .addf:hover{border-color:var(--honey)}
+#dash .dfind{padding:0 10px 6px}
+#dash .dfind[hidden]{display:none}
+#dash .dfind input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 9px;color:var(--text);font:inherit;font-size:12.5px;outline:none}
+#dash .dfind input:focus{border-color:var(--honey)}
+.dgroup{display:flex;flex-direction:column;gap:4px;border-radius:10px;border:1px dashed transparent}
+.dgroup.drop{border-color:var(--honey);background:color-mix(in srgb,var(--honey) 8%,transparent)}
+.dlist.dragging .dgroup:not(.new){border-color:var(--line)}
+.dlist.dragging .dgroup.drop{border-color:var(--honey)}
+.dfh{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:9px;cursor:pointer;font-weight:650;font-size:13px;user-select:none}
+.dfh:hover{background:var(--panel2)}
+.dfh .car{width:10px;color:var(--muted);font-size:11px}
+.dfh .fn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dfh .n{color:var(--muted);font-weight:500;font-size:11.5px;background:var(--panel2);border-radius:8px;padding:0 6px}
+.dfh .acts{display:none;gap:2px}
+.dfh:hover .acts,.dfh .acts:has(.arm){display:flex}
+.dfh .acts button{background:none;border:1px solid transparent;border-radius:6px;padding:1px 5px;font-size:12px;color:var(--muted);cursor:pointer}
+.dfh .acts button:hover{border-color:var(--line);color:var(--text)}
+.dfh .acts button.arm{border-color:var(--block);color:var(--block)}
+.dfh.nf{cursor:default;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;padding-top:10px}
+.dfh.nf:hover{background:none}
+.dfh input.fname{flex:1;min-width:0;background:var(--bg);border:1px solid var(--honey);border-radius:7px;padding:4px 7px;color:var(--text);font:inherit;outline:none}
+.dfb{display:flex;flex-direction:column;gap:4px;padding-left:12px}
+.dgroup.loose .dfb{padding-left:0}
+.dempty{color:var(--muted);font-size:11.5px;padding:6px 9px;font-style:italic}
+#dash .dbar select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 6px;font-size:12px;color:var(--text);max-width:150px}
 #dash .dfoot{padding:9px 12px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;line-height:1.4}
 #dash code{background:var(--panel2);padding:1px 5px;border-radius:5px;font-size:11px;word-break:break-all}
 .ditem{display:flex;gap:9px;align-items:center;padding:8px 9px;border-radius:10px;cursor:pointer;border:1px solid transparent}

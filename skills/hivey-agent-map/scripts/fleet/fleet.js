@@ -983,6 +983,11 @@ function showJobs() {
 // the shell with `hivey agent-map dashboard add NAME URL` (hivey-dashboards skill). A dashboard with a login
 // token opens through /hv-dashboard-open, which adds the token: the page itself never sees tokens.
 let dashes = null, dashStatus = {}, dashForm = null, dashArm = false, dashAt = 0, dashBuilt = false, dashDefault = false;
+// folders group the list by topic (saved on the server, so every browser sees them); which ones are closed is per browser
+let dashFolders = [], dashNewFolder = false, dashRename = '', dashFolderArm = '', dashFind = '';
+let dashClosed = new Set(); try { dashClosed = new Set(JSON.parse(localStorage.getItem('hv-fleet-dash-closed') || '[]')); } catch { }
+const saveDashClosed = () => { try { localStorage.setItem('hv-fleet-dash-closed', JSON.stringify([...dashClosed])); } catch { } };
+const setDashFolders = j => { if (Array.isArray(j.dashboard_folders)) dashFolders = j.dashboard_folders; };
 function showDash() {
   const on = ui.view === 'dash';
   document.body.classList.toggle('v-dash', on);
@@ -993,19 +998,22 @@ function showDash() {
 }
 async function loadDash() {  // the list may have changed from the terminal; then which ones answer
   dashAt = Date.now();
-  try { const j = await post('/hv-fleet-settings', {}); if (Array.isArray(j.dashboards)) dashes = j.dashboards; dashDefault = !!j.default_token; } catch { }
+  try { const j = await post('/hv-fleet-settings', {}); if (Array.isArray(j.dashboards)) dashes = j.dashboards; setDashFolders(j); dashDefault = !!j.default_token; } catch { }
   renderDash();
   try {
     const r = await fetch('/hv-dashboard-status', { cache: 'no-store' });
     if (r.ok) { dashStatus = (await r.json()).status || {}; renderDash(); }
   } catch { }
 }
-async function saveDash(list, msg, select, deftoken) {
+async function saveDash(list, msg, select, deftoken, folders) {
   try {
-    const j = await post('/hv-fleet-settings', deftoken ? { dashboards: list, dashboard_token: deftoken } : { dashboards: list });
+    const body = { dashboards: list };
+    if (deftoken) body.dashboard_token = deftoken;
+    if (folders) body.dashboard_folders = folders;
+    const j = await post('/hv-fleet-settings', body);
     dashDefault = !!j.default_token;
     if (!Array.isArray(j.dashboards)) throw new Error('old server');
-    dashes = j.dashboards; dashForm = null; dashArm = false;
+    dashes = j.dashboards; setDashFolders(j); dashForm = null; dashArm = false;
     if (select === 'last' && dashes.length) select = dashes[dashes.length - 1].id;
     if (select !== undefined) { ui.dash = select; saveDashSel(); }
     if (msg) toast(msg);
@@ -1018,12 +1026,70 @@ ui.dash = localStorage.getItem('hv-fleet-dash') || '';
 function dashHost(u) { try { return new URL(u).host; } catch { return u; } }
 const dashOpenUrl = d => d.login ? '/hv-dashboard-open?id=' + encodeURIComponent(d.id) : d.url;
 function buildDash() {
-  $('#dash').innerHTML = `<div class="dside"><div class="hd"><h2>🖥 Dashboards</h2><button class="add" id="dadd" title="Add a dashboard">+ Add</button></div>
+  $('#dash').innerHTML = `<div class="dside"><div class="hd"><h2>🖥 Dashboards</h2><button class="addf" id="daddf" title="New folder: group dashboards by topic">+ Folder</button><button class="add" id="dadd" title="Add a dashboard">+ Add</button></div>
+      <div class="dfind"><input type="search" id="dfind" placeholder="Search dashboards…" autocomplete="off"></div>
       <div class="dlist" id="dlist"></div>
       <div class="dfoot">Agents add theirs: <code>hivey agent-map dashboard add NAME URL</code>, or ask any agent “add this dashboard to the agent fleet”.</div></div>
     <div class="dmain"><div class="dbar" id="dbar"></div><div class="dview"><iframe id="dframe" title="Dashboard" referrerpolicy="no-referrer"></iframe><div class="dmsg" id="dmsg" hidden></div></div></div>`;
-  $('#dadd').onclick = () => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', token: '', open: '' }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
-  $('#dlist').onclick = e => {
+  const newDash = folder => { $('#dmsg').innerHTML = ''; dashForm = { name: '', url: '', agent: '', note: '', folder: folder || '', token: '', open: '' }; dashArm = false; renderDash(); $('#dmsg input')?.focus(); };
+  $('#dadd').onclick = () => newDash('');
+  $('#daddf').onclick = () => { dashNewFolder = true; dashRename = ''; renderDash(); $('#dnewf')?.focus(); };
+  $('#dfind').oninput = e => { dashFind = e.target.value.trim().toLowerCase(); renderDash(); };
+  const dl = $('#dlist');
+  // folder name inputs (new / rename): Enter saves, Esc cancels, leaving the field saves
+  dl.addEventListener('keydown', e => {
+    if (!e.target.matches('input.fname')) return;
+    if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+    if (e.key === 'Escape') { e.target.dataset.cancel = '1'; e.target.blur(); }
+  });
+  dl.addEventListener('focusout', e => {
+    if (!e.target.matches('input.fname')) return;
+    const v = e.target.value.trim().replace(/\s+/g, ' ').slice(0, 40), cancel = e.target.dataset.cancel, old = dashRename;
+    dashNewFolder = false; dashRename = '';
+    const exists = n => dashFolders.some(f => f.toLowerCase() === n.toLowerCase() && f.toLowerCase() !== old.toLowerCase());
+    if (cancel || !v || v === old) return renderDash();
+    if (exists(v)) { toast(`There is a folder named ${v} already`); return renderDash(); }
+    if (!old) return saveDash(dashes || [], `Folder ${v} created: drag dashboards onto it`, undefined, '', [...dashFolders, v]);
+    if (dashClosed.delete(old)) { dashClosed.add(v); saveDashClosed(); }
+    saveDash((dashes || []).map(d => d.folder === old ? { ...d, folder: v } : d), `Renamed ${old} to ${v}`, undefined, '',
+      dashFolders.map(f => f === old ? v : f));
+  });
+  // drag a dashboard onto a folder (or onto "No folder") to move it
+  dl.addEventListener('dragstart', e => { const it = e.target.closest('.ditem'); if (!it) return; e.dataTransfer.setData('text/x-hv-dash', it.dataset.id); e.dataTransfer.effectAllowed = 'move'; dl.classList.add('dragging'); });
+  dl.addEventListener('dragend', () => { dl.classList.remove('dragging'); dl.querySelectorAll('.drop').forEach(x => x.classList.remove('drop')); });
+  dl.addEventListener('dragover', e => {
+    const g = e.target.closest('.dgroup');
+    if (!g || !e.dataTransfer.types.includes('text/x-hv-dash')) return;
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+    dl.querySelectorAll('.drop').forEach(x => x !== g && x.classList.remove('drop')); g.classList.add('drop');
+  });
+  dl.addEventListener('dragleave', e => { const g = e.target.closest('.dgroup'); if (g && !g.contains(e.relatedTarget)) g.classList.remove('drop'); });
+  dl.addEventListener('drop', e => {
+    const g = e.target.closest('.dgroup'), id = e.dataTransfer.getData('text/x-hv-dash');
+    if (!g || !id) return;
+    e.preventDefault(); g.classList.remove('drop');
+    moveDash(id, g.dataset.folder || '');
+  });
+  dl.onclick = e => {
+    const act = e.target.closest('[data-act]'), head = e.target.closest('.dfh');
+    if (act) {
+      e.stopPropagation();
+      const f = act.closest('.dgroup').dataset.folder;
+      if (act.dataset.act === 'add') return newDash(f);
+      if (act.dataset.act === 'ren') { dashRename = f; dashNewFolder = false; dashFolderArm = ''; renderDash(); const i = $('#dlist input.fname'); i?.focus(); i?.select(); return; }
+      if (act.dataset.act === 'del') {
+        if (dashFolderArm !== f) { dashFolderArm = f; renderDash(); return; }
+        dashFolderArm = ''; dashClosed.delete(f); saveDashClosed();
+        const n = (dashes || []).filter(d => d.folder === f).length;
+        return saveDash((dashes || []).map(d => d.folder === f ? { ...d, folder: '' } : d),
+          `Folder ${f} removed${n ? `; its ${n} dashboard${n > 1 ? 's are' : ' is'} now unfiled` : ''}`, undefined, '', dashFolders.filter(x => x !== f));
+      }
+    }
+    if (head && !e.target.closest('input')) {
+      const f = head.closest('.dgroup').dataset.folder;
+      if (f && !dashFind) { dashClosed.has(f) ? dashClosed.delete(f) : dashClosed.add(f); saveDashClosed(); dashFolderArm = ''; renderDash(); }
+      return;
+    }
     const it = e.target.closest('.ditem');
     if (!it) return;
     ui.dash = it.dataset.id; saveDashSel(); dashForm = null; dashArm = false; renderDash();
@@ -1043,6 +1109,12 @@ addEventListener('resize', fitDash);
 function foldDash(on) { $('#dash').classList.toggle('fold', on); localStorage.setItem('hv-fleet-dash-fold', on ? '1' : '0'); renderDash(); }
 function maxDash(on) { $('#dash').classList.toggle('max', on); if (!on) fitDash(); renderDash(); }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#dash')?.classList.contains('max')) maxDash(false); });
+function moveDash(id, folder) {
+  const d = (dashes || []).find(x => x.id === id);
+  if (!d || (d.folder || '') === folder) return;
+  if (folder && dashClosed.delete(folder)) saveDashClosed();
+  saveDash(dashes.map(x => x.id === id ? { ...x, folder } : x), folder ? `Moved ${d.name} to ${folder}` : `${d.name} is out of its folder`);
+}
 function dashFormHtml(f) {
   // Login: on by default; your default dashboard token (one EnvSave key that opens all your dashboards) or a token for this one
   const use = f.uselogin !== undefined ? f.uselogin : f.id ? !!f.login : true;
@@ -1053,6 +1125,8 @@ function dashFormHtml(f) {
     <label>URL</label><input type="url" name="url" value="${esc(f.url)}" placeholder="https://…" required>
     <label>Agent</label><input type="text" name="agent" value="${esc(f.agent)}" placeholder="the agent that keeps it (optional)">
     <label>Note</label><input type="text" name="note" value="${esc(f.note)}" placeholder="what it shows (optional)">
+    <label>Folder</label><input type="text" name="folder" value="${esc(f.folder || '')}" list="dfolders" maxlength="40" placeholder="a topic folder (optional): pick one or type a new one">
+    <datalist id="dfolders">${dashFolders.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
     <label>Open</label><span class="chk" style="grid-column:auto;flex-wrap:wrap;gap:12px" title="A new tab is quicker for sites that refuse to be shown inside other pages (claude.ai artifacts, many logins)">
       <label class="chk" style="grid-column:auto"><input type="radio" name="open" value="" ${f.open !== 'tab' ? 'checked' : ''}> inside this page</label>
       <label class="chk" style="grid-column:auto"><input type="radio" name="open" value="tab" ${f.open === 'tab' ? 'checked' : ''}> in a new tab</label></span>
@@ -1079,19 +1153,44 @@ function renderDash() {
   const list = dashes || [];
   if (!list.find(d => d.id === ui.dash) && list.length) ui.dash = list[0].id;
   const cur = list.find(d => d.id === ui.dash);
-  // the list on the left
-  $('#dlist').innerHTML = dashes === null ? '<div class="meta" style="padding:8px">loading…</div>'
-    : !list.length ? '<div class="meta" style="padding:8px">No dashboards yet. Press <b>+ Add</b>.</div>'
-    : list.map(d => {
+  // the list on the left, grouped in folders (left alone while a folder name is being typed)
+  const dl = $('#dlist');
+  const item = d => {
       const s = dashStatus[d.id], cls = !s ? '' : !s.ok ? 'down' : s.elsewhere || s.frame === false ? 'warn' : 'up';
       const tip = !s ? 'checking…' : !s.ok ? `not answering: ${s.error || s.code}` : s.elsewhere ? `sends you to ${s.elsewhere} (a login wall?)`
         : s.frame === false ? 'opens only in a new tab' : `up · ${s.code} · ${s.ms} ms`;
       let origin = ''; try { origin = new URL(d.url).origin; } catch { }
-      return `<div class="ditem ${d.id === ui.dash && !(dashForm && !dashForm.id) ? 'sel' : ''}" data-id="${esc(d.id)}" title="${esc((d.note || d.url) + (d.open === 'tab' ? ' · click: opens in a new tab' : ''))}">
+      return `<div class="ditem ${d.id === ui.dash && !(dashForm && !dashForm.id) ? 'sel' : ''}" draggable="true" data-id="${esc(d.id)}" title="${esc((d.note || d.url) + (d.open === 'tab' ? ' · click: opens in a new tab' : '') + ' · drag onto a folder to move it')}">
         <div class="fav">${origin ? `<img src="${esc(origin)}/favicon.ico" alt="" onerror="this.replaceWith('🖥')">` : '🖥'}</div>
         <div class="tx"><div class="nm"><span class="dot ${cls}" title="${esc(tip)}"></span>${esc(d.name)}${d.login ? ' <span title="opens with its login token">🔑</span>' : ''}${d.open === 'tab' ? ' <span title="opens in a new tab">↗</span>' : ''}</div>
         <div class="host">${esc(d.agent ? '🤖 ' + d.agent + ' · ' : '')}${esc(dashHost(d.url))}</div></div></div>`;
+  };
+  const typing = dl.contains(document.activeElement) && document.activeElement.matches('input.fname');
+  if (!typing) {
+    $('#dfind').parentElement.hidden = list.length < 6 && !dashFind;
+    const hit = d => !dashFind || [d.name, d.url, d.agent, d.note, d.folder].some(v => (v || '').toLowerCase().includes(dashFind));
+    const known = new Set(dashFolders);
+    const inFolder = f => list.filter(d => (f ? d.folder === f : !d.folder || !known.has(d.folder)) && hit(d));
+    const nameInput = v => `<input class="fname" type="text" maxlength="40" value="${esc(v)}" placeholder="Folder name, e.g. Trading">`;
+    const groups = dashFolders.map(f => {
+      const items = inFolder(f), open = !!dashFind || !dashClosed.has(f), arm = dashFolderArm === f;
+      if (dashFind && !items.length && !f.toLowerCase().includes(dashFind)) return '';
+      return `<div class="dgroup ${open ? 'open' : ''}" data-folder="${esc(f)}">
+        <div class="dfh" title="${open ? 'Close' : 'Open'} the folder · drop a dashboard here to move it in">
+          <span class="car">${open ? '▾' : '▸'}</span><span class="fi">📁</span>
+          ${dashRename === f ? nameInput(f) : `<span class="fn">${esc(f)}</span><span class="n">${list.filter(d => d.folder === f).length}</span>
+          <span class="acts"><button data-act="add" title="Add a dashboard to ${esc(f)}">＋</button><button data-act="ren" title="Rename the folder">✎</button><button data-act="del" class="${arm ? 'arm' : ''}" title="Remove the folder (its dashboards stay, unfiled)">${arm ? 'Remove?' : '✕'}</button></span>`}</div>
+        ${open ? `<div class="dfb">${items.map(item).join('') || '<div class="dempty">Empty: drag dashboards here, or ＋ to add one</div>'}</div>` : ''}</div>`;
     }).join('');
+    const loose = inFolder('');
+    dl.innerHTML = dashes === null ? '<div class="meta" style="padding:8px">loading…</div>'
+      : !list.length && !dashFolders.length && !dashNewFolder ? '<div class="meta" style="padding:8px">No dashboards yet. Press <b>+ Add</b>.</div>'
+      : (dashNewFolder ? `<div class="dgroup new"><div class="dfh"><span class="car">▾</span><span class="fi">📁</span>${nameInput('')}</div></div>` : '')
+        + groups
+        + (dashFolders.length ? (loose.length || !dashFind ? `<div class="dgroup loose" data-folder=""><div class="dfh nf" title="Drop a dashboard here to take it out of its folder"><span class="fn">No folder</span><span class="n">${loose.length}</span></div><div class="dfb">${loose.map(item).join('')}</div></div>` : '')
+          : loose.map(item).join(''))
+        + (dashFind && !list.some(hit) ? '<div class="meta" style="padding:8px">No dashboard matches.</div>' : '');
+  }
   // the bar and the frame on the right
   const bar = $('#dbar'), frame = $('#dframe'), msg = $('#dmsg');
   if (dashForm) {
@@ -1108,8 +1207,10 @@ function renderDash() {
   const s = dashStatus[cur.id];
   bar.innerHTML = sideBtns + `<span class="t">${esc(cur.name)}</span><span class="m">${esc(cur.note || dashHost(cur.url))}</span>
     <button id="dreload" title="Load it again">⟳</button><button class="ic" id="dmax" title="${maxed ? 'Back to the fleet page (Esc)' : 'Full window: the dashboard covers the whole page (Esc to leave)'}">${maxed ? '✕' : '⛶'}</button><button id="dtab" title="Open in a new browser tab">Open in tab ↗</button>
+    ${dashFolders.length ? `<select id="dmove" title="Move it to a folder"><option value="">📁 No folder</option>${dashFolders.map(f => `<option value="${esc(f)}" ${cur.folder === f ? 'selected' : ''}>📁 ${esc(f)}</option>`).join('')}</select>` : ''}
     <button id="dedit">Edit</button><button id="ddel" class="${dashArm ? 'arm' : ''}">${dashArm ? 'Remove?' : 'Remove'}</button>`;
   wireDashBar(folded, maxed);
+  if ($('#dmove')) $('#dmove').onchange = e => moveDash(cur.id, e.target.value);
   $('#dmax').onclick = () => maxDash(!maxed);
   $('#dreload').onclick = () => { frame.dataset.src = ''; renderDash(); };
   $('#dtab').onclick = () => window.open(dashOpenUrl(cur), '_blank', 'noopener');
@@ -1153,7 +1254,8 @@ function wireDashForm(list) {
     let url = v.url.trim();
     if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
     try { new URL(url); } catch { toast('That URL does not look right'); return; }
-    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(), token_param: (v.token_param || '').trim(), open: v.open === 'tab' ? 'tab' : '' };
+    const folder = (v.folder || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    const entry = { name: v.name.trim(), url, agent: v.agent.trim(), note: v.note.trim(), folder: dashFolders.find(x => x.toLowerCase() === folder.toLowerCase()) || folder, token_param: (v.token_param || '').trim(), open: v.open === 'tab' ? 'tab' : '' };
     if (!f.uselogin.checked) entry.token = '';
     else if (v.mode === 'default') entry.token = 'default';
     else if ((v.token || '').trim()) entry.token = v.token.trim();  // no "token" key: the server keeps the saved one
@@ -1331,7 +1433,7 @@ $('#space').onchange = e => {
 };
 post('/hv-fleet-refresh', { load: true }).then(j => {
   showEvery(j.every);
-  if (Array.isArray(j.dashboards)) { dashes = j.dashboards; dashDefault = !!j.default_token; renderDash(); }
+  if (Array.isArray(j.dashboards)) { dashes = j.dashboards; setDashFolders(j); dashDefault = !!j.default_token; renderDash(); }
   if (j.space && j.space !== String(ui.space || 'random')) {  // the server's choice wins (set in another browser)
     ui.space = j.space; save(); $('#space').value = j.space;
     if (j.space !== 'random') fleet.setSpace(j.space);

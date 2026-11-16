@@ -1,6 +1,6 @@
 """The dashboards your agents keep: one list, shown on the fleet page's 🖥 Dashboards tab.
 
-Each entry is {"id", "name", "url", "agent", "note", "token", "token_param", "open"}; they live in
+Each entry is {"id", "name", "url", "agent", "note", "folder", "token", "token_param", "open"}; they live in
 ~/.hivey/agent-map/fleet-settings.json (owner-only) under "dashboards", so every browser sees the same list.
 The page lists them on the left and shows the one you pick in a frame on the right; it adds, edits and
 removes them (POST /hv-fleet-settings {"dashboards": [...]}). An agent that builds or deploys a dashboard
@@ -12,6 +12,11 @@ registers it from the shell:
   python3 -I dashboards.py list [--json]
   python3 -I dashboards.py edit "Trading dashboard" --name "Paper trading" --url https://… --note "…"
   python3 -I dashboards.py remove "Trading dashboard"      (by name, id or URL)
+  python3 -I dashboards.py add "Trading dashboard" https://… --folder Trading     (or edit … --folder "" to unfile)
+  python3 -I dashboards.py folder list | add NAME | rename OLD NEW | remove NAME  (removing keeps its dashboards, unfiled)
+
+Folders group the list by topic. The ordered folder names live under "dashboard_folders" (so a folder can be
+empty); a dashboard's "folder" names one of them, and a folder a dashboard names is added to the list.
 
 The same commands run as `hivey agent-map dashboard add|list|edit|remove …` (the hivey-dashboards skill).
 `add` with a name or URL already in the list updates that entry.
@@ -45,10 +50,11 @@ from pathlib import Path
 
 SETTINGS = Path.home() / ".hivey" / "agent-map" / "fleet-settings.json"
 MAX = 100
-LIMITS = {"name": 80, "url": 2000, "agent": 80, "note": 300}
+LIMITS = {"name": 80, "url": 2000, "agent": 80, "note": 300, "folder": 40}
+MAX_FOLDERS = 50
 DEFAULT = "default"  # the token value meaning "my default dashboard token"
 PARAM = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
-FIELDS = ("name", "url", "agent", "note", "token", "token_param", "open")
+FIELDS = ("name", "url", "agent", "note", "folder", "token", "token_param", "open")
 OPEN_MODES = ("", "tab")  # "" shows it inside the fleet page, "tab" opens it straight in a new browser tab
 # Each known user's default dashboard token (their DASHBOARD_TOKEN_<USER> EnvSave key), used until they save
 # their own (`dashboard token es_…`, or the Edit form). Matched on the Mac login and full name. Anyone else
@@ -90,6 +96,7 @@ def clean(items: object, old: list[dict] | None = None) -> list[dict]:
         if not valid_url(e["url"]):
             continue
         e["name"] = e["name"] or urllib.parse.urlsplit(e["url"]).netloc
+        e["folder"] = _folder_name(e["folder"])
         prev = saved.get(str(d.get("id") or ""), {})
         token = d["token"] if "token" in d else prev.get("token", "")
         e["token"] = str(token or "").strip()[:4000]
@@ -106,6 +113,64 @@ def clean(items: object, old: list[dict] | None = None) -> list[dict]:
         if len(out) >= MAX:
             break
     return out
+
+
+def _folder_name(v: object) -> str:
+    return re.sub(r"\s+", " ", str(v or "")).strip()[:LIMITS["folder"]]
+
+
+def clean_folders(names: object, items: list[dict] | None = None) -> list[str]:
+    """The ordered, unique folder names (case-insensitive), plus any folder a dashboard names."""
+    out, seen = [], set()
+    for n in [*(names if isinstance(names, list) else []), *(d.get("folder", "") for d in items or [])]:
+        n = _folder_name(n)
+        if n and n.lower() not in seen and len(out) < MAX_FOLDERS:
+            seen.add(n.lower())
+            out.append(n)
+    return out
+
+
+def folders() -> list[str]:
+    cur = _settings()
+    return clean_folders(cur.get("dashboard_folders"), clean(cur.get("dashboards")))
+
+
+def save_folders(names: list[str], items: list[dict] | None = None) -> list[str]:
+    cur = _settings()
+    if items is not None:
+        cur["dashboards"] = clean(items, clean(cur.get("dashboards")))
+    cur["dashboard_folders"] = clean_folders(names, clean(cur.get("dashboards")))
+    write(cur)
+    return cur["dashboard_folders"]
+
+
+def add_folder(name: str) -> list[str]:
+    n = _folder_name(name)
+    if not n:
+        raise ValueError("a folder needs a name")
+    return save_folders([*folders(), n])
+
+
+def rename_folder(old: str, new: str) -> list[str] | None:
+    o, n = _folder_name(old).lower(), _folder_name(new)
+    if not n:
+        raise ValueError("a folder needs a name")
+    names = folders()
+    if o not in (f.lower() for f in names):
+        return None
+    items = [{**d, "folder": n} if d.get("folder", "").lower() == o else d for d in load()]
+    return save_folders([n if f.lower() == o else f for f in names], items)
+
+
+def remove_folder(name: str) -> bool:
+    """Drop the folder; its dashboards stay, unfiled."""
+    o = _folder_name(name).lower()
+    names = folders()
+    if o not in (f.lower() for f in names):
+        return False
+    items = [{**d, "folder": ""} if d.get("folder", "").lower() == o else d for d in load()]
+    save_folders([f for f in names if f.lower() != o], items)
+    return True
 
 
 def public(items: list[dict]) -> list[dict]:
@@ -137,6 +202,7 @@ def write(cur: dict) -> None:
 def save(items: list[dict]) -> list[dict]:
     cur = _settings()
     cur["dashboards"] = clean(items, clean(cur.get("dashboards")))
+    cur["dashboard_folders"] = clean_folders(cur.get("dashboard_folders"), cur["dashboards"])
     write(cur)
     return cur["dashboards"]
 
@@ -146,9 +212,13 @@ def _match(d: dict, key: str) -> bool:
     return k in (d["id"].lower(), d["name"].lower(), d["url"].lower().rstrip("/"), d["url"].lower())
 
 
-def _changes(name=None, url=None, agent=None, note=None, token=None, token_param=None, open_in=None) -> dict:
+def _changes(name=None, url=None, agent=None, note=None, token=None, token_param=None, open_in=None,
+             folder=None) -> dict:
     ch = {k: v for k, v in dict(name=name, url=url, agent=agent, note=note, token=token, token_param=token_param,
-                                open=open_in).items() if v is not None}
+                                open=open_in, folder=folder).items() if v is not None}
+    if "folder" in ch:  # match an existing folder's spelling
+        ch["folder"] = next((f for f in folders() if f.lower() == _folder_name(ch["folder"]).lower()),
+                            _folder_name(ch["folder"]))
     if "open" in ch:
         ch["open"] = {"page": "", "frame": "", "inside": ""}.get(ch["open"].strip().lower(), ch["open"].strip().lower())
         if ch["open"] not in OPEN_MODES:
@@ -167,9 +237,9 @@ def never_framed(url: str) -> bool:
 
 
 def add(name: str, url: str, agent: str = "", note: str = "", token: str | None = None,
-        token_param: str | None = None, open_in: str | None = None) -> dict:
+        token_param: str | None = None, open_in: str | None = None, folder: str | None = None) -> dict:
     ch = _changes(name=name, url=url, agent=agent or None, note=note or None, token=token, token_param=token_param,
-                  open_in=open_in)
+                  open_in=open_in, folder=folder)
     items = load()
     for i, d in enumerate(items):
         if _match(d, name) or _match(d, url.rstrip("/")):
@@ -330,6 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("url")
     a.add_argument("--agent", default="", help="the agent that keeps it")
     a.add_argument("--note", default="", help="one line: what it shows")
+    a.add_argument("--folder", help="the topic folder it goes in (created when new)")
     login_args(a)
     ls = sub.add_parser("list")
     ls.add_argument("--json", action="store_true")
@@ -337,13 +408,41 @@ def main(argv: list[str] | None = None) -> int:
     ed.add_argument("key", help="name, id or URL")
     for f in ("name", "url", "agent", "note"):
         ed.add_argument(f"--{f}")
+    ed.add_argument("--folder", help="move it to this folder (\"\" takes it out of its folder)")
     login_args(ed)
     rm = sub.add_parser("remove")
     rm.add_argument("key", help="name, id or URL")
+    fo = sub.add_parser("folder", help="list, add, rename or remove the topic folders")
+    fo.add_argument("action", choices=("list", "add", "rename", "remove"))
+    fo.add_argument("names", nargs="*", help="add NAME | rename OLD NEW | remove NAME")
     tk = sub.add_parser("token", help="show or set your default dashboard token (used by --token default)")
     tk.add_argument("value", nargs="?", help="an EnvSave key es_… (best) or the token itself")
     tk.add_argument("--clear", action="store_true")
     args = ap.parse_args(argv)
+    if args.cmd == "folder":
+        need = {"list": 0, "add": 1, "rename": 2, "remove": 1}[args.action]
+        if len(args.names) != need:
+            print(f"dashboards: folder {args.action} takes {need} name(s)", file=sys.stderr)
+            return 1
+        try:
+            if args.action == "add":
+                add_folder(args.names[0])
+            elif args.action == "rename" and rename_folder(*args.names) is None:
+                print(f"dashboards: no folder named {args.names[0]}", file=sys.stderr)
+                return 1
+            elif args.action == "remove" and not remove_folder(args.names[0]):
+                print(f"dashboards: no folder named {args.names[0]}", file=sys.stderr)
+                return 1
+        except ValueError as e:
+            print(f"dashboards: {e}", file=sys.stderr)
+            return 1
+        items = load()
+        for f in folders():
+            n = sum(d.get("folder") == f for d in items)
+            print(f"📁 {f}  ({n} dashboard{'' if n == 1 else 's'})")
+        if not folders():
+            print("no folders yet (`hivey agent-map dashboard folder add NAME`, or + Folder on the Dashboards tab)")
+        return 0
     if args.cmd == "token":
         if args.clear or args.value:
             set_default_token("" if args.clear else args.value)
@@ -355,12 +454,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         if args.cmd == "add":
-            d = add(args.name, args.url, args.agent, args.note, args.token, args.token_param, args.open)
+            d = add(args.name, args.url, args.agent, args.note, args.token, args.token_param, args.open, args.folder)
             print(f"saved {d['name']} → {d['url']}{' (with login token)' if d['token'] else ''}{' (opens in a new tab)' if d['open'] else ''} (fleet page → 🖥 Dashboards)")
             return 0
         if args.cmd == "edit":
             d = edit(args.key, name=args.name, url=args.url, agent=args.agent, note=args.note, token=args.token,
-                     token_param=args.token_param, open_in=args.open)
+                     token_param=args.token_param, open_in=args.open, folder=args.folder)
             if not d:
                 print(f"dashboards: no dashboard named {args.key}", file=sys.stderr)
                 return 1
@@ -374,8 +473,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             print(json.dumps(items, indent=1))
         else:
-            for d in items:
-                print(f"{d['name']:<28} {d['url']}" + (f"  [{d['agent']}]" if d["agent"] else "")
+            for d in sorted(items, key=lambda d: (d.get("folder") or "").lower()):
+                print((f"📁 {d['folder']} / " if d.get("folder") else "") + f"{d['name']:<28} {d['url']}" + (f"  [{d['agent']}]" if d["agent"] else "")
                       + (f"  🔑 {d['login']}" if d["login"] else "") + ("  ↗ tab" if d.get("open") == "tab" else ""))
             if not items:
                 print("no dashboards yet (fleet page → 🖥 Dashboards → + Add, or `hivey agent-map dashboard add NAME URL`)")

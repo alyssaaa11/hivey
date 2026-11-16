@@ -15,7 +15,8 @@ trigger them:
                             ms, frame}}, checked in parallel from this Mac (dashboards.py; the list itself is in
                             fleet-settings.json, POST /hv-fleet-settings {"dashboards": [...]} replaces it; the
                             page never sees tokens, so an entry sent back without "token" keeps its saved one;
-                            {"dashboard_token": "es_…"} sets the default token `"token": "default"` uses, write-only)
+                            {"dashboard_token": "es_…"} sets the default token `"token": "default"` uses, write-only;
+                            {"dashboard_folders": [...]} sets the ordered topic folders the list is grouped in)
   GET  /hv-dashboard-open?id=<id>  a redirect to that dashboard with its login token added (the frame's src)
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
   GET  /fleet/              the agent fleet page (files in reports/fleet/; old /fleet/ links redirect here)
@@ -110,6 +111,11 @@ def fleet_settings() -> dict:
 def dashboards_public() -> list:
     import dashboards
     return dashboards.public(dashboards.load())
+
+
+def dashboard_folders() -> list:
+    import dashboards
+    return dashboards.folders()
 
 
 def has_default_token() -> bool:
@@ -697,12 +703,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 import dashboards
                 if "dashboards" in req:  # the Dashboards tab's list, replaced whole (bad entries dropped, tokens kept)
                     cur["dashboards"] = dashboards.clean(req["dashboards"], dashboards.clean(cur.get("dashboards")))
+                if "dashboards" in req or "dashboard_folders" in req:  # the topic folders, in order (may be empty)
+                    cur["dashboard_folders"] = dashboards.clean_folders(req.get("dashboard_folders", cur.get("dashboard_folders")),
+                                                                        dashboards.clean(cur.get("dashboards")))
                 if isinstance(req.get("dashboard_token"), str) and req["dashboard_token"].strip():  # write-only
                     cur["dashboard_token"] = req["dashboard_token"].strip()[:4000]
                 dashboards.write(cur)  # owner-only: it can hold dashboard tokens
                 return self.answer(200, json.dumps({"ok": True, "every": fleet_every(), "space": cur.get("space"), "track": cur.get("track"),
                                                     "ships": cur.get("ships", {}),
                                                     "dashboards": dashboards.public(dashboards.clean(cur.get("dashboards"))),
+                                                    "dashboard_folders": dashboards.clean_folders(cur.get("dashboard_folders"),
+                                                                                                  dashboards.clean(cur.get("dashboards"))),
                                                     "default_token": bool(dashboards.default_token())}).encode())
             every = fleet_every()
             # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
@@ -715,6 +726,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                 "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
                                                 "ships": clean_ships(fleet_settings().get("ships")),
                                                 "dashboards": dashboards_public(),
+                                                "dashboard_folders": dashboard_folders(),
                                                 "default_token": has_default_token()}).encode())
         if self.path == "/hv-fleet-action":
             try:
