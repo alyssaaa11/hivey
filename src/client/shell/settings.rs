@@ -441,7 +441,74 @@ impl ClientShellState {
             quiet_typing: None,
             quiet_on: crate::swarm::quiet::is_on(),
             quiet_message: None,
+            space: None,
+            agent_settings: crate::swarm::agent_settings::load(),
+            agent_settings_message: None,
         }));
+    }
+
+    /// hivey: a space's own agent settings (its right-click menu → Settings…): the settings
+    /// popup with only the hibernate and compact tabs, editing that space's overrides.
+    pub(super) fn open_space_settings_overlay(&mut self, slug: String) {
+        self.open_settings_overlay();
+        if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() {
+            settings.space = Some(slug);
+        }
+        let mut outcome = ClientShellInput::default();
+        self.select_settings_section(ClientSettingsSection::Hibernate, &mut outcome);
+    }
+
+    /// hivey: settings → hibernate / compact: saves the chosen value for every agent or for
+    /// the space (its first choice, `default`, drops the space's own value).
+    fn choose_agent_setting(&mut self, selected: usize) {
+        use crate::swarm::agent_settings as agent;
+        let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() else {
+            return;
+        };
+        let space = settings.space.clone();
+        let section = settings.section;
+        let index = if space.is_some() {
+            selected.checked_sub(1)
+        } else {
+            Some(selected)
+        };
+        let saved = agent::update(|all| {
+            let layer = all.layer_mut(space.as_deref());
+            match section {
+                ClientSettingsSection::Hibernate => {
+                    layer.hibernate_days =
+                        index.and_then(|i| agent::HIBERNATE_CHOICES.get(i).copied());
+                }
+                _ => {
+                    layer.compact_at = index.and_then(|i| agent::COMPACT_CHOICES.get(i).copied());
+                }
+            }
+        });
+        match saved {
+            Ok(saved) => {
+                let effective = saved.effective(space.as_deref());
+                let what = match section {
+                    ClientSettingsSection::Hibernate if effective.hibernate_days == 0 => {
+                        "agents are never hibernated".to_string()
+                    }
+                    ClientSettingsSection::Hibernate => format!(
+                        "agents idle {} are hibernated",
+                        agent::days_label(effective.hibernate_days)
+                    ),
+                    _ if effective.compact_at == 0 => "agents are not compacted".to_string(),
+                    _ => format!(
+                        "idle Claude agents past {} tokens get /compact",
+                        agent::tokens_label(effective.compact_at)
+                    ),
+                };
+                settings.agent_settings_message = Some(match &space {
+                    Some(slug) => format!("{slug}: {what}"),
+                    None => format!("{what} (spaces with their own setting keep it)"),
+                });
+                settings.agent_settings = saved;
+            }
+            Err(err) => settings.agent_settings_message = Some(format!("not saved: {err}")),
+        }
     }
 
     fn selected_index_for_settings_section(&self, section: ClientSettingsSection) -> usize {
@@ -473,6 +540,14 @@ impl ClientShellState {
             ClientSettingsSection::Plugins => 0,
             ClientSettingsSection::Skills => 0,
             ClientSettingsSection::Safety => 0,
+            ClientSettingsSection::Hibernate | ClientSettingsSection::Compact => {
+                match self.overlay.as_ref() {
+                    Some(ClientShellOverlay::Settings(settings)) => {
+                        agent_setting_choices(settings, section).1.unwrap_or(0)
+                    }
+                    _ => 0,
+                }
+            }
         }
     }
 
@@ -512,6 +587,13 @@ impl ClientShellState {
                 settings.safety_on = crate::swarm::safety::enabled();
                 settings.safety_message = None;
             }
+            if matches!(
+                section,
+                ClientSettingsSection::Hibernate | ClientSettingsSection::Compact
+            ) {
+                settings.agent_settings = crate::swarm::agent_settings::load();
+                settings.agent_settings_message = None;
+            }
             if section == ClientSettingsSection::Skills {
                 use crate::swarm::skills_library as library;
                 settings.skylls_installed = library::skylls_installed();
@@ -529,13 +611,14 @@ impl ClientShellState {
         let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_ref() else {
             return;
         };
-        let current = ClientSettingsSection::ALL
+        // hivey: a space's settings walk only its own tabs.
+        let sections = settings.sections();
+        let current = sections
             .iter()
             .position(|section| *section == settings.section)
             .unwrap_or(0);
-        let next = (current as isize + delta).rem_euclid(ClientSettingsSection::ALL.len() as isize)
-            as usize;
-        self.select_settings_section(ClientSettingsSection::ALL[next], outcome);
+        let next = (current as isize + delta).rem_euclid(sections.len() as isize) as usize;
+        self.select_settings_section(sections[next], outcome);
     }
 
     fn settings_choice_count(&self) -> usize {
@@ -556,6 +639,9 @@ impl ClientShellState {
                 }
                 ClientSettingsSection::Skills => 1,
                 ClientSettingsSection::Safety => 1,
+                ClientSettingsSection::Hibernate | ClientSettingsSection::Compact => {
+                    agent_setting_choices(settings, settings.section).0.len()
+                }
             },
             _ => 0,
         }
@@ -685,6 +771,10 @@ impl ClientShellState {
             ClientSettingsSection::Plugins => self.choose_creator(selected, outcome),
             ClientSettingsSection::Skills => self.choose_skills_setting(selected, outcome),
             ClientSettingsSection::Safety => self.choose_safety(selected, outcome),
+            ClientSettingsSection::Hibernate | ClientSettingsSection::Compact => {
+                self.choose_agent_setting(selected);
+                outcome.repaint = true;
+            }
         }
     }
 
@@ -871,4 +961,64 @@ impl ClientShellState {
         }
         true
     }
+}
+
+/// hivey: settings → hibernate / compact: the choice labels and the saved one (✓). A space's
+/// own settings start with `default (…)`, which follows the defaults for every agent.
+pub(super) fn agent_setting_choices(
+    settings: &ClientSettingsOverlay,
+    section: ClientSettingsSection,
+) -> (Vec<String>, Option<usize>) {
+    use crate::swarm::agent_settings as agent;
+    let all = &settings.agent_settings;
+    let space = settings.space.as_deref();
+    let own = all.layer(space);
+    let defaults = all.effective(None);
+    let (mut labels, own_index, default_label): (Vec<String>, Option<Option<usize>>, String) =
+        if section == ClientSettingsSection::Hibernate {
+            let labels = agent::HIBERNATE_CHOICES
+                .iter()
+                .map(|days| match days {
+                    0 => "off   never hibernate".to_string(),
+                    days => format!("after {} idle", agent::days_label(*days)),
+                })
+                .collect();
+            let value = if space.is_some() {
+                own.hibernate_days
+            } else {
+                Some(defaults.hibernate_days)
+            };
+            (
+                labels,
+                value.map(|days| agent::HIBERNATE_CHOICES.iter().position(|d| *d == days)),
+                agent::days_label(defaults.hibernate_days),
+            )
+        } else {
+            let labels = agent::COMPACT_CHOICES
+                .iter()
+                .map(|tokens| match tokens {
+                    0 => "off   never compact".to_string(),
+                    tokens => format!("at {} tokens", agent::tokens_label(*tokens)),
+                })
+                .collect();
+            let value = if space.is_some() {
+                own.compact_at
+            } else {
+                Some(defaults.compact_at)
+            };
+            (
+                labels,
+                value.map(|tokens| agent::COMPACT_CHOICES.iter().position(|t| *t == tokens)),
+                agent::tokens_label(defaults.compact_at),
+            )
+        };
+    if space.is_none() {
+        return (labels, own_index.flatten());
+    }
+    labels.insert(0, format!("default ({default_label})"));
+    let current = match own_index {
+        None => Some(0),
+        Some(index) => index.map(|i| i + 1),
+    };
+    (labels, current)
 }

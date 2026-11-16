@@ -60,6 +60,10 @@ Turn it off the same way, or with `hivey quiet off`.
 
 **Quiet mode on a schedule:** so you don't have to press it every night, open **settings → quiet**, click **on**, and set when it starts and ends: click **−** / **+** to move a time by 30 minutes, or select its row and type it (`2230`, `22:30` or `7`). Quiet mode then turns on and off by itself every day, even with every hivey window closed. You can still switch it by hand; your choice lasts until the next start or end. From a terminal: `hivey quiet schedule 22:30-6:45` (`hivey quiet schedule off` to stop).
 
+**Hibernation frees memory.** An agent left idle for 2 days is stopped (the agent CLI and its MCP servers), which gives its memory back. Its pane, name and conversation stay, and the space shows 💤. Open the space again, or send the agent a message, and hivey resumes it with the same conversation on the latest CLI version. Choose the number of days (or off) in **settings → hibernate**. Right-click a space and pick **Hibernate now** or **Resume session** to do it by hand, or **Settings…** to give that swarm or agent its own value. From a terminal: `hivey hibernate`, `hivey hibernate now <pane>`, `hivey agent-settings <space> --hibernate 7`.
+
+**Compacting by size** is off by default. In **settings → compact** (or a space's **Settings…**), pick a size such as 200k or 400k tokens, and an idle Claude agent whose context has grown past it gets `/compact` typed in. Other sizes: `hivey agent-settings [<space>] --compact 350k`.
+
 **Voice quiet hours** silence only the voice at the same hours every night, for example from 22:00 to 08:00:
 
 ```bash

@@ -79,12 +79,23 @@ impl ClientContextMenuOverlay {
                 ]);
                 items
             }
-            // hivey: a second session of the agent, beside it
-            ClientContextMenuTarget::Agent { workspace, .. } => {
+            // hivey: a second session of the agent, beside it; hibernate / resume it; the
+            // space's own agent settings
+            ClientContextMenuTarget::Agent {
+                workspace,
+                hibernated,
+                ..
+            } => {
                 let mut items = vec![
                     item("New session right", Action::NewAgentSessionRight),
                     item("New session below", Action::NewAgentSessionDown),
                     item("New session in worktree", Action::NewAgentSessionWorktree),
+                    if *hibernated {
+                        item("Resume session", Action::WakeAgent)
+                    } else {
+                        item("Hibernate now", Action::HibernateAgent)
+                    },
+                    item("Settings…", Action::AgentSettings),
                 ];
                 items.extend(workspace.iter().flat_map(|menu| menu.items()));
                 items
@@ -179,10 +190,12 @@ impl ClientShellState {
 
     /// hivey: right-click on an agent's row in the Agents panel.
     pub(super) fn open_agent_context_menu(&mut self, pane_id: String, x: u16, y: u16) {
+        let hibernated = self.pane_is_hibernated(&pane_id);
         self.overlay = Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
             target: ClientContextMenuTarget::Agent {
                 pane_id,
                 workspace: None,
+                hibernated,
             },
             x,
             y,
@@ -202,6 +215,7 @@ impl ClientShellState {
         let Some(pane_id) = self.swarm_master_pane(&self.active_endpoint_id, workspace_id) else {
             return;
         };
+        let hibernated = self.pane_is_hibernated(&pane_id);
         let Some(ClientShellOverlay::ContextMenu(menu)) = self.overlay.take() else {
             return;
         };
@@ -210,6 +224,7 @@ impl ClientShellState {
             target: ClientContextMenuTarget::Agent {
                 pane_id,
                 workspace: Some(Box::new(menu)),
+                hibernated,
             },
             x,
             y,
@@ -274,6 +289,9 @@ impl ClientShellState {
                 ClientContextMenuAction::NewAgentSessionRight
                     | ClientContextMenuAction::NewAgentSessionDown
                     | ClientContextMenuAction::NewAgentSessionWorktree
+                    | ClientContextMenuAction::AgentSettings
+                    | ClientContextMenuAction::HibernateAgent
+                    | ClientContextMenuAction::WakeAgent
             ) =>
             {
                 if let ClientContextMenuTarget::Workspace {
@@ -289,6 +307,42 @@ impl ClientShellState {
                         outcome,
                     );
                 }
+            }
+            // hivey: `hivey hibernate now|wake <pane>`.
+            ClientContextMenuTarget::Agent { pane_id, .. }
+                if matches!(
+                    action,
+                    ClientContextMenuAction::HibernateAgent | ClientContextMenuAction::WakeAgent
+                ) =>
+            {
+                let verb = if action == ClientContextMenuAction::WakeAgent {
+                    "wake"
+                } else {
+                    "now"
+                };
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "hibernate".into(),
+                    verb.into(),
+                    pane_id,
+                ]));
+            }
+            // hivey: the space's own agent settings (or the defaults when it has no swarm).
+            ClientContextMenuTarget::Agent { pane_id, .. }
+                if action == ClientContextMenuAction::AgentSettings =>
+            {
+                match self.pane_space_slug(&pane_id) {
+                    Some(slug) => self.open_space_settings_overlay(slug),
+                    None => {
+                        let mut ignored = ClientShellInput::default();
+                        self.open_settings_overlay();
+                        self.select_settings_section(
+                            ClientSettingsSection::Hibernate,
+                            &mut ignored,
+                        );
+                    }
+                }
+                outcome.repaint = true;
+                return;
             }
             // hivey: `hivey swarm session` splits the agent's pane and starts the new session.
             ClientContextMenuTarget::Agent { pane_id, .. } => {

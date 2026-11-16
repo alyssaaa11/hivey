@@ -621,7 +621,7 @@ fn agent_spaces_offer_a_second_session_of_their_master() {
         Some(ClientShellOverlay::ContextMenu(menu)) => {
             assert!(matches!(
                 &menu.target,
-                ClientContextMenuTarget::Agent { pane_id, workspace: Some(_) } if pane_id == "pane_1"
+                ClientContextMenuTarget::Agent { pane_id, workspace: Some(_), .. } if pane_id == "pane_1"
             ));
             menu.items()
         }

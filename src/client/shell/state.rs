@@ -406,6 +406,10 @@ pub(super) enum ClientSettingsSection {
     Skills,
     // hivey: the safety hooks (on/off)
     Safety,
+    // hivey: after how many idle days agents are hibernated (all, or one space's)
+    Hibernate,
+    // hivey: at how many context tokens idle Claude agents get /compact (all, or one space's)
+    Compact,
 }
 
 /// hivey: settings → quiet's choices, in order (↑ ↓ walk them; the time rows' − and +).
@@ -450,7 +454,12 @@ impl ClientSettingsSection {
         Self::Plugins,
         Self::Skills,
         Self::Safety,
+        Self::Hibernate,
+        Self::Compact,
     ];
+
+    /// hivey: the tabs of one space's own settings (its right-click menu → Settings…).
+    pub(super) const SPACE: &[Self] = &[Self::Hibernate, Self::Compact];
 
     pub(super) fn label(self) -> &'static str {
         match self {
@@ -465,6 +474,8 @@ impl ClientSettingsSection {
             Self::Plugins => "plugins",
             Self::Skills => "skills",
             Self::Safety => "safety",
+            Self::Hibernate => "hibernate",
+            Self::Compact => "compact",
         }
     }
 }
@@ -514,6 +525,23 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) quiet_typing: Option<(QuietTime, String)>,
     pub(super) quiet_on: bool,
     pub(super) quiet_message: Option<String>,
+    /// hivey: settings → hibernate / compact (`~/.hivey/agent-settings.json`): the space whose
+    /// own settings these are (its slug; `None`: the defaults for every agent, in the full
+    /// settings), the saved settings, and what the last change did.
+    pub(super) space: Option<String>,
+    pub(super) agent_settings: crate::swarm::agent_settings::AgentSettings,
+    pub(super) agent_settings_message: Option<String>,
+}
+
+impl ClientSettingsOverlay {
+    /// hivey: the tabs shown: all of them, or a space's own two.
+    pub(super) fn sections(&self) -> &'static [ClientSettingsSection] {
+        if self.space.is_some() {
+            ClientSettingsSection::SPACE
+        } else {
+            ClientSettingsSection::ALL
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -624,6 +652,11 @@ pub(super) enum ClientContextMenuAction {
     NewAgentSessionDown,
     // hivey: the same, in a git worktree merged back when it ends (`--worktree`)
     NewAgentSessionWorktree,
+    // hivey: the space's own agent settings (hibernate, compact)
+    AgentSettings,
+    // hivey: stop the agent now to free its memory / resume it (`hivey hibernate`)
+    HibernateAgent,
+    WakeAgent,
 }
 
 #[derive(Debug)]
@@ -652,6 +685,8 @@ pub(super) enum ClientContextMenuTarget {
     Agent {
         pane_id: String,
         workspace: Option<Box<ClientContextMenuOverlay>>,
+        /// hivey: the agent is hibernated (the menu offers Resume session).
+        hibernated: bool,
     },
 }
 

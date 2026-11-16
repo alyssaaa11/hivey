@@ -55,12 +55,17 @@ pub(super) fn render_settings_overlay(
         return None;
     }
 
+    // hivey: a space's own settings name the space.
+    let title = match &settings.space {
+        Some(slug) => format!(" settings · {slug}"),
+        None => " settings".to_string(),
+    };
     put_text(
         buffer,
         inner.x,
         inner.y,
         inner.width,
-        " settings",
+        &title,
         Style::default()
             .fg(palette.text)
             .bg(palette.panel_bg)
@@ -74,7 +79,7 @@ pub(super) fn render_settings_overlay(
             .any(|integration| integration.state == crate::api::schema::IntegrationState::Outdated);
     let mut tab_x = inner.x;
     let mut tab_hits = Vec::new();
-    for section in ClientSettingsSection::ALL {
+    for section in settings.sections() {
         let badge = *section == ClientSettingsSection::Integrations && integration_badge;
         let label = if badge {
             format!(" ● {} ", section.label())
@@ -219,6 +224,9 @@ pub(super) fn render_settings_overlay(
         }
         ClientSettingsSection::Skills => {
             render_skills(buffer, content, settings, palette, &mut choice_hits);
+        }
+        ClientSettingsSection::Hibernate | ClientSettingsSection::Compact => {
+            render_agent_setting(buffer, content, settings, palette, &mut choice_hits);
         }
     }
 
@@ -755,6 +763,74 @@ fn render_plugins(
     }
 }
 
+/// hivey: settings → hibernate / compact, for every agent or (a space's Settings…) one space.
+fn render_agent_setting(
+    buffer: &mut Buffer,
+    area: Rect,
+    settings: &ClientSettingsOverlay,
+    palette: &Palette,
+    hits: &mut Vec<(Rect, usize)>,
+) {
+    let section = settings.section;
+    let (labels, current) = super::super::settings::agent_setting_choices(settings, section);
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let whose = match &settings.space {
+        Some(slug) => format!("the agents of {slug}"),
+        None => "every agent (a space's right-click menu → Settings… sets its own)".to_string(),
+    };
+    let (title, description, notes): (&str, String, &[&str]) =
+        if section == ClientSettingsSection::Hibernate {
+            (
+                "hibernate idle agents",
+                format!("stop an agent idle this long to free its memory · {whose}"),
+                &[
+                    "the pane, its name and the conversation are kept; opening its space again",
+                    "resumes it (same conversation, latest CLI version), and so does a message",
+                    "sent to it · hivey hibernate shows them · hivey hibernate now|wake <pane>",
+                ],
+            )
+        } else {
+            (
+                "compact long contexts",
+                format!("type /compact into an idle Claude agent past this context size · {whose}"),
+                &[
+                    "checked when the agent has been idle a minute, then not again for 20 minutes;",
+                    "other sizes: hivey agent-settings [<space>] --compact 350k",
+                ],
+            )
+        };
+    render_choice_section(
+        buffer,
+        area,
+        title,
+        &description,
+        &labels,
+        settings.selected,
+        current,
+        palette,
+        hits,
+    );
+    let mut lines: Vec<(String, ratatui::style::Color)> = Vec::new();
+    if let Some(message) = &settings.agent_settings_message {
+        lines.push((message.clone(), palette.accent));
+    }
+    for note in notes {
+        lines.push(((*note).to_string(), palette.overlay1));
+    }
+    // Below the choices (one blank row between them when there are more than two).
+    let top = area.y + 3 + labels.len() as u16 * 2;
+    for (y, (line, color)) in (top..area.bottom()).zip(lines) {
+        put_text(
+            buffer,
+            area.x,
+            y,
+            area.width,
+            &format!(" {line}"),
+            Style::default().fg(color).bg(palette.panel_bg),
+        );
+    }
+}
+
 /// hivey: online skill search; the library is skylls.
 /// hivey: settings → safety: the safety hooks' switch and what they do.
 fn render_safety(
@@ -1007,6 +1083,9 @@ mod tests {
             quiet_typing: None,
             quiet_on: false,
             quiet_message: None,
+            space: None,
+            agent_settings: Default::default(),
+            agent_settings_message: None,
             pet_current: None,
             pet_message: None,
             creators: Vec::new(),

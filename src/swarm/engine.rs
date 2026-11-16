@@ -56,6 +56,8 @@ struct Live {
     since: Instant,
     /// `(source, agent, session id)` hivey stores for the pane's agent.
     session: Option<(String, String, String)>,
+    /// Hibernated (`hibernate`): stopped to free memory, woken by a message or its space.
+    hibernated: bool,
 }
 
 #[derive(Default)]
@@ -102,6 +104,8 @@ struct State {
 
 pub(crate) fn start(api_tx: ApiRequestSender) {
     super::autoname::start(api_tx.clone());
+    super::hibernate::start(api_tx.clone());
+    super::compact::start(api_tx.clone());
     let (wake, wake_rx) = mpsc::channel();
     let mut state = State {
         // Per session: each `hivey --session <name>` (e.g. one per project) has its own swarms.
@@ -214,6 +218,10 @@ impl State {
         let Some(live) = self.live(agent) else {
             return Presence::Gone;
         };
+        // Asleep: its messages wait until it is woken (see plan_deliveries).
+        if live.hibernated {
+            return Presence::Busy;
+        }
         // A Claude session that says it's busy is mid-turn, whatever the screen shows.
         if self
             .claude_peer(live)
@@ -337,6 +345,30 @@ impl State {
                     pane_id: info.pane_id,
                     status,
                     since,
+                    hibernated: false,
+                },
+            );
+        }
+        // Hibernated agents are still members: present and idle, never gone.
+        for sleeper in super::hibernate::sleepers() {
+            if by_pane.contains_key(&sleeper.pane_id) {
+                continue;
+            }
+            let since = self
+                .live_by_pane
+                .get(&sleeper.pane_id)
+                .filter(|old| old.hibernated)
+                .map_or(now, |old| old.since);
+            by_pane.insert(
+                sleeper.pane_id.clone(),
+                Live {
+                    name: sleeper.name,
+                    session: None,
+                    workspace_id: sleeper.workspace_id,
+                    pane_id: sleeper.pane_id,
+                    status: AgentStatus::Idle,
+                    since,
+                    hibernated: true,
                 },
             );
         }
@@ -658,6 +690,13 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
             continue;
         };
         let pending: Vec<&Message> = queue.iter().collect();
+        // A message that may wake its agent wakes a hibernated one first.
+        if let Some(live) = state.live(agent).filter(|live| live.hibernated) {
+            if pending.iter().any(|msg| msg.kind != bus::Kind::Fyi) {
+                super::hibernate::request_wake(&live.pane_id);
+            }
+            continue;
+        }
         match bus::decide(state.presence(agent), &pending) {
             Decision::Hold => {}
             Decision::Deliver => {
@@ -1177,6 +1216,13 @@ fn swarm_summary(state: &State, swarm: &Swarm) -> String {
         .map(|(_, queue)| queue.len())
         .sum();
     let mut summary = format!("●{working}/{}", members.len());
+    let asleep = members
+        .iter()
+        .filter(|a| state.live(a).is_some_and(|live| live.hibernated))
+        .count();
+    if asleep > 0 {
+        summary.push_str(&format!(" 💤{asleep}"));
+    }
     if attention > 0 {
         summary.push_str(&format!(" ⚠{attention}"));
     }
@@ -1193,6 +1239,18 @@ fn swarm_summary(state: &State, swarm: &Swarm) -> String {
 /// `master_pane` (clicking the space focuses the master).
 fn plan_workspace_tokens(state: &mut State) -> Vec<WorkspaceReportMetadataParams> {
     let mut out = Vec::new();
+    // Which space's agent settings apply to a pane: its workspace's swarm (hibernate, compact).
+    let mut slugs = HashMap::new();
+    for swarm in &state.swarms {
+        for agent in &swarm.agents {
+            if let Some(live) = state.live(agent) {
+                slugs
+                    .entry(live.workspace_id.clone())
+                    .or_insert_with(|| swarm.slug.clone());
+            }
+        }
+    }
+    super::agent_settings::set_space_slugs(slugs);
     for swarm in &state.swarms {
         let master = swarm.master().and_then(|m| state.live(m));
         let workspace = master.map(|live| live.workspace_id.clone()).or_else(|| {
@@ -1211,12 +1269,31 @@ fn plan_workspace_tokens(state: &mut State) -> Vec<WorkspaceReportMetadataParams
             Some((at, lines)) if at.elapsed() < RELOAD_EVERY => lines.clone(),
             _ => info_token_lines(&swarm_info(state, swarm)),
         };
-        let signature = (summary.clone(), master_pane.clone(), info.clone());
+        // hivey hibernate: the space's hibernated panes, for its menu (Resume session).
+        let asleep: Vec<String> = state
+            .live_by_pane
+            .values()
+            .filter(|live| live.hibernated && live.workspace_id == workspace_id)
+            .map(|live| live.pane_id.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let asleep = asleep.join(",");
+        let signature = (
+            format!("{summary}\u{0}{asleep}\u{0}{}", swarm.slug),
+            master_pane.clone(),
+            info.clone(),
+        );
         if state.workspace_reported.get(&workspace_id) == Some(&signature) {
             continue;
         }
         let mut tokens = HashMap::new();
         tokens.insert("swarm".to_string(), Some(summary));
+        tokens.insert("slug".to_string(), Some(swarm.slug.clone()));
+        tokens.insert(
+            "hibernated".to_string(),
+            (!asleep.is_empty()).then_some(asleep),
+        );
         tokens.insert(
             "master_pane".to_string(),
             (!master_pane.is_empty()).then_some(master_pane),
@@ -1241,7 +1318,12 @@ fn plan_workspace_tokens(state: &mut State) -> Vec<WorkspaceReportMetadataParams
         state.workspace_reported.insert(
             params.workspace_id.clone(),
             (
-                token("swarm").unwrap_or_default(),
+                format!(
+                    "{}\u{0}{}\u{0}{}",
+                    token("swarm").unwrap_or_default(),
+                    token("hibernated").unwrap_or_default(),
+                    token("slug").unwrap_or_default()
+                ),
                 token("master_pane").unwrap_or_default(),
                 info,
             ),
@@ -1389,6 +1471,7 @@ fn run_op(state: &mut State, op: &str, args: &Value) -> Result<Value, String> {
         "pause" => op_set_paused(state, args, true),
         "resume" => op_set_paused(state, args, false),
         "list" => Ok(op_list(state)),
+        op if op.starts_with("hibernate.") => super::hibernate::handle_op(op, args),
         "master" => op_master(state, args),
         "msg.send" => op_send(state, args),
         "msg.inbox" => op_inbox(state, args),

@@ -69,6 +69,12 @@ Quiet mode lets swarms work at night without noise: voice, sounds and Slack post
     hivey quiet on|off
     hivey quiet schedule 22:30-6:45  # daily; `hivey quiet schedule off` to stop
 
+Hibernation frees memory: an agent idle for 2 days (configurable) is stopped, keeping its pane, name and conversation, and resumed (latest CLI version) when its space is opened or a message is sent to it. Compacting by size is off by default; when set, idle Claude agents past N context tokens get `/compact`. Both have defaults for every agent and per-space overrides (right-click a space → Settings…). Only change them when the user asks.
+
+    hivey hibernate                  # hibernated agents and idle times
+    hivey hibernate now|wake <pane>
+    hivey agent-settings [<space>] [--hibernate 2|off|default] [--compact 400k|off|default]
+
 Slack, Obsidian memory, Skylls sharing, and the macOS pet are optional. They need their own setup; do not assume they are configured.
 
 ## 6. Rules for AI agents
@@ -93,6 +99,8 @@ Slack, Obsidian memory, Skylls sharing, and the macOS pet are optional. They nee
     hivey swarm schedule list <swarm>   inspect check-ins
     hivey plugin list                   inspect installed plugins
     hivey quiet on|off|schedule <a-b>   quiet mode (no voice, sounds, Slack posts)
+    hivey hibernate [now|wake <pane>]   free idle agents' memory / resume them
+    hivey agent-settings [<space>] ...  hibernate days and compact size (all or one space)
     hivey update                        update the local installation
 
 ## 8. Links

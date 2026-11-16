@@ -73,6 +73,39 @@ impl ClientShellState {
             .map(|(_, value)| value.clone())
     }
 
+    /// hivey: a token the swarm engine reported for a pane's space (local endpoint only).
+    fn pane_space_token(&self, pane_id: &str, key: &str) -> Option<String> {
+        if !self.active_endpoint_id.is_local() {
+            return None;
+        }
+        let snapshot = self.snapshot.as_deref()?;
+        let workspace_id = &snapshot
+            .panes
+            .iter()
+            .find(|pane| pane.pane_id == pane_id)?
+            .workspace_id;
+        snapshot
+            .workspaces
+            .iter()
+            .find(|workspace| &workspace.workspace_id == workspace_id)?
+            .tokens
+            .iter()
+            .find(|(token, _)| token == key)
+            .map(|(_, value)| value.clone())
+    }
+
+    /// hivey: whether the agent in a pane is hibernated (`hivey hibernate`).
+    pub(super) fn pane_is_hibernated(&self, pane_id: &str) -> bool {
+        self.pane_space_token(pane_id, "hibernated")
+            .is_some_and(|panes| panes.split(',').any(|pane| pane == pane_id))
+    }
+
+    /// hivey: the swarm or agent slug of a pane's space, whose agent settings apply to it.
+    pub(super) fn pane_space_slug(&self, pane_id: &str) -> Option<String> {
+        self.pane_space_token(pane_id, "slug")
+            .filter(|slug| !slug.is_empty())
+    }
+
     pub(super) fn handle_endpoint_machine_click(
         &mut self,
         point: (u16, u16),
