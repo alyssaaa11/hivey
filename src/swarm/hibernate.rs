@@ -49,6 +49,12 @@ pub(crate) struct Sleeper {
     /// Its space was left after it fell asleep; opening it again wakes it.
     #[serde(default)]
     pub seen_away: bool,
+    /// A restart (`hivey hibernate restart`): wakes as soon as the old process is gone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub restart: bool,
+    /// The stopped process group, to know when it is gone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pgid: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,8 +77,9 @@ struct Shared {
     saved: Saved,
     /// Panes to wake on the next tick.
     wake: HashSet<String>,
-    /// Panes to hibernate now (menu, `hivey hibernate now`).
-    now: HashSet<String>,
+    /// Panes to hibernate now (menu, `hivey hibernate now`), and whether to resume them right
+    /// away (a restart).
+    now: HashMap<String, bool>,
     /// SIGTERMed process groups still to confirm: pgid → when.
     terminating: HashMap<u32, Instant>,
 }
@@ -153,13 +160,14 @@ pub(crate) fn handle_op(op: &str, args: &Value) -> Result<Value, String> {
             .ok_or_else(|| "a pane is required".to_string())
     };
     match op {
-        "hibernate.now" => {
+        "hibernate.now" | "hibernate.restart" => {
             let pane = pane()?;
             if shared.saved.sleepers.contains_key(&pane) {
                 return Err(format!("{pane} is already hibernated"));
             }
-            shared.now.insert(pane.clone());
-            Ok(json!({ "pane": pane, "hibernating": true }))
+            let restart = op == "hibernate.restart";
+            shared.now.insert(pane.clone(), restart);
+            Ok(json!({ "pane": pane, "hibernating": !restart, "restarting": restart }))
         }
         "hibernate.wake" => {
             let pane = pane()?;
@@ -280,7 +288,8 @@ fn watch_sleepers(api_tx: &ApiRequestSender, panes: &[PaneInfo], active: Option<
                 sleeper.seen_away = true;
                 changed = true;
             }
-            if wake.contains(&id) || (here && sleeper.seen_away) {
+            let restart_due = sleeper.restart && sleeper.pgid.is_none_or(|pgid| !group_alive(pgid));
+            if wake.contains(&id) || restart_due || (here && sleeper.seen_away) {
                 if let Some(sleeper) = shared.saved.sleepers.remove(&id) {
                     to_wake.push(sleeper);
                     changed = true;
@@ -317,6 +326,18 @@ fn wake(api_tx: &ApiRequestSender, sleeper: Sleeper) {
     tracing::info!(pane = %sleeper.pane_id, agent = %sleeper.agent, "hivey: waking hibernated agent");
     if let Some(mut shared) = shared() {
         shared.saved.idle.remove(&sleeper.pane_id);
+    }
+    // The space's current auto-compact window, even if it changed while the agent slept.
+    let mut sleeper = sleeper;
+    let slug = super::agent_settings::space_slug(&sleeper.workspace_id);
+    if let Some((program, args)) = sleeper.argv.split_first() {
+        let mut argv = vec![program.clone()];
+        argv.extend(super::agent_settings::claude_args_for_space(
+            &sleeper.agent,
+            args,
+            slug.as_deref(),
+        ));
+        sleeper.argv = argv;
     }
     let api_tx = api_tx.clone();
     // `agent.start` waits until the agent is ready; don't hold up the other panes.
@@ -382,9 +403,9 @@ fn scan(api_tx: &ApiRequestSender, agents: &[AgentInfo], active: Option<&str>) {
                 && !busy_claude.contains(&session.value);
             if !idle {
                 shared.saved.idle.remove(&info.pane_id);
-                if requested.contains(&info.pane_id) {
+                if let Some(restart) = requested.get(&info.pane_id) {
                     // Asked by hand: a working agent is stopped anyway.
-                    candidates.push((info.clone(), true));
+                    candidates.push((info.clone(), true, *restart));
                 }
                 continue;
             }
@@ -404,21 +425,21 @@ fn scan(api_tx: &ApiRequestSender, agents: &[AgentInfo], active: Option<&str>) {
             if shared.saved.sleepers.contains_key(&info.pane_id) {
                 continue;
             }
-            if requested.contains(&info.pane_id) {
-                candidates.push((info.clone(), true));
+            if let Some(restart) = requested.get(&info.pane_id) {
+                candidates.push((info.clone(), true, *restart));
                 continue;
             }
             let slug = super::agent_settings::space_slug(&info.workspace_id);
             let days = settings.effective(slug.as_deref()).hibernate_days;
             let looking = info.focused || active == Some(info.workspace_id.as_str());
             if days > 0 && !looking && now.saturating_sub(since) >= u64::from(days) * DAY_MS {
-                candidates.push((info.clone(), false));
+                candidates.push((info.clone(), false, false));
             }
         }
         save(&shared);
     }
-    for (info, by_hand) in candidates {
-        match hibernate(api_tx, &info, active) {
+    for (info, by_hand, restart) in candidates {
+        match hibernate(api_tx, &info, active, restart) {
             Ok(()) => tracing::info!(pane = %info.pane_id, by_hand, "hivey: agent hibernated"),
             Err(err) => tracing::warn!(pane = %info.pane_id, %err, "hivey: cannot hibernate agent"),
         }
@@ -429,6 +450,7 @@ fn hibernate(
     api_tx: &ApiRequestSender,
     info: &AgentInfo,
     active: Option<&str>,
+    restart: bool,
 ) -> Result<(), String> {
     let agent = info.agent.clone().ok_or("no agent detected in the pane")?;
     let session = info
@@ -481,6 +503,8 @@ fn hibernate(
                 argv,
                 at_ms: now_ms(),
                 seen_away: active != Some(info.workspace_id.as_str()),
+                restart,
+                pgid: Some(pgid),
             },
         );
         shared.saved.idle.remove(&info.pane_id);

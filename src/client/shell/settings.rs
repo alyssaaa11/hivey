@@ -496,9 +496,12 @@ impl ClientShellState {
                         "agents idle {} are hibernated",
                         agent::days_label(effective.hibernate_days)
                     ),
-                    _ => match effective.autocompact.command() {
+                    _ => match effective.autocompact.flag_value() {
                         None => "Claude agents keep their own auto-compact window".to_string(),
-                        Some(command) => format!("Claude agents get {command}"),
+                        Some(flag) => format!(
+                            "Claude agents start with --autocompact {flag} (running ones: \
+                             right-click → Restart session)"
+                        ),
                     },
                 };
                 settings.agent_settings_message = Some(match &space {

@@ -90,13 +90,14 @@ impl ClientContextMenuOverlay {
                     item("New session right", Action::NewAgentSessionRight),
                     item("New session below", Action::NewAgentSessionDown),
                     item("New session in worktree", Action::NewAgentSessionWorktree),
-                    if *hibernated {
-                        item("Resume session", Action::WakeAgent)
-                    } else {
-                        item("Hibernate now", Action::HibernateAgent)
-                    },
-                    item("Settings…", Action::AgentSettings),
                 ];
+                if *hibernated {
+                    items.push(item("Resume session", Action::WakeAgent));
+                } else {
+                    items.push(item("Restart session", Action::RestartAgent));
+                    items.push(item("Hibernate now", Action::HibernateAgent));
+                }
+                items.push(item("Settings…", Action::AgentSettings));
                 items.extend(workspace.iter().flat_map(|menu| menu.items()));
                 items
             }
@@ -292,6 +293,7 @@ impl ClientShellState {
                     | ClientContextMenuAction::AgentSettings
                     | ClientContextMenuAction::HibernateAgent
                     | ClientContextMenuAction::WakeAgent
+                    | ClientContextMenuAction::RestartAgent
             ) =>
             {
                 if let ClientContextMenuTarget::Workspace {
@@ -312,13 +314,15 @@ impl ClientShellState {
             ClientContextMenuTarget::Agent { pane_id, .. }
                 if matches!(
                     action,
-                    ClientContextMenuAction::HibernateAgent | ClientContextMenuAction::WakeAgent
+                    ClientContextMenuAction::HibernateAgent
+                        | ClientContextMenuAction::WakeAgent
+                        | ClientContextMenuAction::RestartAgent
                 ) =>
             {
-                let verb = if action == ClientContextMenuAction::WakeAgent {
-                    "wake"
-                } else {
-                    "now"
+                let verb = match action {
+                    ClientContextMenuAction::WakeAgent => "wake",
+                    ClientContextMenuAction::RestartAgent => "restart",
+                    _ => "now",
                 };
                 outcome.actions.push(ClientShellAction::RunHivey(vec![
                     "hibernate".into(),

@@ -9,7 +9,6 @@ pub(crate) mod agent_settings;
 pub(crate) mod autoname;
 pub(crate) mod bus;
 pub(crate) mod claude_peers;
-pub(crate) mod compact;
 pub(crate) mod creators;
 pub(crate) mod engine;
 pub(crate) mod hibernate;

@@ -4,9 +4,10 @@
 //!
 //! - `hibernate_days`: an agent idle this many days is stopped to free its memory and resumed
 //!   (same conversation, latest CLI) when its space is opened again; 0 = never. Default: 2.
-//! - `autocompact`: Claude Code's auto-compact window, typed into each Claude agent as
-//!   `/autocompact <tokens>` (or `auto`) when it starts or the setting changes; `off` (the
-//!   default) leaves agents alone.
+//! - `autocompact`: Claude Code's auto-compact window, passed to each Claude agent as
+//!   `--autocompact <tokens|auto>` when hivey starts or resumes it (launch, new session, wake
+//!   from hibernation, restart, resume after a hivey restart). The flag lasts for that session
+//!   only, so Claude's own settings are not touched. `off` (the default) passes nothing.
 //!
 //! ```json
 //! { "default": { "hibernate_days": 2 },
@@ -61,12 +62,12 @@ impl AutoCompact {
         }
     }
 
-    /// What is typed into a Claude agent (`None`: nothing).
-    pub(crate) fn command(self) -> Option<String> {
+    /// The value of Claude Code's `--autocompact` flag (`None`: no flag).
+    pub(crate) fn flag_value(self) -> Option<String> {
         match self {
             Self::Off => None,
-            Self::Auto => Some("/autocompact auto".into()),
-            Self::Tokens(tokens) => Some(format!("/autocompact {tokens}")),
+            Self::Auto => Some("auto".into()),
+            Self::Tokens(tokens) => Some(tokens.to_string()),
         }
     }
 
@@ -89,6 +90,41 @@ impl AutoCompact {
             .contains(&tokens)
             .then_some(Self::Tokens(tokens as u64))
     }
+}
+
+/// A Claude agent's arguments with `--autocompact` set to `value`: an earlier one is replaced
+/// (or dropped for off), so a restart always gets the space's current setting.
+pub(crate) fn with_autocompact(args: &[String], value: AutoCompact) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len() + 2);
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--autocompact" {
+            iter.next();
+            continue;
+        }
+        if arg.starts_with("--autocompact=") {
+            continue;
+        }
+        out.push(arg.clone());
+    }
+    if let Some(flag) = value.flag_value() {
+        out.push("--autocompact".into());
+        out.push(flag);
+    }
+    out
+}
+
+/// `with_autocompact` with the setting of the space `slug` (`None`: the defaults), for Claude
+/// agents only; other agents' arguments are returned as they are.
+pub(crate) fn claude_args_for_space(
+    agent: &str,
+    args: &[String],
+    slug: Option<&str>,
+) -> Vec<String> {
+    if agent != "claude" {
+        return args.to_vec();
+    }
+    with_autocompact(args, load().effective(slug).autocompact)
 }
 
 impl From<AutoCompact> for String {
@@ -347,15 +383,26 @@ mod tests {
         assert_eq!(AutoCompact::parse("2M"), None);
         assert_eq!(AutoCompact::Tokens(400_000).label(), "400k");
         assert_eq!(AutoCompact::Tokens(1_000_000).label(), "1M");
+        let args = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
-            AutoCompact::Tokens(400_000).command().as_deref(),
-            Some("/autocompact 400000")
+            with_autocompact(
+                &args(&["--model", "opus", "--autocompact", "200000"]),
+                AutoCompact::Tokens(400_000)
+            ),
+            args(&["--model", "opus", "--autocompact", "400000"])
         );
         assert_eq!(
-            AutoCompact::Auto.command().as_deref(),
-            Some("/autocompact auto")
+            with_autocompact(&args(&["--autocompact=auto", "--chrome"]), AutoCompact::Off),
+            args(&["--chrome"])
         );
-        assert_eq!(AutoCompact::Off.command(), None);
+        assert_eq!(
+            with_autocompact(&args(&[]), AutoCompact::Auto),
+            args(&["--autocompact", "auto"])
+        );
+        assert_eq!(
+            claude_args_for_space("codex", &args(&["--x"]), None),
+            args(&["--x"])
+        );
         assert_eq!(days_label(1), "1 day");
         assert_eq!(days_label(0), "off");
     }

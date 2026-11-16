@@ -54,15 +54,24 @@ function ring(p, size = 18) {
 }
 function adviceBadge(a) {
   const s = a.summary || {};
-  if (s.advice === 'compact') return `<span class="badge compact" title="${esc(s.advice_why)}">🗜 compact</span>`;
-  if (s.advice === 'clear') return `<span class="badge clear" title="${esc(s.advice_why)}">🧹 clear</span>`;
-  return '';
+  const md = claudeMdBadge(a);
+  if (s.advice === 'compact') return `<span class="badge compact" title="${esc(s.advice_why)}">🗜 compact</span>${md}`;
+  if (s.advice === 'clear') return `<span class="badge clear" title="${esc(s.advice_why)}">🧹 clear</span>${md}`;
+  return md;
+}
+// a CLAUDE.md over Claude Code's 40k-char limit (counted like Claude Code)
+function kchars(n) { return (n / 1000).toFixed(1) + 'k'; }
+function claudeMdBadge(a) {
+  const m = a.claude_md;
+  if (!m?.over) return '';
+  return ` <span class="badge md" title="${esc(m.path)}: ${m.chars} chars, Claude Code warns above ${m.limit}. 🧽 Clean CLAUDE.md shortens it with Opus and restarts the agent.">⚠ CLAUDE.md ${kchars(m.chars)} / ${kchars(m.limit)}</span>`;
 }
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2600); }
 function visible(a) {
   if (ui.filter) {
     if (ui.filter in STATUS && a.status !== ui.filter) return false;
     if ((ui.filter === 'compact' || ui.filter === 'clear') && a.summary?.advice !== ui.filter) return false;
+    if (ui.filter === 'claude_md' && !a.claude_md?.over) return false;
   }
   const q = $('#q').value.trim().toLowerCase();
   if (!q) return true;
@@ -160,7 +169,7 @@ function armed(btn, a, action) {
   if (btn.classList.contains('arm')) { btn.classList.remove('arm'); btn.textContent = btn.dataset.label; act(a, action); return; }
   btn.dataset.label = btn.textContent;
   btn.classList.add('arm');
-  btn.textContent = `Click again to ${action}`;
+  btn.textContent = btn.dataset.confirm || `Click again to ${action}`;
   setTimeout(() => { if (btn.classList.contains('arm')) { btn.classList.remove('arm'); btn.textContent = btn.dataset.label; } }, 3000);
 }
 function actionButtons(a) {
@@ -169,6 +178,7 @@ function actionButtons(a) {
     <button class="primary" data-act="focus" title="Open its terminal in hivey">↗ Open</button>
     ${a.cli_id === 'claude' ? `<button data-act="compact" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /compact into it and press Enter"'}>🗜 Compact</button>
     <button data-act="clear" ${busy ? 'disabled title="Only when it is not working"' : 'title="Type /clear into it and press Enter (click twice)"'}>🧹 Clear</button>` : ''}
+    ${a.claude_md?.over && !a.asleep ? `<button data-act="clean-claude-md" data-confirm="Click again: Opus rewrites it, then the agent restarts" title="Opus rewrites its CLAUDE.md to about 30k chars (rules, paths, checks and status kept; original backed up), then the agent exits and resumes its conversation in its terminal (click twice)">🧽 Clean CLAUDE.md</button>` : ''}
     <button data-act="info" title="Everything about it">ⓘ Details</button></div>`;
 }
 function wireActions(root) {
@@ -195,6 +205,7 @@ function renderHeader() {
   const pills = [
     ['blocked', '✋', 'needs you', c.blocked], ['working', '⚡', 'working', c.working], ['done', '✅', 'done', c.done],
     ['idle', '💤', 'idle', c.idle], ['compact', '🗜', 'to compact', adv.compact], ['clear', '🧹', 'to clear', adv.clear],
+    ...(c.claude_md ? [['claude_md', '⚠', 'CLAUDE.md too long', c.claude_md]] : []),
   ];
   $('#pills').innerHTML = pills.map(([k, e, l, n]) =>
     `<button class="pill ${k} ${ui.filter === k ? 'on' : ''}" data-f="${k}" title="Show only these">${e} <b>${n || 0}</b> ${l}</button>`).join('');

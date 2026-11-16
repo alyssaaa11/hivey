@@ -105,7 +105,6 @@ struct State {
 pub(crate) fn start(api_tx: ApiRequestSender) {
     super::autoname::start(api_tx.clone());
     super::hibernate::start(api_tx.clone());
-    super::compact::start(api_tx.clone());
     let (wake, wake_rx) = mpsc::channel();
     let mut state = State {
         // Per session: each `hivey --session <name>` (e.g. one per project) has its own swarms.
@@ -887,7 +886,13 @@ fn plan_resume(state: &mut State) -> Vec<PaneReportAgentSessionParams> {
             if source != agent.kind.herdr_source() {
                 continue;
             }
-            let Some(argv) = agent.kind.resume_argv(&session_id, &agent.args) else {
+            // With the space's auto-compact window (hivey agent settings), for Claude.
+            let args = super::agent_settings::claude_args_for_space(
+                agent.kind.as_str(),
+                &agent.args,
+                Some(&swarm.slug),
+            );
+            let Some(argv) = agent.kind.resume_argv(&session_id, &args) else {
                 continue;
             };
             if state.resume_reported.get(&live.pane_id) == Some(&argv) {

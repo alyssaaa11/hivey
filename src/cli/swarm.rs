@@ -9,6 +9,7 @@ use crate::swarm::SwarmParams;
 
 mod agent_map;
 mod agent_settings;
+mod claude_md;
 mod comms;
 mod directory;
 mod home;
@@ -25,6 +26,7 @@ mod slack;
 mod voice;
 pub(super) use agent_map::run as run_agent_map_command;
 pub(super) use agent_settings::{run_agent_settings, run_hibernate};
+pub(super) use claude_md::run as run_claude_md_command;
 pub(super) use home::run as run_home_command;
 pub(super) use installed::run as run_installed_command;
 pub(super) use migrate::run as run_migrate_command;

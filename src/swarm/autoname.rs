@@ -382,7 +382,7 @@ fn ask_model(recent: &Recent) -> Option<String> {
     Some(out)
 }
 
-fn claude_bin() -> PathBuf {
+pub(crate) fn claude_bin() -> PathBuf {
     let on_path = std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths)
             .map(|dir| dir.join("claude"))

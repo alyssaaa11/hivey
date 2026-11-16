@@ -515,6 +515,22 @@ def clean_summary(s: dict) -> dict:
 
 # ---------------------------------------------------------------- one refresh
 
+CLAUDE_MD_LIMIT = 40_000  # Claude Code warns when one instruction file is longer (in JS string length)
+
+
+def claude_md_info(folder: str | None) -> dict | None:
+    """The size of the CLAUDE.md in an agent's folder, counted like Claude Code (UTF-16 units)."""
+    if not folder:
+        return None
+    path = Path(folder) / "CLAUDE.md"
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return None
+    chars = len(text.encode("utf-16-le")) // 2
+    return {"chars": chars, "limit": CLAUDE_MD_LIMIT, "over": chars > CLAUDE_MD_LIMIT, "path": str(path)}
+
+
 def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     """Every agent of every running hivey session (one spaceship per session on the page)."""
     people = [d for hs in (sessions or hv_sessions(hv))
@@ -525,6 +541,7 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     for d, scr in zip(people, screens):
         d["screen"] = scr
         d["wiki"] = wiki_info(d.get("folder"), vaults, d.get("space", ""))
+        d["claude_md"] = claude_md_info(d.get("folder")) if d.get("cli_id") == "claude" else None
         log = session_log(transcript_of(d["session"], d["cli_id"]))
         d["_log"] = log
         d["log_uuid"] = log.get("uuid", "")
@@ -636,6 +653,7 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
     counts = {k: sum(1 for d in people if d["status"] == k and not d.get("asleep"))
               for k in ("working", "blocked", "done", "idle")}
     counts["asleep"] = sum(1 for d in people if d.get("asleep"))
+    counts["claude_md"] = sum(1 for d in people if (d.get("claude_md") or {}).get("over"))
     full_at = now_iso()
     if quick:  # a live pass: the last full summary pass stays the one already on the page
         try:

@@ -27,7 +27,9 @@ trigger them:
                             {"id": "wN:p1" | "<session>/wN:p1", "action": "focus" | "compact" | "clear"} for a desk on the
                             fleet page: focus opens the agent's terminal in hivey (and brings the
                             terminal app forward); compact/clear type /compact or /clear into an agent
-                            that is not working
+                            that is not working; clean-claude-md runs `hivey claude-md clean <pane>` in
+                            the background (Opus shortens its CLAUDE.md, then the agent restarts; log in
+                            ~/.hivey/agent-map/claude-md-<pane>.log)
 
 While a fleet page is open (it polls /fleet/fleet.json), a live pass runs every minute (status,
 context, screen; only desks whose status changed go to the model) and a full re-summary every 5 minutes.
@@ -449,12 +451,32 @@ def fleet_action(desk_id: str, action: str, session: str = "", path: str = "") -
         where = desk.get("hv_session") or "default"
         return True, {"opened": f"opened in a new terminal on session {where}",
                       "raised": "opened in hivey"}.get(how, "focused in hivey (bring its terminal forward yourself)")
+    if action == "clean-claude-md":
+        return clean_claude_md(exe, sock, pane)
     if action in ("compact", "clear"):
         status = live_status(exe, sock, pane)
         if status in ("working", "blocked"):
             return False, f"it is {status} now; try when it is idle"
         return send_command(exe, sock, pane, f"/{action}")
     return False, "unknown action"
+
+
+def clean_claude_md(exe: str, sock: str | None, pane: str) -> tuple[bool, str]:
+    """`hivey claude-md clean <pane>` in the background: it takes minutes (Opus rewrites the file), then
+    restarts the agent once it is idle."""
+    env = dict(os.environ)  # like hv(): the inherited session unless the desk names one
+    if sock:
+        env = {k: v for k, v in env.items() if k not in INHERITED}
+        env["HERDR_SOCKET_PATH"] = sock
+    log = STATE / f"claude-md-{pane.replace(':', '-')}.log"
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        with open(log, "ab") as out:
+            subprocess.Popen([exe, "claude-md", "clean", pane], stdout=out, stderr=out,
+                             stdin=subprocess.DEVNULL, env=env, start_new_session=True)
+    except OSError as e:
+        return False, f"cannot start the clean-up: {e}"
+    return True, "Opus is shortening its CLAUDE.md (a few minutes); then it restarts with the new file"
 
 
 def running(current_only: bool = True) -> int | None:

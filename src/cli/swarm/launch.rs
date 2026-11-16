@@ -756,7 +756,10 @@ fn retry_while_busy(
 /// Starts Claude and accepts its folder-trust dialog (the coordinator created the folder).
 /// Runs hivey's own `agent start`, which waits until the agent can take input, so the kickoff
 /// prompt isn't lost; retried while the pane is still busy with its shell's startup.
-fn start_agent(name: &str, pane: &str, args: &[String], kind: AgentKind) -> String {
+/// Claude agents get the space's auto-compact window (`--autocompact`, hivey agent settings).
+fn start_agent(slug: &str, name: &str, pane: &str, args: &[String], kind: AgentKind) -> String {
+    let args =
+        &crate::swarm::agent_settings::claude_args_for_space(kind.as_str(), args, Some(slug));
     let response = match retry_while_busy(
         || run_agent_start(name, pane, args, kind),
         PANE_BUSY_WAIT,
@@ -924,7 +927,7 @@ fn launch(opts: &Options) -> Result<Value, String> {
     for (agent, pane) in &panes {
         let name = format!("{}-{agent}", opts.slug);
         let args = agent_args(opts, &root, agent);
-        let mut status = start_agent(&name, pane, &args, opts.kind(agent));
+        let mut status = start_agent(&opts.slug, &name, pane, &args, opts.kind(agent));
         if status == "ready" {
             let _ = api(
                 "agent.prompt",
@@ -1016,7 +1019,7 @@ fn launch_solo(opts: &Options, root: &Path) -> Result<Value, String> {
         save_manifest(root, &manifest)?;
     }
 
-    let mut status = start_agent(slug, &pane, &args, kind);
+    let mut status = start_agent(slug, slug, &pane, &args, kind);
     if status == "ready" {
         let _ = api(
             "agent.prompt",

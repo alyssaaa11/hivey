@@ -795,8 +795,8 @@ fn render_agent_setting(
                 "auto-compact window",
                 format!("how full a Claude agent's context gets before it compacts · {whose}"),
                 &[
-                    "typed in as /autocompact <tokens> at the prompt when an agent starts or this",
-                    "changes · other sizes (100k-1M): hivey agent-settings [<space>] --autocompact 350k",
+                    "passed as --autocompact when hivey starts or resumes an agent (that session only);",
+                    "running agents: right-click → Restart session · other sizes: --autocompact 350k",
                 ],
             )
     };

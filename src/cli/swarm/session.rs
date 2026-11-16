@@ -108,6 +108,8 @@ fn open_session(pane: &str, direction: &str, worktree: bool) -> Result<String, S
         .flatten()
         .filter_map(|arg| arg.as_str().map(str::to_string))
         .collect();
+    // A Claude session gets its space's current auto-compact window (hivey agent settings).
+    let argv = with_space_autocompact(pane, &argv);
     let mut command = fresh_command(&argv).ok_or_else(|| format!("no command line for {pane}"))?;
     let mut cwd = match process["cwd"].as_str() {
         Some(cwd) => Value::from(cwd),
@@ -383,6 +385,36 @@ fn agent_process(info: &Value) -> Option<&Value> {
         .iter()
         .find(|process| leader.is_some() && process["pid"].as_u64() == leader)
         .or_else(|| processes.first())
+}
+
+/// `argv` with `--autocompact` set for the space of `pane` (Claude only; see agent settings).
+fn with_space_autocompact(pane: &str, argv: &[String]) -> Vec<String> {
+    let is_claude = argv
+        .first()
+        .and_then(|program| std::path::Path::new(program).file_name())
+        .is_some_and(|name| name == "claude");
+    if !is_claude {
+        return argv.to_vec();
+    }
+    let workspace = api("pane.get", json!({ "pane_id": pane }))
+        .ok()
+        .and_then(|result| result["pane"]["workspace_id"].as_str().map(str::to_string));
+    let slug = workspace.and_then(|workspace| {
+        api("workspace.get", json!({ "workspace_id": workspace }))
+            .ok()
+            .and_then(|result| {
+                result["workspace"]["tokens"]["slug"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+    });
+    let mut out = vec![argv[0].clone()];
+    out.extend(crate::swarm::agent_settings::claude_args_for_space(
+        "claude",
+        &argv[1..],
+        slug.as_deref(),
+    ));
+    out
 }
 
 /// The shell command for a new session of `argv`: the same program and arguments, minus

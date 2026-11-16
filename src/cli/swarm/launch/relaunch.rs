@@ -450,7 +450,7 @@ fn relaunch(request: &Request) -> Result<usize, String> {
         } else {
             launch_args.clone()
         };
-        let status = start_agent(&name, &pane, &args, kind);
+        let status = start_agent(&request.slug, &name, &pane, &args, kind);
         let status = if status == "ready" {
             let prompt = request.kickoff.clone().unwrap_or_else(|| {
                 match (solo, resume) {

@@ -657,6 +657,8 @@ pub(super) enum ClientContextMenuAction {
     // hivey: stop the agent now to free its memory / resume it (`hivey hibernate`)
     HibernateAgent,
     WakeAgent,
+    // hivey: exit the agent and resume it at once (`hivey hibernate restart`)
+    RestartAgent,
 }
 
 #[derive(Debug)]
