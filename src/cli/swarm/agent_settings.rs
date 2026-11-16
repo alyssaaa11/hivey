@@ -12,6 +12,8 @@ usage: hivey hibernate                 hibernated agents, and how long the other
        hivey hibernate wake <pane>     resume it now (same conversation, latest CLI version)
        hivey hibernate restart <pane>  exit the agent and resume it at once (picks up a new
                                        CLAUDE.md, CLI version or autocompact setting)
+       hivey hibernate restart all     restart every running agent of this session, each once it
+                                       is idle (hibernated ones are left: waking starts them fresh)
   hivey stops agents idle for the configured days by itself (default 2; hivey settings →
   hibernate, a space's right-click menu → Settings…, or hivey agent-settings). Opening a
   hibernated agent's space resumes it, and so does a message sent to it.";
@@ -32,6 +34,9 @@ pub(in crate::cli) fn run_hibernate(args: &[String]) -> std::io::Result<i32> {
     let pane = |args: &[String]| args.get(1).map(|pane| crate::cli::normalize_pane_id(pane));
     let (op, body) = match args.first().map(String::as_str) {
         None | Some("list") => ("hibernate.list", json!({})),
+        Some("restart") if args.get(1).is_some_and(|arg| arg == "all") => {
+            ("hibernate.restart_all", json!({}))
+        }
         Some("now") | Some("wake") | Some("restart") if pane(args).is_some() => {
             let op = match args[0].as_str() {
                 "now" => "hibernate.now",
@@ -60,6 +65,9 @@ pub(in crate::cli) fn run_hibernate(args: &[String]) -> std::io::Result<i32> {
         "hibernate.now" => println!(
             "hibernating {} (its memory is freed in a few seconds)",
             result["pane"].as_str().unwrap_or("?")
+        ),
+        "hibernate.restart_all" => println!(
+            "restarting every running agent, each once it is idle (same conversations, latest CLI)"
         ),
         "hibernate.restart" => println!(
             "restarting {} (it exits and resumes the same conversation)",

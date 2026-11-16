@@ -11,7 +11,13 @@ pub(super) enum ClientGlobalMenuAction {
     /// hivey: open the agent fleet, what every live agent does now, with the agent jobs pages
     /// (scheduled and background jobs) in its Jobs tab (`hivey agent-map fleet`)
     AgentFleet,
+    /// hivey: restart every agent of the session (each once idle) to pick up updates; the
+    /// first click arms it, the second runs `hivey hibernate restart all`
+    RestartAgents,
 }
+
+/// hivey: "restart agents" was clicked once in this opening of the menu (the next click runs it).
+static RESTART_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// hivey: the agent map reads launchd and opens its pages with `open`, so macOS only.
 pub(super) const AGENT_MAP_SUPPORTED: bool = cfg!(target_os = "macos");
@@ -72,6 +78,14 @@ pub(super) fn global_menu_items(
     if AGENT_MAP_SUPPORTED {
         items.push(("agent fleet", ClientGlobalMenuAction::AgentFleet));
     }
+    items.push((
+        if RESTART_ARMED.load(std::sync::atomic::Ordering::Relaxed) {
+            "restart agents: click again"
+        } else {
+            "restart agents"
+        },
+        ClientGlobalMenuAction::RestartAgents,
+    ));
     if super::settings::PETS_SUPPORTED {
         items.push(("pets", ClientGlobalMenuAction::Pets));
     }
@@ -85,6 +99,7 @@ impl ClientShellState {
         } else {
             // hivey: the quiet mode label shows the file's state, read once per opening
             crate::swarm::quiet::is_on();
+            RESTART_ARMED.store(false, std::sync::atomic::Ordering::Relaxed);
             self.overlay = Some(ClientShellOverlay::GlobalMenu(ClientGlobalMenuOverlay {
                 highlighted: 0,
             }));
@@ -134,6 +149,14 @@ impl ClientShellState {
             outcome.repaint = true;
             return;
         }
+        // hivey: restarting every agent interrupts them all, so it takes a second click
+        if action == ClientGlobalMenuAction::RestartAgents
+            && !RESTART_ARMED.swap(true, std::sync::atomic::Ordering::Relaxed)
+        {
+            outcome.repaint = true;
+            return;
+        }
+        RESTART_ARMED.store(false, std::sync::atomic::Ordering::Relaxed);
         self.overlay = None;
         match action {
             ClientGlobalMenuAction::Binding(binding) => {
@@ -149,6 +172,13 @@ impl ClientShellState {
                     "agent-map".to_string(),
                     "fleet".to_string(),
                 ]))
+            }
+            ClientGlobalMenuAction::RestartAgents => {
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "hibernate".to_string(),
+                    "restart".to_string(),
+                    "all".to_string(),
+                ]));
             }
             ClientGlobalMenuAction::Quiet => {}
         }

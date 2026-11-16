@@ -73,6 +73,7 @@ Hibernation frees memory: an agent idle for 2 days (configurable) is stopped, ke
 
     hivey hibernate                  # hibernated agents and idle times
     hivey hibernate now|wake|restart <pane>
+    hivey hibernate restart all      # every running agent, each once idle (hivey menu → restart agents)
     hivey claude-md [clean <pane>]
     hivey agent-settings [<space>] [--hibernate 2|off|default] [--autocompact 400k|auto|off|default]
 

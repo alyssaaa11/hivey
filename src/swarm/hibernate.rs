@@ -30,6 +30,8 @@ const SCAN_EVERY: Duration = Duration::from_secs(60);
 /// After SIGTERM, how long an agent gets to exit before SIGKILL.
 const KILL_AFTER: Duration = Duration::from_secs(15);
 const DAY_MS: u64 = 24 * 3600 * 1000;
+/// "restart agents" restarts this many idle agents per second, so they don't all start at once.
+const RESTARTS_PER_TICK: usize = 2;
 /// Wait for a woken agent to be ready for input.
 const WAKE_TIMEOUT_MS: u64 = 90_000;
 
@@ -80,6 +82,10 @@ struct Shared {
     /// Panes to hibernate now (menu, `hivey hibernate now`), and whether to resume them right
     /// away (a restart).
     now: HashMap<String, bool>,
+    /// "restart agents" (hivey menu, `hivey hibernate restart all`): every agent is restarted
+    /// once it is idle; set until the next scan lists them into `restart_pending`.
+    restart_all: bool,
+    restart_pending: HashSet<String>,
     /// SIGTERMed process groups still to confirm: pgid → when.
     terminating: HashMap<u32, Instant>,
 }
@@ -169,6 +175,10 @@ pub(crate) fn handle_op(op: &str, args: &Value) -> Result<Value, String> {
             shared.now.insert(pane.clone(), restart);
             Ok(json!({ "pane": pane, "hibernating": !restart, "restarting": restart }))
         }
+        "hibernate.restart_all" => {
+            shared.restart_all = true;
+            Ok(json!({ "restarting": "all" }))
+        }
         "hibernate.wake" => {
             let pane = pane()?;
             if !shared.saved.sleepers.contains_key(&pane) {
@@ -229,7 +239,10 @@ fn tick(api_tx: &ApiRequestSender, last_scan: &mut Option<Instant>) {
         let Some(shared) = shared() else { return };
         (
             !shared.saved.sleepers.is_empty() || !shared.terminating.is_empty(),
-            !shared.now.is_empty() || last_scan.is_none_or(|at| at.elapsed() >= SCAN_EVERY),
+            !shared.now.is_empty()
+                || shared.restart_all
+                || !shared.restart_pending.is_empty()
+                || last_scan.is_none_or(|at| at.elapsed() >= SCAN_EVERY),
         )
     };
     if !has_sleepers && !wants_scan {
@@ -387,8 +400,43 @@ fn scan(api_tx: &ApiRequestSender, agents: &[AgentInfo], active: Option<&str>) {
     let mut candidates = Vec::new();
     {
         let Some(mut shared) = shared() else { return };
-        let requested = std::mem::take(&mut shared.now);
+        let mut requested = std::mem::take(&mut shared.now);
         let present: HashSet<&str> = agents.iter().map(|a| a.pane_id.as_str()).collect();
+        // "restart agents": everything running with a session (hibernated agents need no
+        // restart: waking starts them fresh), each once it is idle, a few per tick.
+        if std::mem::take(&mut shared.restart_all) {
+            shared.restart_pending = agents
+                .iter()
+                .filter(|info| info.agent_session.is_some())
+                .filter(|info| !shared.saved.sleepers.contains_key(&info.pane_id))
+                .map(|info| info.pane_id.clone())
+                .collect();
+            tracing::info!(
+                count = shared.restart_pending.len(),
+                "hivey: restarting all agents"
+            );
+        }
+        shared
+            .restart_pending
+            .retain(|pane| present.contains(pane.as_str()));
+        let due: Vec<String> = agents
+            .iter()
+            .filter(|info| shared.restart_pending.contains(&info.pane_id))
+            .filter(|info| {
+                matches!(info.agent_status, AgentStatus::Idle | AgentStatus::Done)
+                    && !info.launch_pending
+                    && info
+                        .agent_session
+                        .as_ref()
+                        .is_some_and(|s| !busy_claude.contains(&s.value))
+            })
+            .take(RESTARTS_PER_TICK)
+            .map(|info| info.pane_id.clone())
+            .collect();
+        for pane in due {
+            shared.restart_pending.remove(&pane);
+            requested.entry(pane).or_insert(true);
+        }
         shared
             .saved
             .idle
