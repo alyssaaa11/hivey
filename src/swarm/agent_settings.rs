@@ -1,15 +1,16 @@
 //! hivey: agent settings, the defaults for every agent and the overrides of one swarm or agent
-//! space (`~/.hivey/agent-settings.json`). Set in hivey settings → hibernate / compact (the
+//! space (`~/.hivey/agent-settings.json`). Set in hivey settings → hibernate / autocompact (the
 //! defaults), a space's right-click menu → Settings… (its overrides) and `hivey agent-settings`.
 //!
 //! - `hibernate_days`: an agent idle this many days is stopped to free its memory and resumed
 //!   (same conversation, latest CLI) when its space is opened again; 0 = never. Default: 2.
-//! - `compact_at`: a Claude agent whose context passes this many tokens gets `/compact` typed
-//!   in when it is idle; 0 = never (the default).
+//! - `autocompact`: Claude Code's auto-compact window, typed into each Claude agent as
+//!   `/autocompact <tokens>` (or `auto`) when it starts or the setting changes; `off` (the
+//!   default) leaves agents alone.
 //!
 //! ```json
-//! { "default": { "hibernate_days": 2, "compact_at": 0 },
-//!   "spaces": { "pharma-assets": { "compact_at": 400000 } } }
+//! { "default": { "hibernate_days": 2 },
+//!   "spaces": { "pharma-assets": { "autocompact": "400000" } } }
 //! ```
 
 use std::collections::{BTreeMap, HashMap};
@@ -22,9 +23,90 @@ use serde::{Deserialize, Serialize};
 pub(crate) const DEFAULT_HIBERNATE_DAYS: u32 = 2;
 /// The day choices the settings offer (0 = off).
 pub(crate) const HIBERNATE_CHOICES: &[u32] = &[0, 1, 2, 3, 5, 7, 14];
-/// The token choices the settings offer for compacting (0 = off).
-pub(crate) const COMPACT_CHOICES: &[u64] =
-    &[0, 100_000, 200_000, 300_000, 400_000, 600_000, 800_000];
+/// The auto-compact choices the settings offer.
+pub(crate) const AUTOCOMPACT_CHOICES: &[AutoCompact] = &[
+    AutoCompact::Off,
+    AutoCompact::Auto,
+    AutoCompact::Tokens(100_000),
+    AutoCompact::Tokens(200_000),
+    AutoCompact::Tokens(300_000),
+    AutoCompact::Tokens(400_000),
+    AutoCompact::Tokens(600_000),
+    AutoCompact::Tokens(1_000_000),
+];
+/// Claude Code's `/autocompact` takes 100k to 1M tokens.
+const AUTOCOMPACT_MIN: u64 = 100_000;
+const AUTOCOMPACT_MAX: u64 = 1_000_000;
+
+/// Claude Code's auto-compact window for an agent: how full its context gets before Claude
+/// summarizes it by itself.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
+pub(crate) enum AutoCompact {
+    /// hivey leaves the agent's own setting alone.
+    #[default]
+    Off,
+    /// Claude Code's window tuned for the model (`/autocompact auto`).
+    Auto,
+    Tokens(u64),
+}
+
+impl AutoCompact {
+    /// "off", "auto", "400k", "1M".
+    pub(crate) fn label(self) -> String {
+        match self {
+            Self::Off => "off".into(),
+            Self::Auto => "auto".into(),
+            Self::Tokens(tokens) => tokens_label(tokens),
+        }
+    }
+
+    /// What is typed into a Claude agent (`None`: nothing).
+    pub(crate) fn command(self) -> Option<String> {
+        match self {
+            Self::Off => None,
+            Self::Auto => Some("/autocompact auto".into()),
+            Self::Tokens(tokens) => Some(format!("/autocompact {tokens}")),
+        }
+    }
+
+    /// From "off", "auto", "400k", "400000", "1M".
+    pub(crate) fn parse(text: &str) -> Option<Self> {
+        let text = text.trim().to_ascii_lowercase();
+        match text.as_str() {
+            "off" | "never" | "no" | "0" => return Some(Self::Off),
+            "auto" => return Some(Self::Auto),
+            _ => {}
+        }
+        let (number, unit) = match text.chars().last()? {
+            'k' => (&text[..text.len() - 1], 1_000f64),
+            'm' => (&text[..text.len() - 1], 1_000_000f64),
+            _ => (text.as_str(), 1f64),
+        };
+        let value: f64 = number.trim().parse().ok()?;
+        let tokens = (value * unit).round();
+        (AUTOCOMPACT_MIN as f64..=AUTOCOMPACT_MAX as f64)
+            .contains(&tokens)
+            .then_some(Self::Tokens(tokens as u64))
+    }
+}
+
+impl From<AutoCompact> for String {
+    fn from(value: AutoCompact) -> Self {
+        match value {
+            AutoCompact::Off => "off".into(),
+            AutoCompact::Auto => "auto".into(),
+            AutoCompact::Tokens(tokens) => tokens.to_string(),
+        }
+    }
+}
+
+impl TryFrom<String> for AutoCompact {
+    type Error = String;
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::parse(&value).ok_or_else(|| format!("invalid autocompact value {value:?}"))
+    }
+}
 
 /// One layer of settings; a missing field falls through to the next layer.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,12 +114,12 @@ pub(crate) struct Layer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hibernate_days: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub compact_at: Option<u64>,
+    pub autocompact: Option<AutoCompact>,
 }
 
 impl Layer {
     fn is_empty(&self) -> bool {
-        self.hibernate_days.is_none() && self.compact_at.is_none()
+        self.hibernate_days.is_none() && self.autocompact.is_none()
     }
 }
 
@@ -54,7 +136,7 @@ pub(crate) struct AgentSettings {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Effective {
     pub hibernate_days: u32,
-    pub compact_at: u64,
+    pub autocompact: AutoCompact,
 }
 
 impl AgentSettings {
@@ -65,10 +147,10 @@ impl AgentSettings {
                 .and_then(|layer| layer.hibernate_days)
                 .or(self.default.hibernate_days)
                 .unwrap_or(DEFAULT_HIBERNATE_DAYS),
-            compact_at: space
-                .and_then(|layer| layer.compact_at)
-                .or(self.default.compact_at)
-                .unwrap_or(0),
+            autocompact: space
+                .and_then(|layer| layer.autocompact)
+                .or(self.default.autocompact)
+                .unwrap_or_default(),
         }
     }
 
@@ -161,7 +243,7 @@ pub(crate) fn days_label(days: u32) -> String {
 }
 
 /// "400k", "1.5M", "off".
-pub(crate) fn tokens_label(tokens: u64) -> String {
+fn tokens_label(tokens: u64) -> String {
     match tokens {
         0 => "off".into(),
         n if n >= 1_000_000 && n % 100_000 == 0 => {
@@ -191,22 +273,6 @@ pub(crate) fn parse_days(text: &str) -> Option<u32> {
     digits.parse().ok().filter(|days| *days <= 365)
 }
 
-/// Tokens from "400k", "400000", "1m", "1.5M", "off".
-pub(crate) fn parse_tokens(text: &str) -> Option<u64> {
-    let text = text.trim().to_ascii_lowercase();
-    if matches!(text.as_str(), "off" | "never" | "no" | "0") {
-        return Some(0);
-    }
-    let (number, unit) = match text.chars().last()? {
-        'k' => (&text[..text.len() - 1], 1_000f64),
-        'm' => (&text[..text.len() - 1], 1_000_000f64),
-        _ => (text.as_str(), 1f64),
-    };
-    let value: f64 = number.trim().parse().ok()?;
-    let tokens = (value * unit).round();
-    (10_000.0..=10_000_000.0).contains(&tokens).then_some(tokens as u64)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,51 +284,78 @@ mod tests {
             settings.effective(Some("x")),
             Effective {
                 hibernate_days: DEFAULT_HIBERNATE_DAYS,
-                compact_at: 0
+                autocompact: AutoCompact::Off
             }
         );
-        settings.default.compact_at = Some(200_000);
+        settings.default.autocompact = Some(AutoCompact::Tokens(200_000));
         settings.layer_mut(Some("x")).hibernate_days = Some(0);
         assert_eq!(
             settings.effective(Some("x")),
             Effective {
                 hibernate_days: 0,
-                compact_at: 200_000
+                autocompact: AutoCompact::Tokens(200_000)
             }
         );
         assert_eq!(settings.effective(Some("y")).hibernate_days, 2);
-        assert_eq!(settings.effective(None).compact_at, 200_000);
+        assert_eq!(
+            settings.effective(None).autocompact,
+            AutoCompact::Tokens(200_000)
+        );
     }
 
     #[test]
-    fn saving_drops_empty_space_layers() {
+    fn saving_drops_empty_space_layers_and_round_trips_autocompact() {
         let dir = std::env::temp_dir().join(format!("hivey-agent-settings-{}", std::process::id()));
         let path = dir.join("agent-settings.json");
         let mut settings = AgentSettings::default();
         settings.layer_mut(Some("empty"));
-        settings.layer_mut(Some("kept")).compact_at = Some(400_000);
+        settings.layer_mut(Some("kept")).autocompact = Some(AutoCompact::Tokens(400_000));
+        settings.default.autocompact = Some(AutoCompact::Auto);
         save_to(&path, &settings).unwrap();
         let loaded = load_from(&path);
         assert!(!loaded.spaces.contains_key("empty"));
-        assert_eq!(loaded.spaces["kept"].compact_at, Some(400_000));
+        assert_eq!(
+            loaded.spaces["kept"].autocompact,
+            Some(AutoCompact::Tokens(400_000))
+        );
+        assert_eq!(loaded.default.autocompact, Some(AutoCompact::Auto));
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn parses_and_labels_days_and_tokens() {
+    fn parses_labels_and_commands() {
         assert_eq!(parse_days("2"), Some(2));
         assert_eq!(parse_days("3d"), Some(3));
         assert_eq!(parse_days("7 days"), Some(7));
         assert_eq!(parse_days("off"), Some(0));
         assert_eq!(parse_days("x"), None);
-        assert_eq!(parse_tokens("400k"), Some(400_000));
-        assert_eq!(parse_tokens("1.5M"), Some(1_500_000));
-        assert_eq!(parse_tokens("350000"), Some(350_000));
-        assert_eq!(parse_tokens("off"), Some(0));
-        assert_eq!(parse_tokens("5"), None);
-        assert_eq!(tokens_label(400_000), "400k");
-        assert_eq!(tokens_label(1_500_000), "1.5M");
-        assert_eq!(tokens_label(0), "off");
+        assert_eq!(
+            AutoCompact::parse("400k"),
+            Some(AutoCompact::Tokens(400_000))
+        );
+        assert_eq!(
+            AutoCompact::parse("1M"),
+            Some(AutoCompact::Tokens(1_000_000))
+        );
+        assert_eq!(
+            AutoCompact::parse("350000"),
+            Some(AutoCompact::Tokens(350_000))
+        );
+        assert_eq!(AutoCompact::parse("auto"), Some(AutoCompact::Auto));
+        assert_eq!(AutoCompact::parse("off"), Some(AutoCompact::Off));
+        assert_eq!(AutoCompact::parse("50k"), None);
+        assert_eq!(AutoCompact::parse("2M"), None);
+        assert_eq!(AutoCompact::Tokens(400_000).label(), "400k");
+        assert_eq!(AutoCompact::Tokens(1_000_000).label(), "1M");
+        assert_eq!(
+            AutoCompact::Tokens(400_000).command().as_deref(),
+            Some("/autocompact 400000")
+        );
+        assert_eq!(
+            AutoCompact::Auto.command().as_deref(),
+            Some("/autocompact auto")
+        );
+        assert_eq!(AutoCompact::Off.command(), None);
         assert_eq!(days_label(1), "1 day");
         assert_eq!(days_label(0), "off");
     }

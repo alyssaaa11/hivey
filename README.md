@@ -62,7 +62,7 @@ Turn it off the same way, or with `hivey quiet off`.
 
 **Hibernation frees memory.** An agent left idle for 2 days is stopped (the agent CLI and its MCP servers), which gives its memory back. Its pane, name and conversation stay, and the space shows 💤. Open the space again, or send the agent a message, and hivey resumes it with the same conversation on the latest CLI version. Choose the number of days (or off) in **settings → hibernate**. Right-click a space and pick **Hibernate now** or **Resume session** to do it by hand, or **Settings…** to give that swarm or agent its own value. From a terminal: `hivey hibernate`, `hivey hibernate now <pane>`, `hivey agent-settings <space> --hibernate 7`.
 
-**Compacting by size** is off by default. In **settings → compact** (or a space's **Settings…**), pick a size such as 200k or 400k tokens, and an idle Claude agent whose context has grown past it gets `/compact` typed in. Other sizes: `hivey agent-settings [<space>] --compact 350k`.
+**Auto-compact window** is off by default: each Claude agent keeps its own. In **settings → autocompact** (or a space's **Settings…**), pick `auto` or a size such as 200k or 400k tokens, and hivey types `/autocompact <size>` into each of those Claude agents when it starts or when you change the setting, so Claude compacts by itself once its context gets that full. Other sizes (100k–1M): `hivey agent-settings [<space>] --autocompact 350k`.
 
 **Voice quiet hours** silence only the voice at the same hours every night, for example from 22:00 to 08:00:
 

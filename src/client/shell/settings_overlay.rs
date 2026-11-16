@@ -763,7 +763,7 @@ fn render_plugins(
     }
 }
 
-/// hivey: settings → hibernate / compact, for every agent or (a space's Settings…) one space.
+/// hivey: settings → hibernate / autocompact, for every agent or (a space's Settings…) one space.
 fn render_agent_setting(
     buffer: &mut Buffer,
     area: Rect,
@@ -778,27 +778,28 @@ fn render_agent_setting(
         Some(slug) => format!("the agents of {slug}"),
         None => "every agent (a space's right-click menu → Settings… sets its own)".to_string(),
     };
-    let (title, description, notes): (&str, String, &[&str]) =
-        if section == ClientSettingsSection::Hibernate {
-            (
-                "hibernate idle agents",
-                format!("stop an agent idle this long to free its memory · {whose}"),
+    let (title, description, notes): (&str, String, &[&str]) = if section
+        == ClientSettingsSection::Hibernate
+    {
+        (
+            "hibernate idle agents",
+            format!("stop an agent idle this long to free its memory · {whose}"),
+            &[
+                "the pane, its name and the conversation are kept; opening its space again",
+                "resumes it (same conversation, latest CLI version), and so does a message",
+                "sent to it · hivey hibernate shows them · hivey hibernate now|wake <pane>",
+            ],
+        )
+    } else {
+        (
+                "auto-compact window",
+                format!("how full a Claude agent's context gets before it compacts · {whose}"),
                 &[
-                    "the pane, its name and the conversation are kept; opening its space again",
-                    "resumes it (same conversation, latest CLI version), and so does a message",
-                    "sent to it · hivey hibernate shows them · hivey hibernate now|wake <pane>",
+                    "typed in as /autocompact <tokens> at the prompt when an agent starts or this",
+                    "changes · other sizes (100k-1M): hivey agent-settings [<space>] --autocompact 350k",
                 ],
             )
-        } else {
-            (
-                "compact long contexts",
-                format!("type /compact into an idle Claude agent past this context size · {whose}"),
-                &[
-                    "checked when the agent has been idle a minute, then not again for 20 minutes;",
-                    "other sizes: hivey agent-settings [<space>] --compact 350k",
-                ],
-            )
-        };
+    };
     render_choice_section(
         buffer,
         area,

@@ -1,5 +1,5 @@
 //! `hivey hibernate` (stop idle agents to free memory, resume them later) and
-//! `hivey agent-settings` (hibernation and compacting, for every agent or one space).
+//! `hivey agent-settings` (hibernation and Claude's auto-compact window, for every agent or one space).
 
 use serde_json::{json, Value};
 
@@ -15,14 +15,16 @@ usage: hivey hibernate                 hibernated agents, and how long the other
   hibernated agent's space resumes it, and so does a message sent to it.";
 
 const SETTINGS_HELP: &str = "\
-usage: hivey agent-settings [<space>] [--hibernate DAYS|off|default] [--compact TOKENS|off|default]
+usage: hivey agent-settings [<space>] [--hibernate DAYS|off|default] [--autocompact TOKENS|auto|off|default]
   Without <space>: the defaults for every agent. With it (a swarm or agent slug): that
   space's own settings, where `default` goes back to the defaults. No flags: show them.
   --hibernate DAYS   stop an agent idle this many days to free its memory, and resume it
                      when its space is opened again (default: 2; off: never)
-  --compact TOKENS   type /compact into an idle Claude agent whose context passed TOKENS,
-                     e.g. 200k, 400k, 1M (default: off)
-  Also in hivey settings → hibernate / compact, and a space's right-click menu → Settings….";
+  --autocompact TOKENS
+                     Claude Code's auto-compact window (100k to 1M, e.g. 400k, or auto),
+                     typed into each Claude agent as /autocompact when it starts or this
+                     changes (default: off, each agent keeps its own)
+  Also in hivey settings → hibernate / autocompact, and a space's right-click menu → Settings….";
 
 pub(in crate::cli) fn run_hibernate(args: &[String]) -> std::io::Result<i32> {
     let pane = |args: &[String]| args.get(1).map(|pane| crate::cli::normalize_pane_id(pane));
@@ -111,7 +113,7 @@ pub(in crate::cli) fn run_agent_settings(args: &[String]) -> std::io::Result<i32
     let mut args = args.to_vec();
     let parsed = (|| -> Result<_, String> {
         let hibernate = super::take_value(&mut args, "--hibernate")?;
-        let compact = super::take_value(&mut args, "--compact")?;
+        let compact = super::take_value(&mut args, "--autocompact")?;
         Ok((hibernate, compact))
     })();
     let (hibernate, compact) = match parsed {
@@ -143,10 +145,12 @@ pub(in crate::cli) fn run_agent_settings(args: &[String]) -> std::io::Result<i32
         None => None,
     };
     let tokens = match compact.as_deref().filter(|v| *v != "default") {
-        Some(text) => match settings::parse_tokens(text) {
-            Some(tokens) => Some(tokens),
+        Some(text) => match settings::AutoCompact::parse(text) {
+            Some(value) => Some(value),
             None => {
-                eprintln!("--compact takes tokens (e.g. 400k, 1M), off or default");
+                eprintln!(
+                    "--autocompact takes 100k to 1M tokens (e.g. 400k), auto, off or default"
+                );
                 return Ok(2);
             }
         },
@@ -161,9 +165,9 @@ pub(in crate::cli) fn run_agent_settings(args: &[String]) -> std::io::Result<i32
                 layer.hibernate_days = days;
             }
             if reset(&compact) {
-                layer.compact_at = None;
+                layer.autocompact = None;
             } else if tokens.is_some() {
-                layer.compact_at = tokens;
+                layer.autocompact = tokens;
             }
         })?
     } else {
@@ -185,7 +189,7 @@ fn print_settings(all: &settings::AgentSettings, space: Option<&str>) {
     };
     let Layer {
         hibernate_days,
-        compact_at,
+        autocompact,
     } = own;
     println!(
         "{}",
@@ -199,8 +203,8 @@ fn print_settings(all: &settings::AgentSettings, space: Option<&str>) {
         mark(hibernate_days.is_some())
     );
     println!(
-        "  compact at:      {}{}",
-        settings::tokens_label(effective.compact_at),
-        mark(compact_at.is_some())
+        "  autocompact:     {}{}",
+        effective.autocompact.label(),
+        mark(autocompact.is_some())
     );
 }

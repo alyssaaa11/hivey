@@ -448,7 +448,7 @@ impl ClientShellState {
     }
 
     /// hivey: a space's own agent settings (its right-click menu → Settings…): the settings
-    /// popup with only the hibernate and compact tabs, editing that space's overrides.
+    /// popup with only the hibernate and autocompact tabs, editing that space's overrides.
     pub(super) fn open_space_settings_overlay(&mut self, slug: String) {
         self.open_settings_overlay();
         if let Some(ClientShellOverlay::Settings(settings)) = self.overlay.as_mut() {
@@ -458,7 +458,7 @@ impl ClientShellState {
         self.select_settings_section(ClientSettingsSection::Hibernate, &mut outcome);
     }
 
-    /// hivey: settings → hibernate / compact: saves the chosen value for every agent or for
+    /// hivey: settings → hibernate / autocompact: saves the chosen value for every agent or for
     /// the space (its first choice, `default`, drops the space's own value).
     fn choose_agent_setting(&mut self, selected: usize) {
         use crate::swarm::agent_settings as agent;
@@ -480,7 +480,8 @@ impl ClientShellState {
                         index.and_then(|i| agent::HIBERNATE_CHOICES.get(i).copied());
                 }
                 _ => {
-                    layer.compact_at = index.and_then(|i| agent::COMPACT_CHOICES.get(i).copied());
+                    layer.autocompact =
+                        index.and_then(|i| agent::AUTOCOMPACT_CHOICES.get(i).copied());
                 }
             }
         });
@@ -495,11 +496,10 @@ impl ClientShellState {
                         "agents idle {} are hibernated",
                         agent::days_label(effective.hibernate_days)
                     ),
-                    _ if effective.compact_at == 0 => "agents are not compacted".to_string(),
-                    _ => format!(
-                        "idle Claude agents past {} tokens get /compact",
-                        agent::tokens_label(effective.compact_at)
-                    ),
+                    _ => match effective.autocompact.command() {
+                        None => "Claude agents keep their own auto-compact window".to_string(),
+                        Some(command) => format!("Claude agents get {command}"),
+                    },
                 };
                 settings.agent_settings_message = Some(match &space {
                     Some(slug) => format!("{slug}: {what}"),
@@ -963,7 +963,7 @@ impl ClientShellState {
     }
 }
 
-/// hivey: settings → hibernate / compact: the choice labels and the saved one (✓). A space's
+/// hivey: settings → hibernate / autocompact: the choice labels and the saved one (✓). A space's
 /// own settings start with `default (…)`, which follows the defaults for every agent.
 pub(super) fn agent_setting_choices(
     settings: &ClientSettingsOverlay,
@@ -994,22 +994,23 @@ pub(super) fn agent_setting_choices(
                 agent::days_label(defaults.hibernate_days),
             )
         } else {
-            let labels = agent::COMPACT_CHOICES
+            let labels = agent::AUTOCOMPACT_CHOICES
                 .iter()
-                .map(|tokens| match tokens {
-                    0 => "off   never compact".to_string(),
-                    tokens => format!("at {} tokens", agent::tokens_label(*tokens)),
+                .map(|choice| match choice {
+                    agent::AutoCompact::Off => "off    leave each agent's own setting".to_string(),
+                    agent::AutoCompact::Auto => "auto   the window tuned for the model".to_string(),
+                    agent::AutoCompact::Tokens(_) => format!("{} tokens", choice.label()),
                 })
                 .collect();
             let value = if space.is_some() {
-                own.compact_at
+                own.autocompact
             } else {
-                Some(defaults.compact_at)
+                Some(defaults.autocompact)
             };
             (
                 labels,
-                value.map(|tokens| agent::COMPACT_CHOICES.iter().position(|t| *t == tokens)),
-                agent::tokens_label(defaults.compact_at),
+                value.map(|value| agent::AUTOCOMPACT_CHOICES.iter().position(|c| *c == value)),
+                defaults.autocompact.label(),
             )
         };
     if space.is_none() {

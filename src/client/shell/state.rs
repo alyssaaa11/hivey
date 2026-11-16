@@ -408,7 +408,7 @@ pub(super) enum ClientSettingsSection {
     Safety,
     // hivey: after how many idle days agents are hibernated (all, or one space's)
     Hibernate,
-    // hivey: at how many context tokens idle Claude agents get /compact (all, or one space's)
+    // hivey: Claude agents' auto-compact window, typed in as /autocompact (all, or one space's)
     Compact,
 }
 
@@ -475,7 +475,7 @@ impl ClientSettingsSection {
             Self::Skills => "skills",
             Self::Safety => "safety",
             Self::Hibernate => "hibernate",
-            Self::Compact => "compact",
+            Self::Compact => "autocompact",
         }
     }
 }
@@ -525,7 +525,7 @@ pub(super) struct ClientSettingsOverlay {
     pub(super) quiet_typing: Option<(QuietTime, String)>,
     pub(super) quiet_on: bool,
     pub(super) quiet_message: Option<String>,
-    /// hivey: settings → hibernate / compact (`~/.hivey/agent-settings.json`): the space whose
+    /// hivey: settings → hibernate / autocompact (`~/.hivey/agent-settings.json`): the space whose
     /// own settings these are (its slug; `None`: the defaults for every agent, in the full
     /// settings), the saved settings, and what the last change did.
     pub(super) space: Option<String>,
@@ -652,7 +652,7 @@ pub(super) enum ClientContextMenuAction {
     NewAgentSessionDown,
     // hivey: the same, in a git worktree merged back when it ends (`--worktree`)
     NewAgentSessionWorktree,
-    // hivey: the space's own agent settings (hibernate, compact)
+    // hivey: the space's own agent settings (hibernate, autocompact)
     AgentSettings,
     // hivey: stop the agent now to free its memory / resume it (`hivey hibernate`)
     HibernateAgent,
