@@ -1,6 +1,6 @@
 ---
 name: hivey-agy
-description: Run a task with Google's Antigravity CLI (`agy`, the replacement for Gemini CLI). Picks the right model and effort for the task (Gemini 3.8 Flash low/medium/high, Gemini 3.1 Pro, or Claude / gpt-oss through agy), writes an effective Gemini-style prompt, runs agy headless through a bundled uv Python runner, and checks the result, including any files the task should create. Use it whenever the user wants something done "with agy", "with Antigravity", "with Gemini", "ask Gemini", wants a Gemini second opinion, or wants to hand a coding, research, summarising, extraction or image-generation task to agy. Also use it when they ask which agy model to use or how to prompt Gemini, even if they don't say "agy". Not for driving the Antigravity IDE app, and not for calling the Gemini API from code.
+description: Run a task with Google's Antigravity CLI (`agy`, the replacement for Gemini CLI). Picks the right model and effort for the task (Gemini 3.8 Flash low/medium/high, or Claude / gpt-oss through agy), writes an effective Gemini-style prompt, runs agy headless through a bundled uv Python runner, and checks the result, including any files the task should create. Use it whenever the user wants something done "with agy", "with Antigravity", "with Gemini", "ask Gemini", wants a Gemini second opinion, or wants to hand a coding, research, summarising, extraction or image-generation task to agy. Also use it when they ask which agy model to use or how to prompt Gemini, even if they don't say "agy". Not for driving the Antigravity IDE app, and not for calling the Gemini API from code.
 ---
 
 > Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
@@ -40,12 +40,12 @@ Check what's currently available with `RUN --models`. The list changes as Google
 | One-line answers, reformatting, classification, `--schema` extraction | `gemini-3.8-flash-low` | Fast and cheap; reasoning isn't the bottleneck |
 | Default: everyday coding, summaries, writing, explanations | `gemini-3.8-flash-medium` | Best speed/quality balance |
 | Hard debugging, multi-file refactors, long agent runs, web research, planning | `gemini-3.8-flash-high` | 3.8 Flash high matches or beats 3.1 Pro on most coding/agent benchmarks |
-| Very long documents (≫100k tokens), deep reasoning where flash-high already failed, a second opinion | `gemini-3.1-pro-high` | Different model family; use it as the escalation tier |
+| Very long documents, deep reasoning where flash-high already failed, a second opinion | `claude-opus-4-6-thinking` | Different model family; use it as the escalation tier |
 | User wants Claude through agy, or careful prose / code review | `claude-sonnet-4-6`, or `claude-opus-4-6-thinking` for the hardest | Available in agy at no extra setup |
 | Cheap open-model second opinion | `gpt-oss-120b-medium` | Independent check |
 
 Older 3.7/3.6 Flash slugs exist only for comparison. Don't pick them by default.
-If a run fails or gives a shallow result, escalate one step (low → medium → high → pro-high)
+If a run fails or gives a shallow result, escalate one step (low → medium → high → claude-opus-4-6-thinking)
 instead of rewriting the prompt into a monster.
 
 ## 3. Write the prompt

@@ -205,7 +205,7 @@ When a new source arrives in `raw/` (or the user asks to ingest something):
 3. Create a summary page in the right `wiki/` sub-folder, named after the source
    (lowercase-hyphenated).
 4. Update or create concept pages for each major idea, entity, or topic the source touches.
-   **A single source typically touches 10-15 wiki pages; that is normal.**
+   One source often updates many pages.
 5. Add wiki-links (`[[page-name]]`) so every page has inbound and outbound links.
 6. Update `index.md` with new pages and one-line descriptions.
 7. Append an entry to `log.md` (see Log format).

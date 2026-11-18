@@ -8,7 +8,7 @@
 Examples:
   agy_run.py "What is git rebase?"
   agy_run.py -m claude-opus-4-6-thinking -e high "Explain this repo" --cwd ~/projects/hivey
-  agy_run.py -m gemini-3.1-pro-high --schema '{"type":"object","properties":{"major":{"type":"integer"}}}' "Parse v2.14.3"
+  agy_run.py -m gemini-3.8-flash-high --schema '{"type":"object","properties":{"major":{"type":"integer"}}}' "Parse v2.14.3"
   echo "long prompt" | agy_run.py -
   agy_run.py --chat -m gemini-3.8-flash-high          # multi-turn session over stream-json
   agy_run.py --cwd ~/out --yolo --expect cat.png "Generate ... save as cat.png"

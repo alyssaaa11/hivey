@@ -145,9 +145,12 @@ connectors, their own) are not hivey's and are never touched.
 hivey updates rewrite `AGENTS.md`, the skills and the commands; put local changes in these
 files so they survive and never block `hivey update`.
 
-The hivey agent's brief (`~/.hivey/agent/CLAUDE.md`) is written once and then belongs to the
-user: updates only add sections hivey introduced later (marked `<!-- hivey section: … -->`)
-that it doesn't have yet, before `## Notes`, and never change the rest.
+The hivey agent's brief (`~/.hivey/agent/CLAUDE.md`) belongs to the user except for the
+sections hivey marks (`<!-- hivey section: … -->` … `<!-- /hivey section: … -->`): every update
+brings those to the current template (a brief from before a section was marked has it unmarked
+under the same `## ` heading, which is replaced), adds missing ones before `## Notes`, and keeps
+the old brief in `~/.hivey/old/agent-CLAUDE.md.<time>`. Everything outside the markers (Notes,
+the wiki section, the user's own sections) is never changed.
 
 ## Never installed
 

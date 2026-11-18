@@ -733,4 +733,27 @@ mod tests {
     fn skill_has_frontmatter() {
         assert!(FILES[0].1.starts_with("---\nname: hivey\n"));
     }
+
+    /// In an unquoted YAML value ` #` starts a comment, so a description containing it is cut
+    /// short there (the trigger phrases after it are lost).
+    #[test]
+    fn frontmatter_has_no_yaml_comments() {
+        let skill_files =
+            std::iter::once(("hivey", FILES[0].1)).chain(SKILLS.iter().map(|(name, files)| {
+                let skill = files
+                    .iter()
+                    .find(|(rel, _)| *rel == "SKILL.md")
+                    .map_or("", |(_, text)| *text);
+                (*name, skill)
+            }));
+        for (name, text) in skill_files {
+            let frontmatter = text
+                .strip_prefix("---\n")
+                .and_then(|rest| rest.split("\n---\n").next())
+                .unwrap_or_default();
+            for line in frontmatter.lines() {
+                assert!(!line.contains(" #"), "{name}: {line}");
+            }
+        }
+    }
 }

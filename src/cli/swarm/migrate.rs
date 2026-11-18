@@ -16,6 +16,8 @@ const USAGE: &str = "usage: hivey migrate [--dry-run]
   - old copies (wiki-ingest, …, agents-create-wiki, agy, grok, swarm, agent-creator) that hivey-* ones
     replaced, the hivey-wiki-* commands the wiki skills replaced and hivey skills in Codex's old
     ~/.codex/skills (now ~/.agents/skills): moved to ~/.hivey/old/, never deleted
+  - the hivey agent's brief (~/.hivey/agent/CLAUDE.md): the sections hivey marks are brought up
+    to date, the rest is left alone; the old brief is kept in ~/.hivey/old/
   --dry-run   only show what would change";
 
 pub(crate) fn run(args: &[String]) -> std::io::Result<i32> {
@@ -390,48 +392,105 @@ fn on_path(program: &str) -> bool {
         .is_some_and(|path| std::env::split_paths(&path).any(|dir| dir.join(program).is_file()))
 }
 
-/// The hivey agent's brief is written once and then belongs to the user, so updates never
-/// rewrite it. Sections hivey marks in its template (`<!-- hivey section: <id> -->` …
-/// `<!-- /hivey section: <id> -->`) that an existing brief lacks are added (before `## Notes`
-/// when it has one); nothing already in the brief is changed or removed.
+/// The hivey agent's brief is written once and then belongs to the user, except for the
+/// sections hivey marks in its template (`<!-- hivey section: <id> -->` …
+/// `<!-- /hivey section: <id> -->`): updates rewrite those to the template's text. A brief from
+/// before a section was marked has it unmarked under the same `## ` heading; that part is
+/// replaced by the marked one. Sections it lacks are added (before `## Notes` when it has one).
+/// Everything else is left alone, and the brief is copied to ~/.hivey/old/ before any change.
 fn update_home_brief(home: &Path, dry: bool) -> std::io::Result<Vec<String>> {
     let path = home.join(".hivey/agent/CLAUDE.md");
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(Vec::new());
     };
-    let (updated, added) = add_missing_sections(&text, super::home::BRIEF);
-    if added.is_empty() {
+    let (updated, changes) = sync_sections(&text, super::home::BRIEF);
+    if changes.is_empty() {
         return Ok(Vec::new());
     }
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let backup = format!("{OLD_COPIES_DIR}/agent-CLAUDE.md.{secs}");
     if !dry {
+        std::fs::create_dir_all(home.join(OLD_COPIES_DIR))?;
+        std::fs::write(home.join(&backup), &text)?;
         std::fs::write(&path, updated)?;
     }
-    Ok(added
+    let mut lines: Vec<String> = changes
         .iter()
-        .map(|id| format!("hivey agent brief ~/.hivey/agent/CLAUDE.md: added section {id}"))
-        .collect())
+        .map(|change| format!("hivey agent brief ~/.hivey/agent/CLAUDE.md: {change}"))
+        .collect();
+    lines.push(format!(
+        "hivey agent brief: {} ~/{backup}",
+        if dry {
+            "would keep the old one in"
+        } else {
+            "old one kept in"
+        }
+    ));
+    Ok(lines)
 }
 
-/// `brief` with every marked section of `template` it lacks; the section ids added.
-fn add_missing_sections(brief: &str, template: &str) -> (String, Vec<String>) {
-    const START: &str = "<!-- hivey section: ";
-    let mut out = brief.to_string();
-    let mut added = Vec::new();
+/// The marked sections of `template`: (id, full text from start marker to end marker).
+fn template_sections(template: &str) -> Vec<(String, String)> {
+    let mut sections = Vec::new();
     let mut rest = template;
-    while let Some(i) = rest.find(START) {
-        let after = &rest[i + START.len()..];
+    while let Some(i) = rest.find(SECTION_START) {
+        let after = &rest[i + SECTION_START.len()..];
         let Some(id_len) = after.find(" -->") else {
             break;
         };
-        let id = after[0..id_len].to_string();
+        let id = after[..id_len].to_string();
         let end_marker = format!("<!-- /hivey section: {id} -->");
         let Some(end) = rest[i..].find(&end_marker) else {
             break;
         };
         let stop = i + end + end_marker.len();
-        let section = rest[i..stop].to_string();
+        sections.push((id, rest[i..stop].to_string()));
         rest = &rest[stop..];
-        if out.contains(&format!("{START}{id} -->")) {
+    }
+    sections
+}
+
+const SECTION_START: &str = "<!-- hivey section: ";
+
+/// `brief` with every marked section of `template` brought to the template's text; what
+/// changed ("updated section <id>", "added section <id>").
+fn sync_sections(brief: &str, template: &str) -> (String, Vec<String>) {
+    let mut out = brief.to_string();
+    let mut changes = Vec::new();
+    for (id, section) in template_sections(template) {
+        let start_marker = format!("{SECTION_START}{id} -->");
+        let end_marker = format!("<!-- /hivey section: {id} -->");
+        if let Some(at) = out.find(&start_marker) {
+            // Marked: rewrite it when it differs (a brief without its end marker is left alone).
+            let Some(end) = out[at..].find(&end_marker) else {
+                continue;
+            };
+            let stop = at + end + end_marker.len();
+            if out[at..stop] != section {
+                out.replace_range(at..stop, &section);
+                changes.push(format!("updated section {id}"));
+            }
+            continue;
+        }
+        // Unmarked under the same heading (a brief from before the marker): replace it.
+        let heading = section
+            .lines()
+            .find(|line| line.starts_with("## "))
+            .map(|line| format!("\n{line}\n"));
+        if let Some(at) = heading.as_deref().and_then(|heading| out.find(heading)) {
+            let from = at + 1;
+            // From the heading's own newline, so a heading right after it still ends the part.
+            let base = at + heading.as_deref().map_or(0, str::len) - 1;
+            let stop = ["\n## ", "\n# ", &format!("\n{SECTION_START}")]
+                .iter()
+                .filter_map(|next| out[base..].find(next).map(|i| base + i + 1))
+                .min()
+                .unwrap_or(out.len());
+            let tail = if stop == out.len() { "\n" } else { "\n\n" };
+            out.replace_range(from..stop, &format!("{section}{tail}"));
+            changes.push(format!("updated section {id}"));
             continue;
         }
         match out.find("\n## Notes") {
@@ -444,9 +503,9 @@ fn add_missing_sections(brief: &str, template: &str) -> (String, Vec<String>) {
                 out.push('\n');
             }
         }
-        added.push(id);
+        changes.push(format!("added section {id}"));
     }
-    (out, added)
+    (out, changes)
 }
 
 #[cfg(test)]
@@ -461,12 +520,12 @@ mod tests {
     }
 
     #[test]
-    fn adds_new_brief_sections_and_keeps_the_users_text() {
+    fn syncs_brief_sections_and_keeps_the_users_text() {
         let template = "# t\n\n<!-- hivey section: a -->\n## A\nnew a\n<!-- /hivey section: a -->\n\n\
                         <!-- hivey section: b -->\n## B\nnew b\n<!-- /hivey section: b -->\n\n## Notes\n";
         let brief = "# mine\n\nmy edits\n\n## Notes\n\nmy notes\n";
-        let (out, added) = add_missing_sections(brief, template);
-        assert_eq!(added, vec!["a", "b"]);
+        let (out, changes) = sync_sections(brief, template);
+        assert_eq!(changes, vec!["added section a", "added section b"]);
         assert!(
             out.starts_with("# mine\n\nmy edits\n\n<!-- hivey section: a -->"),
             "{out}"
@@ -475,23 +534,64 @@ mod tests {
             out.contains("new b\n<!-- /hivey section: b -->\n\n## Notes\n\nmy notes\n"),
             "{out}"
         );
-        // Already there (even if the user edited it): left as is.
-        let (again, none) = add_missing_sections(&out.replace("new a", "edited a"), template);
-        assert!(none.is_empty());
-        assert!(again.contains("edited a"));
+        // Up to date: nothing to do.
+        assert!(sync_sections(&out, template).1.is_empty());
+        // Edited inside the markers: back to the template; outside them: kept.
+        let edited = out
+            .replace("new a", "edited a")
+            .replace("my notes", "my new notes");
+        let (again, changes) = sync_sections(&edited, template);
+        assert_eq!(changes, vec!["updated section a"]);
+        assert_eq!(again, out.replace("my notes", "my new notes"));
         // No Notes section: appended at the end.
-        let (end, _) = add_missing_sections("# mine\n", template);
+        let (end, _) = sync_sections("# mine\n", template);
         assert!(end.ends_with("<!-- /hivey section: b -->\n"), "{end}");
     }
 
     #[test]
-    fn the_real_template_marks_its_new_sections() {
-        let (_, added) = add_missing_sections("# old brief\n", super::super::home::BRIEF);
-        assert!(
-            added.contains(&"machine-specific-changes".to_string()),
-            "{added:?}"
+    fn replaces_unmarked_sections_of_an_old_brief() {
+        let template = "# t\n\n<!-- hivey section: a -->\n## A\nnew a\n<!-- /hivey section: a -->\n\n\
+                        <!-- hivey section: b -->\n## B\nnew b\n<!-- /hivey section: b -->\n\n## Notes\n";
+        let brief = "# mine\n\nintro\n\n## A\n\nold a\nmore old a\n\n## B\nold b\n\
+                     <!-- hivey section: c -->\nc\n<!-- /hivey section: c -->\n\n## Notes\n\nmy notes\n";
+        let (out, changes) = sync_sections(brief, template);
+        assert_eq!(changes, vec!["updated section a", "updated section b"]);
+        assert_eq!(
+            out,
+            "# mine\n\nintro\n\n<!-- hivey section: a -->\n## A\nnew a\n<!-- /hivey section: a -->\n\n\
+             <!-- hivey section: b -->\n## B\nnew b\n<!-- /hivey section: b -->\n\n\
+             <!-- hivey section: c -->\nc\n<!-- /hivey section: c -->\n\n## Notes\n\nmy notes\n"
         );
-        assert!(added.contains(&"docs".to_string()), "{added:?}");
+        // A missing section is added at the end; a heading right after another still ends it.
+        let (end, _) = sync_sections("# mine\n\n## B\n## C\nmine\n", template);
+        assert!(
+            end.contains("<!-- /hivey section: b -->\n\n## C\nmine\n"),
+            "{end}"
+        );
+    }
+
+    #[test]
+    fn the_real_template_marks_its_sections() {
+        let ids: Vec<String> = template_sections(super::super::home::BRIEF)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        for id in [
+            "what-you-do",
+            "rules",
+            "answering",
+            "start",
+            "machine-specific-changes",
+            "docs",
+        ] {
+            assert!(ids.contains(&id.to_string()), "{ids:?}");
+        }
+        // A fresh brief is already in sync.
+        assert!(
+            sync_sections(super::super::home::BRIEF, super::super::home::BRIEF)
+                .1
+                .is_empty()
+        );
     }
 
     #[test]
