@@ -2,6 +2,7 @@
 """Connect hivey to the user's Slack workspace: ask for a bot token, check it, store it.
 
 usage: connect.py [--force]     interactive: create the Slack app, paste its token
+       connect.py --socket      interactive: paste the app-level token for Socket Mode
        connect.py --status      is Slack connected? (exit 0 yes, 1 no) [--json]
 
 Run by `hivey slack connect` / `hivey slack status` and by install.sh. The token is typed
@@ -181,12 +182,79 @@ def connect(force):
     return 1
 
 
+SOCKET_STEPS = """
+Socket Mode: Slack pushes messages to hivey over one connection instead of every relay
+polling each channel (about 1 minute, at https://api.slack.com/apps → hivey):
+  1. Socket Mode → Enable Socket Mode.
+  2. Event Subscriptions → Subscribe to bot events → add message.channels and
+     message.groups → Save Changes (reinstall the app if Slack asks).
+  3. Basic Information → App-Level Tokens → Generate Token and Scopes: any name, scope
+     connections:write → Generate → copy the token (starts with xapp-)."""
+
+
+def check_app_token(token):
+    """Raises RuntimeError when Slack won't open a Socket Mode connection with it."""
+    import socket_hub  # same folder
+    socket_hub.open_url(token)
+
+
+def save_app_token(token):
+    directory = config_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    token_file = directory / "slack-app-token"
+    fd = os.open(token_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as handle:
+        handle.write(token + "\n")
+    os.chmod(token_file, 0o600)
+    config_path = directory / "config.json"
+    config = relay.load_config() if config_path.exists() else {}
+    config["app_token_command"] = f"cat '{token_file}'"
+    config_path.write_text(json.dumps(config, indent=2) + "\n")
+    return token_file
+
+
+def connect_socket():
+    if not sys.stdin.isatty():
+        print("hivey slack connect --socket needs a terminal to type the token in "
+              "(never paste it into a chat)", file=sys.stderr)
+        return 1
+    os.environ["HERDR_PLUGIN_CONFIG_DIR"] = str(config_dir())
+    print(SOCKET_STEPS)
+    for _ in range(3):
+        try:
+            token = getpass.getpass("\nPaste the app-level token (hidden, empty to cancel): ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 1
+        token = token.strip()
+        if not token:
+            print("cancelled: relays keep polling (later: hivey slack connect --socket)")
+            return 1
+        if not token.startswith("xapp-"):
+            print("that is not an app-level token (it starts with xapp-); try again")
+            continue
+        try:
+            check_app_token(token)
+        except (RuntimeError, OSError) as err:
+            print(f"Slack refused it ({err}); try again")
+            continue
+        print(f"saved (only you can read it): {save_app_token(token)}")
+        print("Socket Mode on: the relays start the connection within a minute and stop "
+              "polling (log: ~/.hivey/slack-events/hub.log)")
+        return 0
+    print("Socket Mode not set up (later: hivey slack connect --socket)")
+    return 1
+
+
 def main():
     parser = argparse.ArgumentParser(description="connect hivey to Slack")
     parser.add_argument("--status", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--socket", action="store_true")
     args = parser.parse_args()
+    if args.socket:
+        return connect_socket()
     if args.status:
         state = current()
         print(json.dumps(state) if args.json else describe(state))

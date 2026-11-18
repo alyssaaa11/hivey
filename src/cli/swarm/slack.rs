@@ -14,6 +14,8 @@ pub(super) const RELAY: &str = "hivey.slack-relay";
 const HELP: &str = "\
 usage: hivey slack connect [--force]   connect your Slack workspace: create the hivey Slack app,
                                      paste its bot token (typed hidden, checked, kept private)
+       hivey slack connect --socket    Socket Mode: Slack pushes messages over one connection
+                                     instead of every relay polling (paste the xapp- token)
        hivey slack status [--json]     connected? workspace, bot, missing scopes
        hivey slack add <slug> [--channel ID]
                                      give a running swarm or agent its own channel (#<slug>,

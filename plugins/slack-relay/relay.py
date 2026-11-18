@@ -30,6 +30,10 @@ Config: $HERDR_PLUGIN_CONFIG_DIR/config.json
 Failures      Each direction fails on its own (a read error doesn't block posts). After 3 failed
               rounds in a row the relay alerts once (desktop notification + a post in the channel,
               when posting works), backs off up to 6× the interval, and says when it recovers.
+Socket Mode   With an app-level token (`hivey slack connect --socket`), Slack pushes messages
+              over one connection (socket_hub.py, started by the first relay that needs it) and
+              relays read them from ~/.hivey/slack-events/<channel>.jsonl every HUB_ROUND s;
+              while the hub is down they poll conversations.history every POLL_FALLBACK s.
 State: <root>/.swarm/slack_relay_state.json (last Slack ts, bus offset, echo guards).
 """
 import json
@@ -57,6 +61,8 @@ KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
 KEEP_HELD = 500  # posts held in quiet mode
 TALKING_MIN = 30  # minutes after the human's last message that quiet mode skips the channel
 CATCH_UP_LINES = 40  # lines in the catch-up message; the rest are counted
+POLL_FALLBACK = 60  # seconds between history polls while the socket hub is down
+HUB_ROUND = 2  # seconds between rounds while the socket hub delivers (local file reads only)
 ALERT_AFTER = 3  # failed rounds in a row before the relay alerts the user (then it backs off)
 MAX_BACKOFF = 6  # at most interval × this between rounds while failing
 
@@ -231,6 +237,43 @@ class Slack:
         return self.call("chat.postMessage", channel=channel, text=text)["ts"]
 
 
+class SocketHub:
+    """The relay's side of socket_hub.py (one Socket Mode connection for every relay)."""
+
+    def __init__(self, config):
+        self.config, self.last_start = config, 0.0
+
+    @staticmethod
+    def _module():
+        import socket_hub  # same folder; imported late (it imports this module)
+        return socket_hub
+
+    def state(self):
+        return self._module().hub_state()
+
+    def alive(self, state):
+        return self._module().hub_alive(state)
+
+    def end(self, channel):
+        return self._module().end_position(channel)
+
+    def read(self, channel, offset):
+        return self._module().read_events(channel, offset)
+
+    def start(self):
+        """Starts the hub (detached; it exits at once when another one runs), at most once a
+        minute, and only once an app-level token is set up."""
+        if not self.config.get("app_token_command") or time.time() - self.last_start < 60:
+            return
+        self.last_start = time.time()
+        hub = self._module()
+        hub.events_dir().mkdir(parents=True, exist_ok=True)
+        with open(hub.events_dir() / "hub.log", "a") as out:
+            subprocess.Popen([sys.executable, str(Path(__file__).resolve().parent / "socket_hub.py")],
+                             stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                             start_new_session=True, env=os.environ.copy())
+
+
 class Hivey:
     def __init__(self, binary, slug):
         self.binary, self.slug = binary, slug
@@ -307,12 +350,14 @@ def log(line):
 
 class Relay:
     def __init__(self, root, slack, hivey, channel, scope, quiet=quiet_mode_on,
-                 held_posts=take_held_posts, notify=None, clock=time.time):
+                 held_posts=take_held_posts, notify=None, clock=time.time, hub=None):
         self.root, self.slack, self.hivey = Path(root), slack, hivey
         self.notify = notify or desktop_notify
         self.failures, self.alerted, self.last_error = 0, False, ""
         self.channel, self.scope = channel, scope
         self.quiet, self.held_posts, self.clock = quiet, held_posts, clock
+        # The Socket Mode hub (socket_hub.py); None: poll conversations.history every round.
+        self.hub, self.hub_live, self.last_poll = hub, False, 0.0
         self.state_path = self.root / ".swarm" / "slack_relay_state.json"
         self.bus_path = self.root / ".swarm" / "bus.jsonl"
         try:
@@ -335,8 +380,32 @@ class Relay:
         tmp.write_text(json.dumps(self.state))
         tmp.replace(self.state_path)
 
+    def incoming(self):
+        """New channel messages: pushed by the socket hub when it runs (after one history
+        catch-up per hub connection), else polled (every POLL_FALLBACK s with a hub)."""
+        if self.hub is None:
+            return self.slack.history(self.channel, self.state["last_ts"])
+        hub = self.hub.state()
+        self.hub_live = self.hub.alive(hub)
+        if not self.hub_live:
+            self.hub.start()
+            if self.clock() - self.last_poll < POLL_FALLBACK:
+                return []
+            self.last_poll = self.clock()
+            return self.slack.history(self.channel, self.state["last_ts"])
+        messages = []
+        if "events_at" not in self.state:  # first sight of the hub: don't replay its file
+            self.state["events_at"] = self.hub.end(self.channel)
+        if hub.get("connected_at") != self.state.get("hub_connected_at"):
+            messages = self.slack.history(self.channel, self.state["last_ts"])
+            self.state["hub_connected_at"] = hub.get("connected_at")
+        events, self.state["events_at"] = self.hub.read(self.channel, self.state["events_at"])
+        return sorted(messages + events, key=lambda m: float(m["ts"]))
+
     def slack_to_bus(self, manifest):
-        for msg in self.slack.history(self.channel, self.state["last_ts"]):
+        for msg in self.incoming():
+            if float(msg["ts"]) <= float(self.state["last_ts"]):
+                continue  # seen (history and the hub overlap after a reconnect)
             self.state["last_ts"] = msg["ts"]
             if msg["ts"] in self.state["posted"] or msg.get("subtype") in ("channel_join", "bot_add"):
                 continue
@@ -440,7 +509,8 @@ class Relay:
             log(f"alert post failed too: {err}")
 
     def wait_seconds(self, interval):
-        return interval * min(MAX_BACKOFF, max(1, self.failures))
+        base = HUB_ROUND if self.hub_live else interval
+        return base * min(MAX_BACKOFF, max(1, self.failures))
 
 
 def claim(pid_path):
@@ -479,7 +549,7 @@ def main():
             log(f"no Slack token: set SLACK_TOKEN or token_command in "
                 f"{os.environ.get('HERDR_PLUGIN_CONFIG_DIR', '?')}/config.json; retrying in 60s")
         time.sleep(60 if not (channel and token) else 0)
-    relay = Relay(root, Slack(token), Hivey(binary, slug), channel, scope)
+    relay = Relay(root, Slack(token), Hivey(binary, slug), channel, scope, hub=SocketHub(config))
     still_ours = claim(Path(root) / ".swarm" / "slack_relay.pid")
     while True:
         if not still_ours():

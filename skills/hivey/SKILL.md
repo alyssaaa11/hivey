@@ -221,6 +221,9 @@ from the user arrives, hivey reopens it (`hivey swarm relaunch <slug> <master>`,
 conversation). Quiet mode doesn't hold replies in a channel while the user is talking there
 (a message in the last 30 minutes). hivey keeps the slack pane in the leftmost column of its
 tab (it swaps it left every few seconds).
+Relays don't poll Slack once Socket Mode is set up (`hivey slack connect --socket`, the app's
+`xapp-` token): one connection (socket_hub.py, log `~/.hivey/slack-events/hub.log`) receives
+every channel's messages instantly; without it relays poll each channel every minute.
 
 ## Desktop pet (macOS)
 
