@@ -4,12 +4,23 @@
 //! relaunch <slug> <master>` opens a new pane that continues the master's conversation, is
 //! named "slack" like before, and gets the waiting messages. The hivey agent itself is kept
 //! alive by `home::watch` instead.
+//!
+//! The slack pane is also kept in the rightmost column of its tab: every `RIGHT_EVERY` it is
+//! swapped with its right-hand neighbour until it has none, so the layout itself is unchanged.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
+
 use super::bus::{self, Kind, Message};
 use super::model::{Role, Swarm, SwarmAgent};
+use crate::api::schema::{Method, PaneDirection, PaneNeighborParams, PaneSwapParams};
+
+/// How often the slack panes are checked for a right-hand neighbour.
+pub(crate) const RIGHT_EVERY: Duration = Duration::from_secs(5);
+/// Most swaps per check: enough for any real layout, and never a loop.
+const MAX_SWAPS: usize = 8;
 
 /// Time a reopen gets to bring the pane up before it's tried again.
 const RETRY: Duration = Duration::from_secs(5 * 60);
@@ -53,6 +64,37 @@ pub(crate) fn reopen(reopen: &mut Reopen, swarm: &Swarm, agent: &SwarmAgent, pen
         tracing::info!(slug = %swarm.slug, "hivey: reopening the slack pane for a message");
         super::addons::spawn_relaunch(&swarm.slug, &swarm.root, &[&agent.key], "slack-pane.log");
     }
+}
+
+/// Swaps `pane` rightwards until nothing is to its right. `call` runs an API method.
+pub(crate) fn keep_right(pane: &str, mut call: impl FnMut(Method) -> Result<Value, String>) {
+    for _ in 0..MAX_SWAPS {
+        let neighbor = call(Method::PaneNeighbor(PaneNeighborParams {
+            pane_id: Some(pane.to_string()),
+            direction: PaneDirection::Right,
+        }))
+        .ok()
+        .and_then(|result| right_neighbor(&result));
+        let Some(neighbor) = neighbor else { return };
+        let swap = Method::PaneSwap(PaneSwapParams {
+            pane_id: None,
+            direction: None,
+            source_pane_id: Some(pane.to_string()),
+            target_pane_id: Some(neighbor),
+        });
+        if let Err(err) = call(swap) {
+            tracing::warn!(%pane, %err, "hivey: cannot move the slack pane right");
+            return;
+        }
+    }
+}
+
+/// The `pane.neighbor` result's pane id, when there is one.
+fn right_neighbor(result: &Value) -> Option<String> {
+    result["neighbor"]["neighbor_pane_id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -106,6 +148,36 @@ mod tests {
         assert!(!wanted(&no_slack, &master, &[&human]));
         let (home, master, _) = fixture(true, true);
         assert!(!wanted(&home, &master, &[&human]));
+    }
+
+    #[test]
+    fn swaps_right_until_nothing_is_right() {
+        // A row of three: slack, a, b. Each swap moves slack one place right.
+        let mut row = vec!["slack", "a", "b"];
+        let mut swaps = 0;
+        keep_right("slack", |method| match method {
+            Method::PaneNeighbor(params) => {
+                let at = row
+                    .iter()
+                    .position(|p| Some(*p) == params.pane_id.as_deref());
+                let next = at.and_then(|i| row.get(i + 1)).copied();
+                Ok(serde_json::json!({"neighbor": {"neighbor_pane_id": next}}))
+            }
+            Method::PaneSwap(params) => {
+                let a = row
+                    .iter()
+                    .position(|p| Some(*p) == params.source_pane_id.as_deref());
+                let b = row
+                    .iter()
+                    .position(|p| Some(*p) == params.target_pane_id.as_deref());
+                row.swap(a.expect("source"), b.expect("target"));
+                swaps += 1;
+                Ok(Value::Null)
+            }
+            _ => Err("unexpected".into()),
+        });
+        assert_eq!(row, vec!["a", "b", "slack"]);
+        assert_eq!(swaps, 2);
     }
 
     #[test]

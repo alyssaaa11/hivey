@@ -98,6 +98,8 @@ struct State {
     addons_restore: super::addons::Restore,
     /// Reopens a Slack-connected master's pane when a human message waits and it's gone.
     slack_reopen: super::slack_pane::Reopen,
+    /// Last time the slack panes were moved to the right of their tabs.
+    slack_right_at: Option<Instant>,
     /// Claude Code's session registry by session id, refreshed every tick (claude_peers).
     claude_peers: HashMap<String, claude_peers::Peer>,
     /// Whether a Claude process (by pid) accepts inbox posts without approval.
@@ -573,7 +575,7 @@ fn tick(api_tx: &ApiRequestSender) {
         .and_then(|result| result.get("agents").cloned())
         .and_then(|agents| serde_json::from_value::<Vec<AgentInfo>>(agents).ok());
 
-    let (deliveries, metadata, resumes, spaces) = {
+    let (deliveries, metadata, resumes, spaces, slack_panes) = {
         let Ok(mut state) = engine.state.lock() else {
             return;
         };
@@ -602,8 +604,12 @@ fn tick(api_tx: &ApiRequestSender) {
             plan_metadata(&mut state),
             plan_resume(&mut state),
             plan_workspace_tokens(&mut state),
+            slack_panes_to_move(&mut state),
         )
     };
+    for pane in slack_panes {
+        super::slack_pane::keep_right(&pane, |method| dispatch(api_tx, method));
+    }
 
     for delivery in deliveries {
         if post_to_inbox(&delivery) {
@@ -655,6 +661,25 @@ fn tick(api_tx: &ApiRequestSender) {
             }
         }
     }
+}
+
+/// The live slack panes (Slack-connected masters), every `SLACK_RIGHT_EVERY`.
+fn slack_panes_to_move(state: &mut State) -> Vec<String> {
+    if state
+        .slack_right_at
+        .is_some_and(|at| at.elapsed() < super::slack_pane::RIGHT_EVERY)
+    {
+        return Vec::new();
+    }
+    state.slack_right_at = Some(Instant::now());
+    state
+        .swarms
+        .iter()
+        .filter(|swarm| swarm.slack)
+        .filter_map(Swarm::master)
+        .filter_map(|master| state.live(master))
+        .map(|live| live.pane_id.clone())
+        .collect()
 }
 
 fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
