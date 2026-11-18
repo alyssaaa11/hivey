@@ -263,9 +263,12 @@ class SocketHub:
     def start(self):
         """Starts the hub (detached; it exits at once when another one runs), at most once a
         minute, and only once an app-level token is set up."""
-        if not self.config.get("app_token_command") or time.time() - self.last_start < 60:
+        if time.time() - self.last_start < 60:
             return
         self.last_start = time.time()
+        self.config = load_config()  # re-read: the token may be set up after the relay started
+        if not self.config.get("app_token_command"):
+            return
         hub = self._module()
         hub.events_dir().mkdir(parents=True, exist_ok=True)
         with open(hub.events_dir() / "hub.log", "a") as out:
