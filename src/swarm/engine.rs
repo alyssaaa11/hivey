@@ -98,8 +98,8 @@ struct State {
     addons_restore: super::addons::Restore,
     /// Reopens a Slack-connected master's pane when a human message waits and it's gone.
     slack_reopen: super::slack_pane::Reopen,
-    /// Last time the slack panes were moved to the right of their tabs.
-    slack_right_at: Option<Instant>,
+    /// Last time the slack panes were moved to the left of their tabs.
+    slack_side_at: Option<Instant>,
     /// Claude Code's session registry by session id, refreshed every tick (claude_peers).
     claude_peers: HashMap<String, claude_peers::Peer>,
     /// Whether a Claude process (by pid) accepts inbox posts without approval.
@@ -608,7 +608,7 @@ fn tick(api_tx: &ApiRequestSender) {
         )
     };
     for pane in slack_panes {
-        super::slack_pane::keep_right(&pane, |method| dispatch(api_tx, method));
+        super::slack_pane::keep_left(&pane, |method| dispatch(api_tx, method));
     }
 
     for delivery in deliveries {
@@ -663,15 +663,15 @@ fn tick(api_tx: &ApiRequestSender) {
     }
 }
 
-/// The live slack panes (Slack-connected masters), every `SLACK_RIGHT_EVERY`.
+/// The live slack panes (Slack-connected masters), every `slack_pane::SIDE_EVERY`.
 fn slack_panes_to_move(state: &mut State) -> Vec<String> {
     if state
-        .slack_right_at
-        .is_some_and(|at| at.elapsed() < super::slack_pane::RIGHT_EVERY)
+        .slack_side_at
+        .is_some_and(|at| at.elapsed() < super::slack_pane::SIDE_EVERY)
     {
         return Vec::new();
     }
-    state.slack_right_at = Some(Instant::now());
+    state.slack_side_at = Some(Instant::now());
     state
         .swarms
         .iter()

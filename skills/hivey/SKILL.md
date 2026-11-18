@@ -219,8 +219,8 @@ never through Slack. The master pane of an agent or swarm with a channel is alwa
 space's other panes and that pane's history small. When the slack pane is gone and a message
 from the user arrives, hivey reopens it (`hivey swarm relaunch <slug> <master>`, continuing its
 conversation). Quiet mode doesn't hold replies in a channel while the user is talking there
-(a message in the last 30 minutes). hivey keeps the slack pane in the rightmost column of its
-tab (it swaps it right every few seconds).
+(a message in the last 30 minutes). hivey keeps the slack pane in the leftmost column of its
+tab (it swaps it left every few seconds).
 
 ## Desktop pet (macOS)
 

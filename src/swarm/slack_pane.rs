@@ -5,8 +5,8 @@
 //! named "slack" like before, and gets the waiting messages. The hivey agent itself is kept
 //! alive by `home::watch` instead.
 //!
-//! The slack pane is also kept in the rightmost column of its tab: every `RIGHT_EVERY` it is
-//! swapped with its right-hand neighbour until it has none, so the layout itself is unchanged.
+//! The slack pane is also kept in the leftmost column of its tab: every `SIDE_EVERY` it is
+//! swapped with its left-hand neighbour until it has none, so the layout itself is unchanged.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -17,8 +17,8 @@ use super::bus::{self, Kind, Message};
 use super::model::{Role, Swarm, SwarmAgent};
 use crate::api::schema::{Method, PaneDirection, PaneNeighborParams, PaneSwapParams};
 
-/// How often the slack panes are checked for a right-hand neighbour.
-pub(crate) const RIGHT_EVERY: Duration = Duration::from_secs(5);
+/// How often the slack panes are checked for a left-hand neighbour.
+pub(crate) const SIDE_EVERY: Duration = Duration::from_secs(5);
 /// Most swaps per check: enough for any real layout, and never a loop.
 const MAX_SWAPS: usize = 8;
 
@@ -66,15 +66,15 @@ pub(crate) fn reopen(reopen: &mut Reopen, swarm: &Swarm, agent: &SwarmAgent, pen
     }
 }
 
-/// Swaps `pane` rightwards until nothing is to its right. `call` runs an API method.
-pub(crate) fn keep_right(pane: &str, mut call: impl FnMut(Method) -> Result<Value, String>) {
+/// Swaps `pane` leftwards until nothing is to its left. `call` runs an API method.
+pub(crate) fn keep_left(pane: &str, mut call: impl FnMut(Method) -> Result<Value, String>) {
     for _ in 0..MAX_SWAPS {
         let neighbor = call(Method::PaneNeighbor(PaneNeighborParams {
             pane_id: Some(pane.to_string()),
-            direction: PaneDirection::Right,
+            direction: PaneDirection::Left,
         }))
         .ok()
-        .and_then(|result| right_neighbor(&result));
+        .and_then(|result| neighbor(&result));
         let Some(neighbor) = neighbor else { return };
         let swap = Method::PaneSwap(PaneSwapParams {
             pane_id: None,
@@ -83,14 +83,14 @@ pub(crate) fn keep_right(pane: &str, mut call: impl FnMut(Method) -> Result<Valu
             target_pane_id: Some(neighbor),
         });
         if let Err(err) = call(swap) {
-            tracing::warn!(%pane, %err, "hivey: cannot move the slack pane right");
+            tracing::warn!(%pane, %err, "hivey: cannot move the slack pane left");
             return;
         }
     }
 }
 
 /// The `pane.neighbor` result's pane id, when there is one.
-fn right_neighbor(result: &Value) -> Option<String> {
+fn neighbor(result: &Value) -> Option<String> {
     result["neighbor"]["neighbor_pane_id"]
         .as_str()
         .filter(|id| !id.is_empty())
@@ -151,16 +151,19 @@ mod tests {
     }
 
     #[test]
-    fn swaps_right_until_nothing_is_right() {
-        // A row of three: slack, a, b. Each swap moves slack one place right.
-        let mut row = vec!["slack", "a", "b"];
+    fn swaps_left_until_nothing_is_left() {
+        // A row of three: a, b, slack. Each swap moves slack one place left.
+        let mut row = vec!["a", "b", "slack"];
         let mut swaps = 0;
-        keep_right("slack", |method| match method {
+        keep_left("slack", |method| match method {
             Method::PaneNeighbor(params) => {
                 let at = row
                     .iter()
                     .position(|p| Some(*p) == params.pane_id.as_deref());
-                let next = at.and_then(|i| row.get(i + 1)).copied();
+                let next = at
+                    .and_then(|i| i.checked_sub(1))
+                    .and_then(|i| row.get(i))
+                    .copied();
                 Ok(serde_json::json!({"neighbor": {"neighbor_pane_id": next}}))
             }
             Method::PaneSwap(params) => {
@@ -176,7 +179,7 @@ mod tests {
             }
             _ => Err("unexpected".into()),
         });
-        assert_eq!(row, vec!["a", "b", "slack"]);
+        assert_eq!(row, vec!["slack", "a", "b"]);
         assert_eq!(swaps, 2);
     }
 
