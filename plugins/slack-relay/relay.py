@@ -15,7 +15,9 @@ bus → Slack   Messages to or from the human (and hivey's own notices) are mirr
 Quiet mode    While ~/.hivey/quiet exists (hivey menu → quiet mode, `hivey quiet on`), bus →
               Slack posts are held; when it ends they go out as one catch-up message, with
               posts agents held through swarm_slack.py (~/.hivey/quiet-held/<channel>.jsonl).
-              Slack → bus keeps working.
+              Slack → bus keeps working. While the human is talking in the channel (a message
+              in the last TALKING_MIN minutes) quiet mode doesn't apply to it: replies go out
+              at once, and so does whatever was held.
 
 Environment (set by `hivey swarm launch --addon hivey.slack-relay`):
   HIVEY_SWARM_ROOT     swarm folder (required)   HIVEY_SWARM_SLUG   swarm slug
@@ -53,6 +55,7 @@ FIXED_EMOJI = {"human": "👤", "hivey": "⚙️"}
 PALETTE = ["🦊", "🐙", "🦉", "🐝", "🦄", "🐬", "🦖", "🐢", "🦜", "🐳", "🦋", "🐧"]
 KEEP_GUARDS = 500  # echo-guard ids/timestamps remembered
 KEEP_HELD = 500  # posts held in quiet mode
+TALKING_MIN = 30  # minutes after the human's last message that quiet mode skips the channel
 CATCH_UP_LINES = 40  # lines in the catch-up message; the rest are counted
 ALERT_AFTER = 3  # failed rounds in a row before the relay alerts the user (then it backs off)
 MAX_BACKOFF = 6  # at most interval × this between rounds while failing
@@ -160,10 +163,13 @@ def format_mirror(message, roles, slug):
             f"{short(target)}*{kind}: {message.get('text', '')}")
 
 
-def format_catch_up(lines):
-    """The one message that replaces the posts held while quiet mode was on."""
+def format_catch_up(lines, ended=True):
+    """The one message that replaces the posts held while quiet mode was on (`ended` False:
+    it's still on, but the human is talking in the channel)."""
     shown = [line if len(line) <= 600 else line[:600] + "…" for line in lines[-CATCH_UP_LINES:]]
-    head = f"🌙 *Quiet mode ended: {len(lines)} update{'s' if len(lines) != 1 else ''} while it was on*"
+    count = f"{len(lines)} update{'s' if len(lines) != 1 else ''}"
+    head = (f"🌙 *Quiet mode ended: {count} while it was on*" if ended
+            else f"🌙 *{count} held by quiet mode*")
     if len(lines) > len(shown):
         head += f" _(last {len(shown)}; all of them: `hivey msg log`)_"
     return "\n".join([head] + shown)
@@ -301,12 +307,12 @@ def log(line):
 
 class Relay:
     def __init__(self, root, slack, hivey, channel, scope, quiet=quiet_mode_on,
-                 held_posts=take_held_posts, notify=None):
+                 held_posts=take_held_posts, notify=None, clock=time.time):
         self.root, self.slack, self.hivey = Path(root), slack, hivey
         self.notify = notify or desktop_notify
         self.failures, self.alerted, self.last_error = 0, False, ""
         self.channel, self.scope = channel, scope
-        self.quiet, self.held_posts = quiet, held_posts
+        self.quiet, self.held_posts, self.clock = quiet, held_posts, clock
         self.state_path = self.root / ".swarm" / "slack_relay_state.json"
         self.bus_path = self.root / ".swarm" / "bus.jsonl"
         try:
@@ -337,6 +343,8 @@ class Relay:
             if is_relay_post(msg.get("text", "")):
                 continue
             sender, body, targets = parse_slack(msg.get("text", ""), manifest)
+            if sender == "human" and targets:
+                self.state["human_at"] = self.clock()
             for target in targets:
                 try:
                     ids = self.hivey.send(target, body, sender)
@@ -345,10 +353,16 @@ class Relay:
                 except RuntimeError as err:
                     log(f"slack → bus  failed for {target}: {err}")
 
+    def human_talking(self):
+        """The human wrote in the channel lately: they're here, so replies shouldn't wait."""
+        at = self.state.get("human_at")
+        return at is not None and self.clock() - at < TALKING_MIN * 60
+
     def bus_to_slack(self, manifest):
-        quiet = self.quiet()
+        quiet_mode = self.quiet()
+        quiet = quiet_mode and not self.human_talking()
         if not quiet:
-            self.catch_up()  # before reading the bus: if it fails, nothing new is lost
+            self.catch_up(ended=not quiet_mode)  # before reading the bus: if it fails, nothing new is lost
         messages, self.state["bus_offset"] = new_bus_messages(self.bus_path, self.state["bus_offset"])
         roles = roster(manifest)
         scope = mirror_scope(manifest, self.scope)
@@ -364,7 +378,7 @@ class Relay:
             self.state["posted"].append(ts)
             log(f"bus → slack  {message.get('from')} → {message.get('to')}")
 
-    def catch_up(self):
+    def catch_up(self, ended=True):
         """After quiet mode: everything held goes out as one message."""
         held = self.state["held"] + self.held_posts(self.channel)
         if not held:
@@ -372,7 +386,7 @@ class Relay:
         # Saved until posted, so a failed post (or a restart) retries it
         self.state["held"] = held
         self.save()
-        ts = self.slack.post(self.channel, format_catch_up(held))
+        ts = self.slack.post(self.channel, format_catch_up(held, ended))
         self.state["posted"].append(ts)
         self.state["held"] = []
         log(f"bus → slack  catch-up of {len(held)} held post(s)")

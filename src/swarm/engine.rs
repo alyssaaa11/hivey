@@ -96,6 +96,8 @@ struct State {
     home_watch: super::home::Watch,
     /// Reopens addons (Slack relays, dashboards) once after a server restart.
     addons_restore: super::addons::Restore,
+    /// Reopens a Slack-connected master's pane when a human message waits and it's gone.
+    slack_reopen: super::slack_pane::Reopen,
     /// Claude Code's session registry by session id, refreshed every tick (claude_peers).
     claude_peers: HashMap<String, claude_peers::Peer>,
     /// Whether a Claude process (by pid) accepts inbox posts without approval.
@@ -658,6 +660,7 @@ fn tick(api_tx: &ApiRequestSender) {
 fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
     let mut deliveries = Vec::new();
     let mut escalations = Vec::new();
+    let mut reopens = Vec::new();
     // An episode ends when the agent is reachable again; the next one notifies anew.
     let recovered: Vec<(String, String)> = state
         .escalated_agents
@@ -717,6 +720,9 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
                 });
             }
             Decision::Escalate(reason) => {
+                if reason == "gone" {
+                    reopens.push((swarm.clone(), agent.clone(), queue.clone()));
+                }
                 let fresh: Vec<&Message> = pending
                     .iter()
                     .copied()
@@ -735,6 +741,10 @@ fn plan_deliveries(state: &mut State) -> Vec<Delivery> {
     }
     for (swarm, agent, reason, msgs) in escalations {
         escalate(state, &swarm, &agent, reason, &msgs);
+    }
+    for (swarm, agent, queue) in reopens {
+        let pending: Vec<&Message> = queue.iter().collect();
+        super::slack_pane::reopen(&mut state.slack_reopen, &swarm, &agent, &pending);
     }
     for delivery in &mut deliveries {
         let agent = state

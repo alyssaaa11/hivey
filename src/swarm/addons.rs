@@ -39,7 +39,12 @@ pub(crate) fn restore(restore: &mut Restore, swarms: &[Swarm]) {
         return;
     }
     for swarm in swarms.iter().filter(|swarm| has_addons(&swarm.root)) {
-        spawn_relaunch(&swarm.slug, &swarm.root);
+        spawn_relaunch(
+            &swarm.slug,
+            &swarm.root,
+            &["--addons-only"],
+            "addons-restore.log",
+        );
     }
 }
 
@@ -55,9 +60,9 @@ fn has_addons(root: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// `hivey swarm relaunch <slug> --addons-only` against this server, detached; its output goes
-/// to `<root>/.swarm/addons-restore.log`.
-fn spawn_relaunch(slug: &str, root: &Path) {
+/// `hivey swarm relaunch <slug> <args>` against this server, detached; its output goes to
+/// `<root>/.swarm/<log>`.
+pub(crate) fn spawn_relaunch(slug: &str, root: &Path, args: &[&str], log: &str) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
@@ -67,9 +72,10 @@ fn spawn_relaunch(slug: &str, root: &Path) {
     {
         command.args(["--session", &session]);
     }
-    command.args(["swarm", "relaunch", slug, "--addons-only"]);
+    command.args(["swarm", "relaunch", slug]);
+    command.args(args);
     command.current_dir(root);
-    let log = root.join(".swarm").join("addons-restore.log");
+    let log = root.join(".swarm").join(log);
     if let Ok(file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

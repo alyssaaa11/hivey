@@ -216,7 +216,10 @@ for the Slack token in chat: the user types it into `hivey slack connect`.
 posts messages to `human`; agents talk to each other on hivey's local bus (`hivey msg send`),
 never through Slack. The master pane of an agent or swarm with a channel is always named
 **slack**: it's the pane the user's Slack (and pet) messages wake, so keep side work in the
-space's other panes and that pane's history small.
+space's other panes and that pane's history small. When the slack pane is gone and a message
+from the user arrives, hivey reopens it (`hivey swarm relaunch <slug> <master>`, continuing its
+conversation). Quiet mode doesn't hold replies in a channel while the user is talking there
+(a message in the last 30 minutes).
 
 ## Desktop pet (macOS)
 

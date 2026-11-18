@@ -212,8 +212,10 @@ class QuietMode(unittest.TestCase):
             taken, self.direct[:] = list(self.direct), []
             return taken
 
+        self.now = 1000.0
         self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "human",
-                                 quiet=lambda: self.quiet, held_posts=held_posts)
+                                 quiet=lambda: self.quiet, held_posts=held_posts,
+                                 clock=lambda: self.now)
         self.relay.state["last_ts"] = "0"
 
     def tearDown(self):
@@ -226,6 +228,8 @@ class QuietMode(unittest.TestCase):
 
     def test_holds_posts_then_sends_one_catch_up(self):
         self.slack.inbox.append({"ts": "1.000000", "text": "@scout keep going overnight"})
+        self.relay.step()
+        self.now += relay.TALKING_MIN * 60  # the human has gone to bed
         self.agent_reports("found 3")
         self.relay.step()
         self.agent_reports("found 5")
@@ -248,6 +252,21 @@ class QuietMode(unittest.TestCase):
         self.relay.step()
         self.assertEqual(len(self.slack.posted), 2, "the catch-up is sent once")
         self.assertEqual(len(self.hivey.sent), 1, "our catch-up post is not injected back")
+
+    def test_replies_go_out_while_the_human_is_talking(self):
+        self.agent_reports("held overnight")
+        self.relay.step()
+        self.assertEqual(self.slack.posted, [])
+        self.slack.inbox.append({"ts": "1.000000", "text": "hi who are you?"})
+        self.agent_reports("I'm scout")
+        self.relay.step()
+        self.assertEqual(len(self.slack.posted), 2, "held posts and the reply go out")
+        self.assertTrue(self.slack.posted[0].startswith("🌙 *1 update held by quiet mode*"))
+        self.assertIn("I'm scout", self.slack.posted[1])
+        self.now += relay.TALKING_MIN * 60
+        self.agent_reports("later")
+        self.relay.step()
+        self.assertEqual(len(self.slack.posted), 2, "quiet again once the human stops")
 
     def test_catch_up_includes_direct_posts(self):
         self.direct.append("*[scout]* posted directly")
