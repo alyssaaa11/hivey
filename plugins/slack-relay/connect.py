@@ -87,7 +87,7 @@ def save_token(token):
     config_path = directory / "config.json"
     config = relay.load_config() if config_path.exists() else {}
     config["token_command"] = f"cat '{token_file}'"
-    config.setdefault("mirror", "masters")
+    config.setdefault("mirror", "human")
     config.setdefault("interval", 10)
     config_path.write_text(json.dumps(config, indent=2) + "\n")
     return token_file

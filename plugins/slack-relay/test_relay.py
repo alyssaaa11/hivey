@@ -42,7 +42,7 @@ class EchoGuards(unittest.TestCase):
             bus = root / ".swarm" / "bus.jsonl"
             bus.write_text("")
             slack, hivey = FakeSlack(), FakeHivey(bus)
-            r = relay.Relay(root, slack, hivey, "C1", "masters")
+            r = relay.Relay(root, slack, hivey, "C1", "human")
             r.state["last_ts"] = "0"
             slack.inbox.append({"ts": "1.000000", "bot_id": "B1",
                                 "text": ":crescent_moon: *Quiet mode ended: 3 updates while it was on*"})
@@ -72,10 +72,10 @@ class ParseSlack(unittest.TestCase):
         _, _, targets = relay.parse_slack("<!here> stop", MANIFEST)
         self.assertEqual(targets, ["@all"])
 
-    def test_agent_posts_keep_their_sender_and_never_target_themselves(self):
+    def test_agent_posts_are_never_forwarded_to_other_agents(self):
+        # Agents talk to each other on the local bus; Slack is for the human only.
         sender, body, targets = relay.parse_slack("🔭 *[scout]* done @scout @critic", MANIFEST)
-        self.assertEqual((sender, body, targets), ("scout", "done @scout @critic", ["critic"]))
-        # An agent's unaddressed chatter isn't forwarded to anyone.
+        self.assertEqual((sender, body, targets), ("scout", "done @scout @critic", []))
         self.assertEqual(relay.parse_slack("*[scout]* thinking", MANIFEST)[2], [])
 
 
@@ -85,21 +85,27 @@ class Mirror(unittest.TestCase):
     def msg(self, frm, to, **extra):
         return {"ev": "msg", "id": "m1", "from": frm, "to": to, "swarm": "ideas", "text": "t", **extra}
 
-    def test_masters_scope_keeps_master_and_human_traffic_only(self):
+    def test_only_human_traffic_reaches_slack(self):
         keep = relay.should_mirror
-        self.assertTrue(keep(self.msg("ideas/scout", "coordinator"), "masters", self.roles, set()))
-        self.assertTrue(keep(self.msg("ideas/coordinator", "scout"), "masters", self.roles, set()))
-        self.assertTrue(keep(self.msg("ideas/scout", "human"), "masters", self.roles, set()))
-        self.assertFalse(keep(self.msg("ideas/scout", "critic"), "masters", self.roles, set()))
-        self.assertTrue(keep(self.msg("ideas/scout", "critic"), "all", self.roles, set()))
-        self.assertFalse(keep(self.msg("ideas/scout", "coordinator"), "off", self.roles, set()))
+        self.assertTrue(keep(self.msg("ideas/scout", "human"), "human", self.roles, set()))
+        self.assertTrue(keep(self.msg("human", "coordinator"), "human", self.roles, set()))
+        self.assertTrue(keep(self.msg("hivey", "coordinator"), "human", self.roles, set()))
+        self.assertFalse(keep(self.msg("ideas/scout", "coordinator"), "human", self.roles, set()))
+        self.assertFalse(keep(self.msg("ideas/coordinator", "scout"), "human", self.roles, set()))
+        self.assertFalse(keep(self.msg("ideas/scout", "critic"), "human", self.roles, set()))
+        self.assertFalse(keep(self.msg("ideas/scout", "human"), "off", self.roles, set()))
 
     def test_the_swarms_comms_slack_wins_over_the_relay_config(self):
-        self.assertEqual(relay.mirror_scope({"comms": {"slack": "off"}}, "all"), "off")
-        self.assertEqual(relay.mirror_scope({"comms": {"slack": "all"}}, "masters"), "all")
-        self.assertEqual(relay.mirror_scope({}, "masters"), "masters")
-        self.assertEqual(relay.mirror_scope({"comms": {"slack": "loud"}}, "masters"), "masters")
-        self.assertEqual(relay.mirror_scope({"comms": None}, "all"), "all")
+        self.assertEqual(relay.mirror_scope({"comms": {"slack": "off"}}, "human"), "off")
+        self.assertEqual(relay.mirror_scope({"comms": {"slack": "human"}}, "off"), "human")
+        self.assertEqual(relay.mirror_scope({}, "off"), "off")
+        self.assertEqual(relay.mirror_scope({}, "masters"), "human")
+        self.assertEqual(relay.mirror_scope({"comms": {"slack": "loud"}}, "human"), "human")
+        self.assertEqual(relay.mirror_scope({"comms": None}, "human"), "human")
+
+    def test_old_scopes_are_human_only_now(self):
+        for legacy in ("masters", "all"):
+            self.assertEqual(relay.mirror_scope({"comms": {"slack": legacy}}, "off"), "human")
 
     def test_never_echoes_slack_messages_or_sender_copies(self):
         self.assertFalse(relay.should_mirror(self.msg("human", "coordinator"), "all", self.roles, {"m1"}))
@@ -153,35 +159,38 @@ class RoundTrip(unittest.TestCase):
             bus = root / ".swarm" / "bus.jsonl"
             bus.write_text("")
             slack, hivey = FakeSlack(), FakeHivey(bus)
-            r = relay.Relay(root, slack, hivey, "C1", "masters")
+            r = relay.Relay(root, slack, hivey, "C1", "human")
             r.state["last_ts"] = "0"
             slack.inbox.append({"ts": "1.000000", "text": "@scout find 3 competitors"})
             r.step()
             self.assertEqual(hivey.sent, [("scout", "@scout find 3 competitors", "human")])
             self.assertEqual(slack.posted, [], "a message from Slack is not echoed back")
-            # An agent answers the master on the bus: mirrored once, and the mirror post
-            # coming back through history is not re-injected.
+            # An agent answers the human on the bus: mirrored once, and the mirror post
+            # coming back through history is not re-injected. Its message to the master
+            # stays on the bus (agents never talk on Slack).
             with open(bus, "a") as f:
+                f.write(json.dumps({"ev": "msg", "id": "a0", "from": "ideas/scout",
+                                    "to": "coordinator", "swarm": "ideas", "text": "fyi"}) + "\n")
                 f.write(json.dumps({"ev": "msg", "id": "a1", "from": "ideas/scout",
-                                    "to": "coordinator", "swarm": "ideas", "text": "found 3"}) + "\n")
+                                    "to": "human", "swarm": "ideas", "text": "found 3"}) + "\n")
                 f.write('{"ev": "msg", "id": "torn"')  # half-written line is left for later
             r.step()
             r.step()
             self.assertEqual(len(slack.posted), 1)
-            self.assertIn("scout → coordinator", slack.posted[0])
+            self.assertIn("scout → human", slack.posted[0])
             self.assertEqual(len(hivey.sent), 1)
             # The swarm turns Slack off in its manifest: read live, nothing more is posted.
             (root / ".swarm" / "agents.json").write_text(
                 json.dumps({**MANIFEST, "comms": {"slack": "off"}}))
             with open(bus, "a") as f:
                 f.write("\n" + json.dumps({"ev": "msg", "id": "a2", "from": "ideas/scout",
-                                            "to": "coordinator", "swarm": "ideas",
+                                            "to": "human", "swarm": "ideas",
                                             "text": "found 4"}) + "\n")
             r.step()
             self.assertEqual(len(slack.posted), 1, slack.posted)
             (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
             # State survives a restart of the relay.
-            again = relay.Relay(root, slack, hivey, "C1", "masters")
+            again = relay.Relay(root, slack, hivey, "C1", "human")
             again.step()
             self.assertEqual(len(slack.posted), 1)
             self.assertEqual(len(hivey.sent), 1)
@@ -203,7 +212,7 @@ class QuietMode(unittest.TestCase):
             taken, self.direct[:] = list(self.direct), []
             return taken
 
-        self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "masters",
+        self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "human",
                                  quiet=lambda: self.quiet, held_posts=held_posts)
         self.relay.state["last_ts"] = "0"
 
@@ -213,7 +222,7 @@ class QuietMode(unittest.TestCase):
     def agent_reports(self, text):
         with open(self.bus, "a") as f:
             f.write(json.dumps({"ev": "msg", "id": text, "from": "ideas/scout",
-                                "to": "coordinator", "swarm": "ideas", "text": text}) + "\n")
+                                "to": "human", "swarm": "ideas", "text": text}) + "\n")
 
     def test_holds_posts_then_sends_one_catch_up(self):
         self.slack.inbox.append({"ts": "1.000000", "text": "@scout keep going overnight"})
@@ -225,7 +234,7 @@ class QuietMode(unittest.TestCase):
         self.assertEqual(self.slack.posted, [], "nothing reaches Slack in quiet mode")
         self.assertEqual(len(self.hivey.sent), 1, "Slack → bus keeps working")
         # Held posts survive a relay restart
-        self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "masters",
+        self.relay = relay.Relay(self.root, self.slack, self.hivey, "C1", "human",
                                  quiet=lambda: self.quiet, held_posts=lambda _channel: [])
         self.quiet = False
         self.agent_reports("found 8")
@@ -288,7 +297,7 @@ class Failures(unittest.TestCase):
                 return real_history(channel, oldest)
 
             slack.history = history
-            r = relay.Relay(root, slack, hivey, "C1", "masters", quiet=lambda: False,
+            r = relay.Relay(root, slack, hivey, "C1", "human", quiet=lambda: False,
                             held_posts=lambda c: [], notify=notes.append)
             r.state["last_ts"] = "0"
             with open(bus, "a") as f:

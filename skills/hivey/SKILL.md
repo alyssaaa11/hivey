@@ -134,7 +134,7 @@ what the Slack relay mirrors:
 hivey swarm comms <slug>                                  # show (defaults: 10/min, 6 per pair
                                                           # per 5 min, 30/h, 4 broadcasts/h, 10 min dedupe)
 hivey swarm comms <slug> --preset quiet|normal|chatty     # or single flags, e.g. --hourly-wakes 12
-hivey swarm comms <slug> --slack masters|all|off          # what goes to its Slack channel
+hivey swarm comms <slug> --slack human|off               # Slack gets only messages to/from the user
 ```
 `hivey swarm launch … --comms-preset quiet` sets it at launch.
 
@@ -212,6 +212,11 @@ setup --slack`), which invites them; if one was made another way, make sure the 
 (`hivey slack add <slug>`) before saying it's done.
 When creating a swarm or agent, ask the user whether it should get a Slack channel. Never ask
 for the Slack token in chat: the user types it into `hivey slack connect`.
+**Slack is human ↔ agent only.** The relay brings the user's Slack messages to the master and
+posts messages to `human`; agents talk to each other on hivey's local bus (`hivey msg send`),
+never through Slack. The master pane of an agent or swarm with a channel is always named
+**slack**: it's the pane the user's Slack (and pet) messages wake, so keep side work in the
+space's other panes and that pane's history small.
 
 ## Desktop pet (macOS)
 

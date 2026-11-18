@@ -85,8 +85,9 @@ owns it (name that agent).>
 - **hivey:** the swarm has its own space `<name>`. The coordinator is pane 1 (the master); every
   agent has its own pane, with a dashboard, a watcher and a Slack relay beside them. The
   coordinator can read your pane and may message you directly.
-- **Slack:** `#<name>` mirrors the swarm for the user, who may also send instructions from there.
-  You don't post to Slack yourself.
+- **Slack:** `#<name>` is only for the user ↔ the swarm: what the user writes there reaches the
+  coordinator (or the agent they @mention), and messages to `human` are posted there. Messages
+  between agents never go to Slack, and you never post to Slack yourself.
 - **Shared README:** `<root>/.swarm/README.md` holds this same overview.
 - **Wiki (swarm memory):** `<vault>/`. Each agent writes its reports to
   `raw/reports/<agent>/`. Only the coordinator writes `wiki/`, filing your reports into
@@ -162,8 +163,9 @@ Critique is about the work, not the agent. Before building something costly, san
 approach with the coordinator.
 
 ### How to communicate
-Every message goes through hivey's message bus. It's delivered when the recipient is idle
-(never mid-task), several waiting messages arrive together, and everything is logged.
+Agents talk to each other only through hivey's local message bus, never through Slack (Slack is
+the user's channel). A message is delivered when the recipient is idle (never mid-task), several
+waiting messages arrive together, and everything is logged.
 
 | To | How |
 |----|-----|
@@ -198,6 +200,10 @@ Conventions:
 
 Keep messages short; put long content in files and send the path. Don't ask a teammate for
 something the roster says someone else owns.
+
+Every message should move a task on the board forward. The coordinator reads the team's
+traffic: an agent that drifts off its task, or sends a lot of messages without delivering
+work, is told to stop and refocus, and is stopped if it keeps going.
 
 ### Contracts and code
 - If `<root>/shared/CONTRACTS.md` exists, it's binding: interfaces, data shapes, formats,

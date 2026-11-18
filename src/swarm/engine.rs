@@ -1385,7 +1385,8 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
             if swarm.paused {
                 title.push_str(" · ⏸ paused");
             }
-            if state.reported.get(&pane_id) == Some(&title) {
+            let slack_pane = swarm.slack && agent.role == Role::Master;
+            if state.reported.get(&pane_id) == Some(&report_signature(&title, slack_pane)) {
                 continue;
             }
             let mut tokens = HashMap::new();
@@ -1394,6 +1395,11 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
             tokens.insert("paused".to_string(), swarm.paused.then(|| "1".to_string()));
             tokens.insert("solo".to_string(), swarm.solo.then(|| "1".to_string()));
             tokens.insert("home".to_string(), swarm.home.then(|| "1".to_string()));
+            // hivey: marks the pane the human reaches on Slack (named "slack" by autoname).
+            tokens.insert(
+                super::autoname::SLACK_TOKEN.to_string(),
+                slack_pane.then(|| "1".to_string()),
+            );
             tokens.insert(
                 "queued".to_string(),
                 (queued > 0).then(|| queued.to_string()),
@@ -1424,10 +1430,26 @@ fn plan_metadata(state: &mut State) -> Vec<(String, PaneReportMetadataParams)> {
     }
     for (pane_id, params) in &out {
         if let Some(title) = &params.title {
-            state.reported.insert(pane_id.clone(), title.clone());
+            let slack_pane = params
+                .tokens
+                .get(super::autoname::SLACK_TOKEN)
+                .is_some_and(Option::is_some);
+            state
+                .reported
+                .insert(pane_id.clone(), report_signature(title, slack_pane));
         }
     }
     out
+}
+
+/// What was last reported for a pane: its title, plus the Slack pane mark (hivey), so
+/// connecting or removing a Slack channel re-reports the pane.
+fn report_signature(title: &str, slack_pane: bool) -> String {
+    if slack_pane {
+        format!("{title}\u{1f}slack")
+    } else {
+        title.to_string()
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ use crate::swarm::model::{Comms, SLACK_SCOPES};
 
 const USAGE: &str = "usage: hivey swarm comms <slug> [--preset quiet|normal|chatty] \
 [--rate-per-min N] [--pair-wakes N] [--pair-window-min N] [--hourly-wakes N] \
-[--broadcasts-per-hour N] [--dedupe-min N] [--slack masters|all|off]";
+[--broadcasts-per-hour N] [--dedupe-min N] [--slack human|off]";
 
 /// Numeric flags: (flag, manifest field, whether 0 is allowed (= no limit / off)).
 const NUMBERS: [(&str, &str, bool); 6] = [
@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(rest, ["app"]);
         assert_eq!(changes["rate_per_min"], 5);
         assert_eq!(changes["hourly_wakes"], 0, "0 = no hourly limit");
-        assert_eq!(changes["slack"], "masters");
+        assert_eq!(changes["slack"], "human");
     }
 
     #[test]

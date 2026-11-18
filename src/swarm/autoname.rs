@@ -30,6 +30,11 @@ const MODEL_TIMEOUT: Duration = Duration::from_secs(60);
 const TAIL_BYTES: u64 = 512 * 1024;
 const SOURCE: &str = "hivey:autoname";
 pub(crate) const TOKEN: &str = "job";
+/// hivey: pane token the swarm engine sets on the master pane of an agent or swarm the human
+/// talks to on Slack. That pane is always named [`SLACK_NAME`], so it's clear which pane gets
+/// the Slack (and pet) messages; the space's other panes are side workspaces.
+pub(crate) const SLACK_TOKEN: &str = "slack";
+pub(crate) const SLACK_NAME: &str = "slack";
 const MAX_WORDS: usize = 3;
 const MAX_CHARS: usize = 32;
 
@@ -119,6 +124,12 @@ impl Namer {
                 continue;
             }
             let id = session.value.clone();
+            if agent.tokens.contains_key(SLACK_TOKEN) {
+                if agent.tokens.get(TOKEN).map(String::as_str) != Some(SLACK_NAME) {
+                    report(api_tx, &agent.pane_id, SLACK_NAME);
+                }
+                continue;
+            }
             if let Some(named) = self.names.get(&id) {
                 if agent.tokens.get(TOKEN) != Some(&named.name) {
                     report(api_tx, &agent.pane_id, &named.name);

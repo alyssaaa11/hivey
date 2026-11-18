@@ -160,11 +160,11 @@ In the same message:
   (suggest `sonnet`) and the maximum rounds (suggest 3). Each critic is one short `claude -p`
   run per review, so N critics cost about N extra reads of the deliverable.
 - **Ask how chatty the swarm may be** (comms preset): `normal` (suggest it: 10 messages/min,
-  30 wake-ups/h per agent, 4 `@all`/h, repeats dropped, Slack mirrors only master and human
-  traffic), `quiet` for big or long-running swarms (5/min, 12/h, 2 broadcasts/h, Slack masters
-  only), or `chatty` for short, tightly coupled builds (Slack mirrors everything). Over a limit,
-  messages are saved as FYI (they don't wake anyone) or refused, so agents batch and stop
-  ping-ponging.
+  30 wake-ups/h per agent, 4 `@all`/h, repeats dropped), `quiet` for big or long-running
+  swarms (5/min, 12/h, 2 broadcasts/h), or `chatty` for short, tightly coupled builds (20/min,
+  60/h). Over a limit, messages are saved as FYI (they don't wake anyone) or refused, so agents
+  batch and stop ping-ponging. Agents always talk to each other on hivey's local bus; Slack only
+  carries messages between the user and the swarm, whatever the preset.
 - **Slack**: run `hivey slack status` before showing the plan. Connected: `hivey swarm launch`
   creates (or joins) `#<name>`, invites the user and starts the relay, nothing else to do. Not
   connected: ask the user to run `hivey slack connect` in a terminal (never ask for the token in
@@ -369,6 +369,7 @@ two saves an hour.
    flag anything missing, out of scope or duplicated, unclaimed tasks whose deps are approved
    (assign them), and `review` tasks nobody is reviewing.
 3. Answer open questions, nudge idle agents that still have work, resolve stalled critique.
+   Review the traffic in `hivey msg log` (see **Keep the talk useful** below).
 4. Ingest new reports into the wiki (`references/wiki-memory.md`), and update **Swarm status**
    at the bottom of `.swarm/README.md` and in `wiki/swarm-overview.md` (date, each agent's state
    and deliverables, critique rounds, open decisions, what to do first on resume).
@@ -389,10 +390,22 @@ other and returns one result, so it doesn't take a swarm agent's whole context. 
 when the user opts in (their message says `ultracode` or "use a workflow"); never start one on
 your own. It uses much more quota, so suggest trying it on one folder first.
 
-**Too much talk.** If agents ping-pong, flood `@all` or Slack, tighten the swarm's limits
-(`hivey swarm comms <name> --preset quiet`, or one flag such as `--hourly-wakes 12` or
-`--slack masters`) and tell the agents involved to batch their messages. Ask the user before
-loosening them.
+**Keep the talk useful.** You supervise how the agents communicate. Agents talk to each other
+only on hivey's local bus (`hivey msg send`), never on Slack; Slack is the user's channel to
+you. On each pass, check that the traffic in `hivey msg log` is fluid (questions get answered,
+hand-offs land with a path) and that it moves the board forward. Watch for:
+- **Off focus**: an agent working on, or discussing, something outside its tasks or scope.
+- **Talk without work**: many messages, debates or status chatter while its tasks don't move
+  (no claims, submits or new files), or two agents ping-ponging.
+When you see one, act in this order:
+1. `hivey msg send <agent> --urgent "STOP: <what's off>. Refocus on <task ID>: <next step>.
+   Send updates as --fyi, only when something lands."`
+2. Still drifting or chatting on the next pass: stop it with `hivey hibernate now <pane>`
+   (pane from `hivey swarm list`; its conversation is kept), re-scope or reassign its task,
+   and tell the user why. Wake it later with `hivey hibernate wake <pane>` and a clear task.
+3. Swarm-wide ping-pong or `@all` floods: also tighten the limits
+   (`hivey swarm comms <name> --preset quiet`, or one flag such as `--hourly-wakes 12`) and
+   tell the agents involved to batch their messages. Ask the user before loosening them.
 
 **Roster changes** (agents added or re-scoped): update `.swarm/README.md` and the swarm section
 in every agent's CLAUDE.md, then `hivey msg send @all` what changed. A new agent: scaffold it,

@@ -104,6 +104,9 @@ pub(crate) struct Swarm {
     pub solo: bool,
     /// Manifest `"home": true`: the hivey agent (`hivey home`), kept alive by the server.
     pub home: bool,
+    /// hivey: manifest `"channel_id"` set: the human talks to the master on Slack, so its
+    /// pane is the "slack" pane (fixed name; the space's other panes are side workspaces).
+    pub slack: bool,
     /// Manifest `"profile"`: what the swarm or agent does, for the directory other agents
     /// read before asking for help (`description`, `skills`, `tools`).
     pub profile: Value,
@@ -133,7 +136,9 @@ pub(crate) struct Comms {
     /// The same text to the same recipient within this many minutes is dropped
     /// (`dedupe_min`, 0 = off).
     pub dedupe_min: u64,
-    /// What the Slack relay mirrors (`slack`: masters, all, off); `None` = the relay's config.
+    /// What the Slack relay mirrors (`slack`): `human` (messages to or from the human) or
+    /// `off`; `None` = the relay's config. Agents never talk to each other on Slack: they use
+    /// the local message bus. The old `masters` and `all` read as `human`.
     pub slack: Option<String>,
 }
 
@@ -143,7 +148,9 @@ pub(crate) const DEFAULT_PAIR_WINDOW_MIN: u64 = 5;
 pub(crate) const DEFAULT_HOURLY_WAKES: usize = 30;
 pub(crate) const DEFAULT_BROADCASTS_PER_HOUR: usize = 4;
 pub(crate) const DEFAULT_DEDUPE_MIN: u64 = 10;
-pub(crate) const SLACK_SCOPES: [&str; 3] = ["masters", "all", "off"];
+pub(crate) const SLACK_SCOPES: [&str; 2] = ["human", "off"];
+/// Older Slack scopes, which mirrored agent↔agent messages too; they now read as `human`.
+const LEGACY_SLACK_SCOPES: [&str; 2] = ["masters", "all"];
 
 impl Default for Comms {
     fn default() -> Self {
@@ -188,7 +195,13 @@ impl Comms {
         comms.slack = value
             .get("slack")
             .and_then(Value::as_str)
-            .filter(|scope| SLACK_SCOPES.contains(scope))
+            .and_then(|scope| {
+                if LEGACY_SLACK_SCOPES.contains(&scope) {
+                    Some("human")
+                } else {
+                    SLACK_SCOPES.contains(&scope).then_some(scope)
+                }
+            })
             .map(str::to_string);
         comms
     }
@@ -202,16 +215,16 @@ impl Comms {
             "hourly_wakes": self.hourly_wakes,
             "broadcasts_per_hour": self.broadcasts_per_hour,
             "dedupe_min": self.dedupe_min,
-            "slack": self.slack.as_deref().unwrap_or("masters"),
+            "slack": self.slack.as_deref().unwrap_or("human"),
         })
     }
 
     /// A named preset: `quiet`, `normal` (the defaults) or `chatty`.
     pub(crate) fn preset(name: &str) -> Option<Self> {
         let (rate, pair, window, hourly, broadcasts, dedupe, slack) = match name {
-            "quiet" => (5, 3, 10, 12, 2, 30, "masters"),
+            "quiet" => (5, 3, 10, 12, 2, 30, "human"),
             "normal" => return Some(Self::default()),
-            "chatty" => (20, 10, 5, 60, 8, 5, "all"),
+            "chatty" => (20, 10, 5, 60, 8, 5, "human"),
             _ => return None,
         };
         Some(Self {
@@ -321,6 +334,10 @@ impl Swarm {
             paused: manifest.get("state").and_then(Value::as_str) == Some("paused"),
             solo: manifest.get("solo").and_then(Value::as_bool) == Some(true),
             home: manifest.get("home").and_then(Value::as_bool) == Some(true),
+            slack: manifest
+                .get("channel_id")
+                .and_then(Value::as_str)
+                .is_some_and(|channel| !channel.is_empty()),
             profile: manifest
                 .get("profile")
                 .filter(|profile| profile.is_object())
@@ -455,6 +472,17 @@ mod tests {
             .unwrap()
             .comms;
         assert_eq!(comms.slack, None, "unknown Slack scopes are ignored");
+        for legacy in ["masters", "all"] {
+            with["comms"] = serde_json::json!({"slack": legacy});
+            let comms = Swarm::from_manifest(Path::new("/tmp/s"), &with)
+                .unwrap()
+                .comms;
+            assert_eq!(
+                comms.slack.as_deref(),
+                Some("human"),
+                "{legacy} is human-only now"
+            );
+        }
         assert_eq!(
             comms.rate_per_min, DEFAULT_RATE_PER_MIN,
             "a zero rate would block all"
@@ -468,7 +496,8 @@ mod tests {
         assert_eq!((quiet.rate_per_min, quiet.hourly_wakes), (5, 12));
         assert_eq!(
             Comms::preset("chatty").unwrap().slack.as_deref(),
-            Some("all")
+            Some("human"),
+            "agents never talk to each other on Slack"
         );
         assert!(Comms::preset("loud").is_none());
     }
@@ -494,5 +523,30 @@ mod tests {
         let swarm = Swarm::from_manifest(Path::new("/tmp/x"), &manifest).unwrap();
         assert_eq!(swarm.master().unwrap().key, "lead");
         assert_eq!(swarm.agents.len(), 1);
+    }
+
+    #[test]
+    fn a_slack_channel_makes_the_master_the_slack_pane() {
+        let mut manifest = serde_json::json!({
+            "slug": "x",
+            "agents": {"lead": {"herdr_name": "x-lead", "role": "master"}}
+        });
+        assert!(
+            !Swarm::from_manifest(Path::new("/tmp/x"), &manifest)
+                .unwrap()
+                .slack
+        );
+        manifest["channel_id"] = serde_json::json!("");
+        assert!(
+            !Swarm::from_manifest(Path::new("/tmp/x"), &manifest)
+                .unwrap()
+                .slack
+        );
+        manifest["channel_id"] = serde_json::json!("C123");
+        assert!(
+            Swarm::from_manifest(Path::new("/tmp/x"), &manifest)
+                .unwrap()
+                .slack
+        );
     }
 }

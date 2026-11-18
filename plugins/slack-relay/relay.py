@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """hivey.slack-relay: bridge a hivey swarm's message bus and its Slack channel.
 
+Slack is for the human and the agents only: agents talk to each other on hivey's local
+message bus (`hivey msg send`), never through Slack.
 Slack → bus   Human messages in the channel become bus messages from `human`:
               `@scout` → scout, `@all`/`@here`/`@channel`/`@everyone` → @all,
               `@coordinator`/`@master` → the master, no mention → the master.
-              Posts made by agents with the /swarm skill's swarm_slack.py
-              ("*[agent]* text") keep that agent as the sender.
-bus → Slack   Bus messages are mirrored into the channel. Scope: the swarm's own
-              `comms.slack` in its manifest (`hivey swarm comms <slug> --slack …`, read
-              live), else config "mirror": "masters" (default: only messages to/from a
-              master or the human), "all", or "off". Messages that came from Slack are
-              never echoed.
+              Posts agents make in the channel ("*[agent]* text") are for the human and
+              are never forwarded to other agents.
+bus → Slack   Messages to or from the human (and hivey's own notices) are mirrored into
+              the channel; agent↔agent messages never are. The swarm's own `comms.slack`
+              (`hivey swarm comms <slug> --slack human|off`, read live), else config
+              "mirror", can turn it "off". Messages that came from Slack are never echoed.
 Quiet mode    While ~/.hivey/quiet exists (hivey menu → quiet mode, `hivey quiet on`), bus →
               Slack posts are held; when it ends they go out as one catch-up message, with
               posts agents held through swarm_slack.py (~/.hivey/quiet-held/<channel>.jsonl).
@@ -21,7 +22,7 @@ Environment (set by `hivey swarm launch --addon hivey.slack-relay`):
   HIVEY_SWARM_CHANNEL  Slack channel id (else the manifest's channel_id)
   HERDR_BIN_PATH       hivey binary (set by hivey for plugin panes)
 Config: $HERDR_PLUGIN_CONFIG_DIR/config.json
-  {"token_command": "envsave get <id>", "mirror": "masters", "interval": 10}
+  {"token_command": "envsave get <id>", "mirror": "human", "interval": 10}
   The token comes from $SLACK_TOKEN if set, else from token_command's output.
   Scopes needed: channels:history, chat:write (groups:history for private channels).
 Failures      Each direction fails on its own (a read error doesn't block posts). After 3 failed
@@ -99,7 +100,9 @@ def parse_slack(text, manifest):
             target = by_name.get(word)
         if target and target not in targets and target != sender:
             targets.append(target)
-    if not targets and sender == "human":
+    if sender != "human":
+        targets = []  # agents talk to each other on the bus, not through Slack
+    elif not targets:
         targets.append(master_key(roles))
     return sender, body.strip(), targets
 
@@ -110,31 +113,31 @@ def is_relay_post(text):
     return bool(RELAY_POST_RE.match(text or ""))
 
 
-def involves_master(message, roles):
-    def is_master(label):
-        return label.split("/")[-1] in {k for k, r in roles.items() if r == "master"}
-    return (
-        message.get("from") in FIXED_EMOJI
-        or message.get("to") == "human"
-        or is_master(message.get("from", ""))
-        or is_master(message.get("to", ""))
-    )
+MIRROR_SCOPES = ("human", "off")
+# Older scopes that also mirrored agent↔agent messages; they now mean "human".
+LEGACY_SCOPES = ("masters", "all")
 
 
-MIRROR_SCOPES = ("masters", "all", "off")
+def normal_scope(scope):
+    return "human" if scope in LEGACY_SCOPES else scope
 
 
 def mirror_scope(manifest, default):
     """The swarm's own Slack scope (manifest comms.slack) wins over the relay's config."""
     comms = manifest.get("comms") if isinstance(manifest.get("comms"), dict) else {}
-    scope = comms.get("slack")
-    return scope if scope in MIRROR_SCOPES else default
+    scope = normal_scope(comms.get("slack"))
+    return scope if scope in MIRROR_SCOPES else (normal_scope(default) or "human")
+
+
+def involves_human(message):
+    """A message the human sent or gets (hivey's own notices count as the human's)."""
+    return message.get("from") in FIXED_EMOJI or message.get("to") == "human"
 
 
 def should_mirror(message, scope, roles, injected):
     if scope == "off" or message.get("copy") or message.get("id") in injected:
         return False
-    return scope == "all" or involves_master(message, roles)
+    return involves_human(message)
 
 
 def emoji(label, roles):
@@ -448,7 +451,7 @@ def main():
     manifest = json.loads((Path(root) / ".swarm" / "agents.json").read_text())
     slug = os.environ.get("HIVEY_SWARM_SLUG") or manifest["slug"]
     channel = os.environ.get("HIVEY_SWARM_CHANNEL") or manifest.get("channel_id")
-    scope = config.get("mirror", "masters")
+    scope = normal_scope(config.get("mirror", "human"))
     interval = float(config.get("interval", 10))
     binary = os.environ.get("HERDR_BIN_PATH", "hivey")
     log(f"hivey slack relay for swarm {slug!r}, channel {channel}, "
