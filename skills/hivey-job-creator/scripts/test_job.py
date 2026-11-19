@@ -139,6 +139,47 @@ class JobTest(unittest.TestCase):
         self.assertEqual([s["name"] for s in summary], ["demo"])
         self.assertTrue(summary[0]["active"])
 
+    def test_coordinator_is_named_after_the_project_folder(self):
+        c = self.job.COORDINATORS
+        repo = Path("/x/My App")
+        self.assertEqual(self.job.coordinator_slug(repo, []), ("my-app", c / "my-app", False))
+        taken = [{"slug": "my-app", "root": "/elsewhere"}]
+        self.assertEqual(self.job.coordinator_slug(repo, taken)[:2], ("my-app-jobs", c / "my-app-jobs"))
+        ours = [{"slug": "my-app", "root": str(c / "my-app")}]
+        self.assertEqual(self.job.coordinator_slug(repo, ours), ("my-app", c / "my-app", True))
+
+    def test_watcher_messages_the_coordinator_once_per_change(self):
+        self.make_job()
+        job = self.job.load("demo")
+        job["issues"]["1"]["status"] = "running"
+        job["coordinator"] = "repo"
+        self.job.save(job)
+        rows = {"1": {"state": "working", "session": "s1"}}
+        sent = []
+        self.job.cloud_rows = lambda name: rows
+        real_sh = self.job.sh
+        self.job.sh = lambda cmd, *a, **k: sent.append(cmd) if cmd[:3] == ["hivey", "msg", "send"] \
+            else real_sh(cmd, *a, **k)
+        self.assertEqual(self.job.watch_once(), [])  # still working: nothing to say
+        rows["1"] = {"state": "pr-open", "pr": {"number": 9, "url": "pr9", "headRefOid": "a"}}
+        out = self.job.watch_once()
+        self.assertEqual(len(out), 1)
+        self.assertEqual(sent[-1][3], "repo/master")
+        self.assertIn("opened its PR", sent[-1][4])
+        self.assertIn("job.py check demo 9", sent[-1][4])
+        self.assertEqual(self.job.watch_once(), [])  # same state: no repeat
+        rows["1"]["pr"] = {"number": 9, "url": "pr9", "headRefOid": "b"}
+        self.assertIn("new commits", self.job.watch_once()[0])
+        self.assertEqual(len(sent), 2)
+
+    def test_watch_message_kinds(self):
+        job = {"name": "j", "branch": "job/j", "issues": {"3": {"status": "running"}}}
+        msg = self.job.watch_message
+        self.assertIn("without a PR", msg(job, "3", {"state": "pushed", "branch": "claude/x"}, None))
+        self.assertIn("closed without merging", msg(job, "3", {"state": "pr-closed", "pr": {"url": "u"}}, None))
+        self.assertIn("merged outside", msg(job, "3", {"state": "merged", "pr": {"url": "u"}}, None))
+        self.assertIsNone(msg(job, "3", {"state": "working"}, None))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -21,13 +21,15 @@ request into the job branch `job/<name>`. One job file per job: ~/.hivey/jobs/<n
   job.py finish <name> [--draft] tests on the job branch, then one pull request job/<name> ->
                                  base listing every issue (Closes #n); closes the job's cloud
                                  agents (hivey cloud close) — the coordinator stays for the next job
-  job.py board [--port 42830]    the live job board (tasks as nodes, deps as arrows, which agent
-                                 works on what), served locally for every job and registered on the
-                                 agent fleet page's Dashboards tab as "Jobs"
-  job.py coordinator [--model opus] [--kickoff "<job>"]
-                                 register and start the job coordinator: a long-lived hivey agent
-                                 (slug job-coordinator, folder ~/.hivey/jobs) that runs one job
-                                 after another with this skill
+  job.py board [--project NAME] [--agent SLUG] [--port 42830]
+                                 the live job board (tasks as nodes, deps as arrows, which agent
+                                 works on what), served locally; with --project it is registered on
+                                 the agent fleet page's Dashboards tab as "<project> jobs"
+  job.py coordinator [--repo PATH] [--model opus] [--kickoff "<job>"]
+                                 register and start the repo's job coordinator: a long-lived hivey
+                                 agent named after the project folder (<folder>-jobs when that name
+                                 is taken), folder ~/.hivey/coordinators/<name>, that runs one job
+                                 after another in that repo with this skill
 
 Statuses: planned, running, pushed, pr-open, failing, passed, merged, blocked, local.
 """
@@ -54,7 +56,10 @@ TAIL = 120
 HERE = Path(__file__).resolve().parent
 BOARD_PORT = 42830
 BOARD_STATE = JOBS / "board-server.json"
-COORDINATOR = "job-coordinator"
+WATCH_EVERY = 45
+# The server restarts itself when an update changes its code (the ping carries this).
+VERSION = str(int(max(Path(__file__).stat().st_mtime, (HERE / "board.html").stat().st_mtime)))
+COORDINATORS = Path.home() / ".hivey" / "coordinators"
 
 
 def die(msg: str, code: int = 1) -> None:
@@ -404,12 +409,85 @@ def job_summaries() -> list[dict]:
         if "issues" not in job:
             continue
         issues = job["issues"].values()
-        out.append({"name": job["name"], "total": len(job["issues"]),
+        out.append({"name": job["name"], "project": Path(job.get("repo", "")).name,
+                    "total": len(job["issues"]),
                     "merged": sum(e.get("status") == "merged" for e in issues),
                     "finished": bool(job.get("finished")),
                     "active": not job.get("finished") and any(
                         e.get("status") not in ("planned", "merged") for e in issues)})
     return out
+
+
+def coordinator_of(job: dict) -> str | None:
+    """The hivey agent coordinating this job's repo (cached in the job file)."""
+    if job.get("coordinator"):
+        return job["coordinator"]
+    slug, _, exists = coordinator_slug(Path(job["repo"]), directory())
+    return slug if exists else None
+
+
+def watch_message(job: dict, n: str, row: dict, old: list | None) -> str | None:
+    """What the coordinator should hear about one agent's change, or None."""
+    state, pr = row.get("state"), row.get("pr") or {}
+    head = pr.get("headRefOid")
+    if old and old[0] == state and old[1] == head:
+        return None
+    name, J = job["name"], "python3 ~/.claude/skills/hivey-job-creator/scripts/job.py"
+    if state == "pr-open":
+        why = "new commits on its PR" if old and old[0] == "pr-open" else "opened its PR"
+        return (f"[job {name}] #{n} {why}: {pr.get('url')}. Check it: {J} check {name} "
+                f"{pr.get('number')}")
+    if state == "pushed":
+        return (f"[job {name}] #{n} pushed {row.get('branch')} without a PR: open it into "
+                f"{job['branch']} with the line hivey-job:{name}#{n} (skill step 6)")
+    if state == "pr-closed":
+        return f"[job {name}] #{n}: its PR {pr.get('url')} was closed without merging"
+    if state == "merged" and job["issues"].get(n, {}).get("status") != "merged":
+        return f"[job {name}] #{n}: its PR {pr.get('url')} was merged outside job.py: {J} set {name} {n} status=merged"
+    return None
+
+
+def watch_once() -> list[str]:
+    """One pass over the active jobs: message each coordinator about what changed."""
+    sent = []
+    for p in JOBS.glob("*.json"):
+        try:
+            job = json.loads(p.read_text())
+        except ValueError:
+            continue
+        if "issues" not in job or job.get("finished"):
+            continue
+        if not any(e.get("status") not in ("planned", "merged", "local") for e in job["issues"].values()):
+            continue
+        rows = cloud_rows(job["name"])
+        before = job.get("watch") or {}
+        notes = [m for n, r in sorted(rows.items())
+                 if (m := watch_message(job, n, r, before.get(n)))]
+        snap = {n: [r.get("state"), (r.get("pr") or {}).get("headRefOid")] for n, r in rows.items()}
+        if notes:
+            who = coordinator_of(job)
+            for note in notes:
+                if who:
+                    sh(["hivey", "msg", "send", f"{who}/master", note], check=False)
+                sent.append(f"{who or '?'}: {note}")
+            job["coordinator"] = who
+        if snap != before or notes:
+            fresh = load(job["name"])  # the coordinator may have written it meanwhile
+            fresh["watch"] = snap
+            if job.get("coordinator"):
+                fresh["coordinator"] = job["coordinator"]
+            save(fresh)
+    return sent
+
+
+def watch_loop() -> None:
+    while True:
+        try:
+            for line in watch_once():
+                print(f"{now()} {line}", flush=True)
+        except (SystemExit, Exception) as e:  # never let a bad pass stop the watcher
+            print(f"{now()} watch pass failed: {e}", flush=True)
+        time.sleep(WATCH_EVERY)
 
 
 def cmd_serve(a) -> int:
@@ -433,9 +511,11 @@ def cmd_serve(a) -> int:
             path = self.path.split("?")[0]
             try:
                 if path == "/ping":
-                    return self.send(200, b"hivey-job-board", "text/plain")
+                    return self.send(200, f"hivey-job-board {VERSION}".encode(), "text/plain")
                 if path == "/api/jobs":
-                    return self.send(200, json.dumps(job_summaries()).encode(), "application/json")
+                    want = urllib.parse.parse_qs(self.path.partition("?")[2]).get("project", [""])[0]
+                    jobs = [j for j in job_summaries() if not want or j["project"] == want]
+                    return self.send(200, json.dumps(jobs).encode(), "application/json")
                 if path.startswith("/api/job/"):
                     name = urllib.parse.unquote(path[len("/api/job/"):])
                     if not path_of(name).exists() or "/" in name:
@@ -449,22 +529,37 @@ def cmd_serve(a) -> int:
                 return self.send(500, b"{}", "application/json")
 
     server = ThreadingHTTPServer(("127.0.0.1", a.port), Board)
+    import threading
+    threading.Thread(target=watch_loop, daemon=True).start()
     JOBS.mkdir(parents=True, exist_ok=True)
     BOARD_STATE.write_text(json.dumps({"port": a.port, "pid": os.getpid(), "started": now()}))
     server.serve_forever()
     return 0
 
 
-def board_running(port: int) -> bool:
+def board_running(port: int) -> str | None:
+    """'current', 'old' (another version: restart it) or None."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/ping", timeout=2) as r:
-            return r.read() == b"hivey-job-board"
+            body = r.read().decode(errors="ignore")
     except OSError:
-        return False
+        return None
+    if not body.startswith("hivey-job-board"):
+        return None
+    return "current" if body.split()[-1] == VERSION else "old"
 
 
 def cmd_board(a) -> int:
     port = a.port
+    if board_running(port) == "old":
+        try:
+            os.kill(json.loads(BOARD_STATE.read_text())["pid"], 15)
+        except (OSError, ValueError, KeyError):
+            pass
+        for _ in range(20):
+            time.sleep(0.25)
+            if not board_running(port):
+                break
     if not board_running(port):
         JOBS.mkdir(parents=True, exist_ok=True)
         log = open(JOBS / "board-server.log", "a")
@@ -472,58 +567,95 @@ def cmd_board(a) -> int:
                          stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True)
         for _ in range(20):
             time.sleep(0.25)
-            if board_running(port):
+            if board_running(port) == "current":
                 break
         else:
             die(f"the board server did not start on port {port} (see {JOBS / 'board-server.log'})")
     url = f"http://127.0.0.1:{port}/"
-    listed = sh(["hivey", "agent-map", "dashboard", "list", "--json"], check=False).stdout
-    if url not in listed:
-        sh(["hivey", "agent-map", "dashboard", "add", "Jobs", url, "--agent", COORDINATOR,
-            "--note", "hivey jobs: tasks, dependencies and which agent works on what"], check=False)
-    print(f"job board: {url}  (agent fleet page → 🖥 Dashboards → Jobs)")
+    if a.project:
+        url += "?project=" + urllib.parse.quote(a.project)
+        listed = sh(["hivey", "agent-map", "dashboard", "list", "--json"], check=False).stdout
+        if url not in listed:
+            sh(["hivey", "agent-map", "dashboard", "add", f"{a.project} jobs", url,
+                "--agent", a.agent or a.project,
+                "--note", f"jobs in {a.project}: tasks, dependencies and which agent works on what"],
+               check=False)
+        print(f"job board: {url}  (agent fleet page → 🖥 Dashboards → {a.project} jobs)")
+    else:
+        print(f"job board: {url}")
     return 0
 
 
 # ---------------------------------------------------------------- the coordinator agent
 
-def registered(slug: str) -> bool:
+def directory() -> list[dict]:
     out = sh(["hivey", "swarm", "directory", "--json"], check=False).stdout
     try:
         data = json.loads(out)
     except ValueError:
-        return slug in out
-    items = data if isinstance(data, list) else data.get("entries") or data.get("swarms") or []
-    return any((i.get("slug") or i.get("name")) == slug for i in items if isinstance(i, dict))
+        return []
+    items = data if isinstance(data, list) else data.get("entries") or []
+    return [i for i in items if isinstance(i, dict)]
+
+
+def project_name(repo: Path) -> str:
+    name = "".join(c if c.isalnum() else "-" for c in repo.name.lower()).strip("-")
+    return "-".join(filter(None, name.split("-"))) or "project"
+
+
+def coordinator_slug(repo: Path, entries: list[dict]) -> tuple[str, Path, bool]:
+    """The coordinator's name: the project folder's name, or <name>-jobs when another agent
+    already has it. Returns (slug, its folder, already registered)."""
+    base = project_name(repo)
+    for slug in (base, f"{base}-jobs", f"{base}-jobs-2", f"{base}-jobs-3"):
+        root = COORDINATORS / slug
+        hit = next((e for e in entries if e.get("slug") == slug), None)
+        if hit is None:
+            return slug, root, False
+        if Path(hit.get("root", "")) == root:
+            return slug, root, True
+    die(f"no free coordinator name for {repo.name}")
 
 
 def cmd_coordinator(a) -> int:
-    JOBS.mkdir(parents=True, exist_ok=True)
-    brief = JOBS / "CLAUDE.md"
+    repo = Path(a.repo or ".").resolve()
+    top = sh(["git", "rev-parse", "--show-toplevel"], repo, check=False).stdout.strip()
+    if not top:
+        die(f"{repo} is not a git repository: run it in the project's folder or pass --repo")
+    repo = Path(top)
+    slug, root, exists = coordinator_slug(repo, directory())
+    root.mkdir(parents=True, exist_ok=True)
+    brief = root / "CLAUDE.md"
     if not brief.exists() or a.rewrite:
-        brief.write_text((HERE.parent / "references" / "coordinator-brief.md").read_text())
-    if registered(COORDINATOR):
-        print(f"{COORDINATOR} is already a hivey agent. Give it a job: "
-              f"hivey msg send {COORDINATOR}/master \"<the job, the repo path>\"")
+        text = (HERE.parent / "references" / "coordinator-brief.md").read_text()
+        brief.write_text(text.replace("{{SLUG}}", slug).replace("{{REPO}}", str(repo))
+                         .replace("{{PROJECT}}", repo.name))
+    if exists:
+        print(f"{slug} already coordinates {repo}. Give it a job: "
+              f"hivey msg send {slug}/master \"<the job>\"")
         if a.kickoff:
-            sh(["hivey", "msg", "send", f"{COORDINATOR}/master", a.kickoff], check=False)
+            sh(["hivey", "msg", "send", f"{slug}/master", a.kickoff], check=False)
         return 0
-    cmd = ["hivey", "swarm", "launch", str(JOBS), "--slug", COORDINATOR, "--icon", "🧭", "--solo",
+    cmd = ["hivey", "swarm", "launch", str(root), "--slug", slug, "--icon", "🧭", "--solo",
            "--kind", "claude", "--model", a.model,
-           "--description", "Runs your jobs: splits each into GitHub issues with tests, one cloud "
-           "agent per issue, checks and merges their PRs into job/<name>, one final PR for you",
+           "--description", f"Job coordinator for {repo.name} ({repo}): splits each job into "
+           "GitHub issues with tests, one cloud agent per issue, checks and merges their PRs "
+           "into job/<name>, one final PR for you",
            "--skills", "hivey-job-creator,model-picker,hivey-codex,hivey-grok,hivey-agy",
            "--tools", "gh, hivey cloud, git"]
     if a.kickoff:
         cmd += ["--kickoff", a.kickoff]
     proc = sh(cmd, check=False)
-    print((proc.stdout + proc.stderr).strip())
+    print((proc.stdout + proc.stderr).strip()[-600:])
     if proc.returncode == 0:
-        sh(["hivey", "swarm", "schedule", "add", COORDINATOR, "--every", "20m", "--id", "watch",
-            "Watch run: python3 ~/.claude/skills/hivey-job-creator/scripts/job.py show for every "
-            "active job; handle new pushes, pull requests and finished checks (skill steps 5-7); "
-            "if nothing is active, reply IDLE and do nothing."], check=False)
-        cmd_board(argparse.Namespace(port=BOARD_PORT))
+        # A safety net only: the board server's watcher messages the coordinator within a minute
+        # of every push, PR and merge.
+        sh(["hivey", "swarm", "schedule", "add", slug, "--every", "2h", "--id", "watch",
+            f"Watch run: python3 ~/.claude/skills/hivey-job-creator/scripts/job.py show for every "
+            f"active job in {repo}; handle new pushes, pull requests and finished checks (skill "
+            "steps 5-7); if nothing is active, reply IDLE and do nothing."], check=False)
+        cmd_board(argparse.Namespace(port=BOARD_PORT, project=repo.name, agent=slug))
+        print(f"\n{slug} coordinates {repo}. Give it a job: hivey msg send {slug}/master \"<the job>\"")
     return proc.returncode
 
 
@@ -552,8 +684,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--title"); p.add_argument("--force", action="store_true")
     p.add_argument("--timeout", type=int, default=1800)
     p = sub.add_parser("board"); p.add_argument("--port", type=int, default=BOARD_PORT)
+    p.add_argument("--project"); p.add_argument("--agent")
     p = sub.add_parser("serve"); p.add_argument("--port", type=int, default=BOARD_PORT)
     p = sub.add_parser("coordinator"); p.add_argument("--model", default="opus")
+    p.add_argument("--repo")
     p.add_argument("--kickoff"); p.add_argument("--rewrite", action="store_true")
     a = ap.parse_args(argv)
     return {"board": cmd_board, "serve": cmd_serve, "coordinator": cmd_coordinator,

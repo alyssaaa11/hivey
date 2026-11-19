@@ -19,22 +19,25 @@ The workers are **Claude Code cloud sessions** (`hivey cloud`, Claude only), eac
 branch with the user's skills, settings and secrets. Tasks that need this Mac (local database,
 devices, private network, the user's apps) are **local tasks**: you run them here (below).
 
-**Who coordinates.** The user's standing coordinator is the hivey agent `job-coordinator`
-(folder `~/.hivey/jobs`, a ★ row in hivey's sidebar). It runs one job after another and stays
-when a job is done; only the job's cloud agents are closed. If you are not that agent and the
-user wants a job run, set it up once and hand the job over instead of coordinating here:
+**Who coordinates.** Each project has its own standing coordinator: a hivey agent named after
+the project folder (`<folder>-jobs` when that name is taken), with its own ★ space in hivey's
+sidebar and its folder in `~/.hivey/coordinators/<name>`. It works only in its repo, runs one job
+after another and stays when a job is done; only the job's cloud agents are closed. If you are
+not that project's coordinator and the user wants a job run, set it up (once per project) and
+hand the job over instead of coordinating here:
 
 ```bash
-python3 ~/.claude/skills/hivey-job-creator/scripts/job.py coordinator \
-  --kickoff "New job in <repo path>: <the job, in the user's words>"
+cd <repo> && python3 ~/.claude/skills/hivey-job-creator/scripts/job.py coordinator \
+  --kickoff "<the job, in the user's words>"
 ```
 
-It registers and starts the agent (Claude Code, Opus, with this skill), wakes it every 20
-minutes for a watch run, starts the board, and sends it the job (or, if it already exists, just
-sends the job). Coordinate in this session only when the user asks for that.
+It registers and starts the agent (Claude Code, Opus, with this skill), wakes it every 2
+hours as a safety net (the board's watcher messages it within a minute of every change), registers the project's board, and sends it the job (or, if it already
+exists, just sends the job). Coordinate in this session only when the user asks for that.
 
-**The board.** `python3 $J board` serves the live job board on this Mac and registers it on the
-agent fleet page's 🖥 Dashboards tab as **Jobs**: every task as a node, dependencies as arrows,
+**The board.** `python3 $J board --project <folder> --agent <coordinator>` serves the live job
+board on this Mac and registers it on the agent fleet page's 🖥 Dashboards tab as
+**<folder> jobs**: every task as a node, dependencies as arrows,
 the final PR at the end; colour = status, a pulsing dot = an agent is working on it, with its
 model, check count and links to the issue, the cloud session and the PR. Run it when a job
 starts and tell the user where to look.
@@ -151,12 +154,17 @@ open the PR into `job/<name>` with the marker line, exactly like a cloud agent w
 
 ## 5. Watch
 
-Run `python3 $J wait <name>` **in the background** (Bash `run_in_background`); you are woken when an
-agent's state changes (pushed, PR opened, new commits). Meanwhile `hivey cloud status --job <name>`
-and `python3 $J show <name>` show everything; the sessions are on claude.ai/code and in the Claude
-app (`hivey cloud pull <session>` continues one here). Restart `wait` after handling each change.
-If nothing changes for a long time (an hour+), look at the session and nudge it with
-`hivey cloud send <session> "<question>"`.
+You don't poll. The board server (started by `job.py board`) runs a **watcher**: every 45 s it
+checks each active job's agents on GitHub and, when one pushes, opens a PR, adds commits or gets
+merged or closed, sends you a hivey message that starts with `[job <name>] #<n> …` and says what
+to run next. It uses no model calls and remembers what it already reported. Handle each message
+(step 6), then wait for the next one. hivey also wakes you every 2 hours as a safety net.
+
+Meanwhile `hivey cloud status --job <name>` and `python3 $J show <name>` show everything; the
+sessions are on claude.ai/code and in the Claude app (`hivey cloud pull <session>` continues one
+here). If an agent shows no progress for a long time (an hour+), look at its session and nudge it
+with `hivey cloud send <session> "<question>"`. Without the board server (e.g. coordinating from a
+plain session), run `python3 $J wait <name>` in the background instead.
 
 ## 6. Review each pull request
 

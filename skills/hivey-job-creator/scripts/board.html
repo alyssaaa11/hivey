@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Job board</title>
+<!-- Motion (motion.dev) for the animations; the board works without it. -->
+<script src="https://cdn.jsdelivr.net/npm/motion@11.11.17/dist/motion.js" defer></script>
 <style>
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --ink: #1d232b; --muted: #687384; --line: #c9d0da;
@@ -28,12 +30,19 @@ svg { display: block; }
 .node.live rect.box { stroke: var(--running); stroke-width: 2; }
 .node text { fill: var(--ink); }
 .node .sub { fill: var(--muted); font-size: 11.5px; }
+.node .tick { fill: var(--merged); font-weight: 700; }
 .node .chip { font-size: 11px; font-weight: 600; fill: #fff; }
 .node a text { text-decoration: underline; fill: var(--running); }
 .edge { fill: none; stroke: var(--line); stroke-width: 1.6; }
 .edge.done { stroke: var(--merged); }
 .edge.fin { stroke-dasharray: 4 5; opacity: .7; }
+.edge.flow { stroke: var(--running); stroke-dasharray: 6 8; animation: flow 1s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -14; } }
+.node { transform-box: fill-box; transform-origin: center; }
 .pulse { animation: pulse 1.4s ease-in-out infinite; }
+.ring { fill: none; stroke: var(--running); stroke-width: 2; animation: ring 1.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+@keyframes ring { from { transform: scale(.6); opacity: .9; } to { transform: scale(2.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .edge.flow, .pulse, .ring { animation: none; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 #agents { padding: 0 16px 24px; }
 #agents table { border-collapse: collapse; width: 100%; font-size: 13px; }
@@ -72,6 +81,11 @@ function layout(tasks) {
     return depth[n] = deps.length ? 1 + Math.max(...deps.map(d)) : 0;
   };
   Object.keys(tasks).forEach(d);
+  // Tasks nothing depends on go in the last column, next to the final PR, so their links to it
+  // never run under other tasks.
+  const last = Math.max(0, ...Object.values(depth));
+  const needed = new Set(Object.values(tasks).flatMap(t => (t.deps || []).map(String)));
+  Object.keys(tasks).forEach(n => { if (!needed.has(n)) depth[n] = last; });
   const cols = [];
   Object.keys(tasks).sort((a, b) => a - b).forEach(n => (cols[depth[n]] ||= []).push(n));
   const pos = {};
@@ -99,12 +113,14 @@ function render(job) {
   svg.setAttribute('height', rows * (H + GY));
   const edge = (a, b, done, fin) => {
     const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 6, y2 = b.y + H / 2, m = (x1 + x2) / 2;
-    return `<path class="edge ${done ? 'done' : ''} ${fin ? 'fin' : ''}" d="M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}" marker-end="url(#${done ? 'ahd' : 'ah'})"/>`;
+    const flow = !fin && b.live;
+    return `<path class="edge ${done && !flow ? 'done' : ''} ${fin ? 'fin' : ''} ${flow ? 'flow' : ''}" d="M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}" marker-end="url(#${done ? 'ahd' : 'ah'})"/>`;
   };
   let out = `<defs>
     <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/></marker>
     <marker id="ahd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--merged)"/></marker></defs>`;
   const fin = {x: finalX, y: finalY};
+  ids.forEach(n => pos[n].live = LIVE.has(tasks[n].status));
   ids.forEach(n => (tasks[n].deps || []).map(String).filter(x => pos[x]).forEach(dep =>
     out += edge(pos[dep], pos[n], tasks[dep].status === 'merged')));
   const leaves = ids.filter(n => !ids.some(m => (tasks[m].deps || []).map(String).includes(n)));
@@ -115,26 +131,28 @@ function render(job) {
     const title = (t.title || `Task ${n}`).slice(0, 34);
     const agent = t.where === 'local' ? 'local agent' : `${t.model || 'default model'}${t.effort ? ' · ' + t.effort : ''}`;
     const link = (href, label, x) => href ? `<a href="${esc(href)}" target="_blank" rel="noopener"><text x="${x}" y="88" font-size="12">${esc(label)}</text></a>` : '';
-    out += `<g class="node ${isLive ? 'live' : ''}" transform="translate(${p.x},${p.y})">
+    out += `<g transform="translate(${p.x},${p.y})"><g class="node ${isLive ? 'live' : ''}" data-n="${esc(n)}" data-s="${esc(s)}">
       <title>${esc(t.title || '')}</title>
       <rect class="box" width="${W}" height="${H}" rx="10"/>
       <rect width="6" height="${H}" rx="3" fill="${COLOR(s)}"/>
       <text x="16" y="22" font-weight="600">#${esc(n)} ${esc(title)}</text>
       <rect x="16" y="32" rx="8" height="17" width="${(STATUS[s] || s).length * 6.6 + 16}" fill="${COLOR(s)}"/>
       <text class="chip" x="24" y="45">${esc(STATUS[s] || s)}</text>
-      ${isLive ? `<circle class="pulse" cx="${W - 18}" cy="20" r="5" fill="var(--running)"/>` : ''}
+      ${isLive ? `<circle class="ring" cx="${W - 18}" cy="20" r="5"/><circle class="pulse" cx="${W - 18}" cy="20" r="5" fill="var(--running)"/>` : ''}
+      ${s === 'merged' ? `<text class="tick" x="${W - 26}" y="26" font-size="16" fill="var(--merged)">✓</text>` : ''}
       <text class="sub" x="16" y="68">🤖 ${esc(agent)}${t.attempts ? ` · ${t.attempts} check${t.attempts > 1 ? 's' : ''}` : ''}</text>
       ${link(t.issue_url, 'issue', 16)}${link(t.session_url, 'session', 62)}${link(t.pr_url, 'PR', 126)}
-    </g>`;
+    </g></g>`;
   });
   const done = merged === ids.length && ids.length;
-  out += `<g class="node" transform="translate(${fin.x},${fin.y})">
+  out += `<g transform="translate(${fin.x},${fin.y})"><g class="node" data-n="final" data-s="${done ? 'merged' : 'planned'}">
     <rect class="box" width="${W}" height="${H}" rx="10" stroke-dasharray="${done ? '' : '5 4'}"/>
     <text x="16" y="24" font-weight="600">Final PR</text>
     <text class="sub" x="16" y="46">${esc(job.branch)} → ${esc(job.base)}</text>
     <text class="sub" x="16" y="68">${done ? (job.final_pr ? 'opened for your review' : 'ready: job.py finish') : `waiting for ${ids.length - merged} task${ids.length - merged === 1 ? '' : 's'}`}</text>
-  </g>`;
+  </g></g>`;
   svg.innerHTML = out;
+  animate(job.name);
 
   const rowsHtml = ids.filter(n => LIVE.has(tasks[n].status)).map(n => {
     const t = tasks[n];
@@ -146,15 +164,51 @@ function render(job) {
     : '';
 }
 
+// Animations (Motion): the first view of a job builds up (tasks spring in one after another,
+// arrows draw themselves); afterwards only tasks whose state changed get a springy highlight.
+let seen = {}, seenJob = '';
+function animate(job) {
+  const M = window.Motion, calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const nodes = [...document.querySelectorAll('#graph .node')];
+  const first = seenJob !== job;
+  const changed = first ? [] : nodes.filter(g => seen[g.dataset.n] !== undefined && seen[g.dataset.n] !== g.dataset.s);
+  seenJob = job;
+  seen = Object.fromEntries(nodes.map(g => [g.dataset.n, g.dataset.s]));
+  if (!M || calm) return;
+  if (first) {
+    M.animate(nodes, {opacity: [0, 1], transform: ['scale(0.85)', 'scale(1)']},
+      {delay: M.stagger(0.07), type: 'spring', stiffness: 260, damping: 20});
+    // Never leave a task hidden if the browser pauses or skips the animation.
+    setTimeout(() => nodes.forEach(g => { g.getAnimations?.().forEach(a => a.finish()); g.style.opacity = 1; g.style.transform = 'none'; }), 2500);
+    document.querySelectorAll('#graph .edge').forEach((e, i) => {
+      const len = e.getTotalLength();
+      if (e.classList.contains('flow') || e.classList.contains('fin')) {
+        M.animate(e, {opacity: [0, 1]}, {delay: 0.3 + i * 0.05, duration: 0.5});
+      } else {
+        M.animate(e, {strokeDasharray: [`${len} ${len}`, `${len} ${len}`], strokeDashoffset: [len, 0]},
+          {delay: 0.25 + i * 0.06, duration: 0.7, ease: 'easeOut'});
+      }
+    });
+  }
+  changed.forEach(g => {
+    M.animate(g, {transform: ['scale(1)', 'scale(1.08)', 'scale(1)']}, {type: 'spring', stiffness: 300, damping: 12});
+    const box = g.querySelector('rect.box');
+    if (box) M.animate(box, {strokeWidth: [5, 1.2]}, {duration: 1.6, ease: 'easeOut'});
+    const tick = g.querySelector('.tick');
+    if (tick) M.animate(tick, {opacity: [0, 1], transform: ['scale(0)', 'scale(1)']}, {type: 'spring', stiffness: 400, damping: 10, delay: 0.2});
+  });
+}
+
 // Which job: /<name>/ or ?job=<name>; on / the first active job (the picker switches).
 let current = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || '') ||
   new URLSearchParams(location.search).get('job') || '';
 async function load() {
   try {
-    const jobs = await (await fetch('/api/jobs', {cache: 'no-store'})).json();
+    const project = new URLSearchParams(location.search).get('project') || '';
+    const jobs = await (await fetch('/api/jobs' + (project ? '?project=' + encodeURIComponent(project) : ''), {cache: 'no-store'})).json();
     if (!jobs.length) {
       document.getElementById('title').textContent = 'No jobs yet';
-      document.getElementById('meta').textContent = 'Give the job coordinator a job: hivey msg send job-coordinator/master "<the job>"';
+      document.getElementById('meta').textContent = project ? `No jobs in ${project} yet: give its coordinator a job` : 'No jobs yet';
       return;
     }
     if (!jobs.some(j => j.name === current)) current = (jobs.find(j => j.active) || jobs[0]).name;
@@ -165,13 +219,13 @@ async function load() {
     document.getElementById('meta').insertAdjacentHTML('afterend', pick ? `<span id="pickwrap">${pick}</span>` : '');
     document.querySelectorAll('#pickwrap').forEach((el, i, all) => i < all.length - 1 && el.remove());
     const sel = document.getElementById('pick');
-    if (sel) sel.onchange = () => { current = sel.value; history.replaceState(null, '', '/' + encodeURIComponent(current) + '/'); load(); };
+    if (sel) sel.onchange = () => { current = sel.value; history.replaceState(null, '', '/' + encodeURIComponent(current) + '/' + location.search); load(); };
   } catch (e) {
     document.getElementById('agents').innerHTML = `<div class="err">Cannot reach the job board server (${esc(e.message)}): python3 job.py board</div>`;
   }
 }
-load();
-setInterval(load, 15000);
+// After the deferred Motion script has run, so the first view animates.
+document.addEventListener('DOMContentLoaded', () => { load(); setInterval(load, 15000); });
 </script>
 </body>
 </html>
