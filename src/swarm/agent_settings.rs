@@ -124,7 +124,43 @@ pub(crate) fn claude_args_for_space(
     if agent != "claude" {
         return args.to_vec();
     }
-    with_autocompact(args, load().effective(slug).autocompact)
+    let settings = load();
+    let args = with_autocompact(args, settings.effective(slug).autocompact);
+    with_remote_control(args, settings.remote_control, slug)
+}
+
+/// A Claude agent's arguments with `--remote-control <slug>` added when `on` (kept when the
+/// arguments already ask for Remote Control, removed when off).
+pub(crate) fn with_remote_control(args: Vec<String>, on: bool, slug: Option<&str>) -> Vec<String> {
+    let has = args
+        .iter()
+        .any(|arg| arg == "--remote-control" || arg.starts_with("--remote-control="));
+    if on == has {
+        return args;
+    }
+    if !on {
+        let mut out = Vec::with_capacity(args.len());
+        let mut iter = args.into_iter().peekable();
+        while let Some(arg) = iter.next() {
+            if arg == "--remote-control" {
+                if iter.peek().is_some_and(|next| !next.starts_with('-')) {
+                    iter.next();
+                }
+                continue;
+            }
+            if arg.starts_with("--remote-control=") {
+                continue;
+            }
+            out.push(arg);
+        }
+        return out;
+    }
+    let mut out = args;
+    match slug {
+        Some(slug) => out.push(format!("--remote-control={slug}")),
+        None => out.push("--remote-control".into()),
+    }
+    out
 }
 
 impl From<AutoCompact> for String {
@@ -166,6 +202,11 @@ pub(crate) struct AgentSettings {
     /// Overrides per swarm / agent slug.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub spaces: BTreeMap<String, Layer>,
+    /// Start every Claude agent with Remote Control (`--remote-control <slug>`), so it can be
+    /// followed and steered from claude.ai and the Claude app and reached by cloud sessions.
+    /// Set with `hivey cloud remote-control on|off`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub remote_control: bool,
 }
 
 /// What applies to one space after the layers are merged.
@@ -312,6 +353,18 @@ pub(crate) fn parse_days(text: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_control_is_added_once_and_removed_when_off() {
+        let args = |items: &[&str]| items.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let base = args(&["--model", "opus"]);
+        let on = with_remote_control(base.clone(), true, Some("docs"));
+        assert_eq!(on, args(&["--model", "opus", "--remote-control=docs"]));
+        assert_eq!(with_remote_control(on.clone(), true, Some("docs")), on);
+        assert_eq!(with_remote_control(on, false, Some("docs")), base);
+        let spaced = args(&["--remote-control", "x", "--model", "opus"]);
+        assert_eq!(with_remote_control(spaced, false, None), base);
+    }
 
     #[test]
     fn a_space_overrides_the_defaults_field_by_field() {

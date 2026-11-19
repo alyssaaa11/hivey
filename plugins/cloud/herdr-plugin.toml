@@ -1,0 +1,9 @@
+id = "hivey.cloud"
+name = "Cloud agents"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "hivey cloud: Claude Code cloud sessions and scheduled cloud tasks with your skills, MCP servers, settings and EnvSave secrets"
+platforms = ["macos"]
+
+# No panes: `hivey cloud …` runs cloud.py (see `hivey cloud help`). cloud/ holds the files
+# copied into each cloud branch's .hivey-cloud/ (bootstrap, envsave shim, MCP wrappers).

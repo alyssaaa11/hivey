@@ -225,6 +225,33 @@ Relays don't poll Slack once Socket Mode is set up (`hivey slack connect --socke
 `xapp-` token): one connection (socket_hub.py, log `~/.hivey/slack-events/hub.log`) receives
 every channel's messages instantly; without it relays poll each channel every minute.
 
+## Cloud agents (`hivey cloud`)
+
+Claude Code cloud sessions (each on its own VM, in parallel) and scheduled cloud tasks that carry
+the user's setup. Cloud sessions only see the repo, so hivey pushes a `hivey-cloud/<name>` branch
+(this commit + a generated `.claude/` bundle; `hivey-cloud-schedule` for scheduled tasks) and
+starts from it. What goes in is listed per repo in `.hivey/cloud.toml` (`hivey cloud init`):
+hivey-* skills, chosen skills/commands/agents/plugins, user MCP servers, `~/.claude/CLAUDE.md`
+(as `.claude/rules/hivey-cloud-global.md`), safe settings, and EnvSave keys.
+```bash
+hivey cloud setup                 # once, in a terminal: age key (private half → clipboard only)
+hivey cloud init                  # .hivey/cloud.toml in this repo
+hivey cloud secrets               # network secrets → paste into claude.ai one by one (clipboard)
+hivey cloud run "<task>" [--name n] [--upload]   # one cloud session per call
+hivey cloud send <session> "<msg>" | pull <session> | list
+hivey cloud schedule "<when>" "<task>"           # scheduled cloud task (confirm in Claude)
+hivey cloud refresh | bundle [--out DIR] | clean [--yes]
+hivey cloud test [--secret es_...]               # throwaway self-test agent in the cloud
+hivey cloud remote-control on|off # hivey's Claude agents start with Remote Control (phone/web)
+```
+Secrets: `kind = "encrypted"` → age-encrypted into the branch, decrypted in the session with the
+environment's `HIVEY_CLOUD_AGE_KEY`; `envsave get es_...`, `envsave.get()` and `$NAME` then work
+through a shim. `kind = "network"` → a claude.ai network secret the proxy adds for its host (the
+VM never sees it). hivey reads values with `envsave get es_...` (no Touch ID). Never ask for
+secret values in chat. Not in the cloud: plugins as such (their skills/MCP are copied), global
+hooks, MCP servers that run a file from the Mac or need an OAuth sign-in (use a claude.ai
+connector), hivey's bus and Slack relays.
+
 ## Desktop pet (macOS)
 
 ```bash
