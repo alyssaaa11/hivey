@@ -69,7 +69,7 @@ Quiet mode lets swarms work at night without noise: voice, sounds and Slack post
     hivey quiet on|off
     hivey quiet schedule 22:30-6:45  # daily; `hivey quiet schedule off` to stop
 
-Hibernation frees memory: an agent idle for 2 days (configurable) is stopped, keeping its pane, name and conversation, and resumed (latest CLI version) when its space is opened or a message is sent to it. The auto-compact window is off by default; when set (auto or 100k-1M tokens), hivey starts the space's Claude agents with `--autocompact <size>` (that session only). `hivey claude-md` lists CLAUDE.md sizes (Claude Code warns above 40k chars); `hivey claude-md clean <pane>` has Opus shorten one and restarts the agent. Both have defaults for every agent and per-space overrides (right-click a space → Settings…). Only change them when the user asks.
+Hibernation frees memory: an agent idle for 2 days (configurable in hours or days, e.g. `--hibernate 2h`) is stopped, keeping its pane, name and conversation, and resumed (latest CLI version) when its space is opened or a message is sent to it. The auto-compact window is off by default; when set (auto or 100k-1M tokens), hivey starts the space's Claude agents with `--autocompact <size>` (that session only). `hivey claude-md` lists CLAUDE.md sizes (Claude Code warns above 40k chars); `hivey claude-md clean <pane>` has Opus shorten one and restarts the agent. Both have defaults for every agent and per-space overrides (right-click a space → Settings…). Only change them when the user asks.
 
     hivey hibernate                  # hibernated agents and idle times
     hivey hibernate now|wake|restart <pane>
@@ -102,7 +102,7 @@ Slack, Obsidian memory, Skylls sharing, and the macOS pet are optional. They nee
     hivey plugin list                   inspect installed plugins
     hivey quiet on|off|schedule <a-b>   quiet mode (no voice, sounds, Slack posts)
     hivey hibernate [now|wake <pane>]   free idle agents' memory / resume them
-    hivey agent-settings [<space>] ...  hibernate days and autocompact window (all or one space)
+    hivey agent-settings [<space>] ...  hibernate time (2h, 3d) and autocompact window (all or one space)
     hivey update                        update the local installation
 
 ## 8. Links

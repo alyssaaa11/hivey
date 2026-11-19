@@ -30,6 +30,9 @@ that genuinely don't apply (e.g. the wiki when the user said no); don't leave pl
 ## House rules
 - End every final response with `DONE: <3 words max>` on its own line (e.g. `DONE: wrote
   market report`).
+- **Reports stay in files:** never print a report or its contents in your reply or the terminal.
+  Write it to its file, then reply (and message the master) with only its path, at most 3 one-line
+  highlights and `DONE:`. Every printed word is paid for and stays in your context.
 - Look up library, API, CLI and cloud docs with the `hivey-context7` skill first, before a web
   search or your memory.
 - A script you write that calls an LLM API directly (not through Claude Code, Codex or Grok CLI)

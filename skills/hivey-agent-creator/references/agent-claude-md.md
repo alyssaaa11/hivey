@@ -23,6 +23,10 @@ for Codex, Grok and agy** below when the agent isn't on Claude Code.
 - End every final response with `DONE: <3 words max>` on its own line (e.g. `DONE: report
   written`). hivey reads it as your run summary and may speak it. Do this on every response,
   including short answers, questions and errors.
+- **Reports stay in files:** never print a report, digest or its contents in your reply or the
+  terminal. Write it to its file, then reply with only its path, at most 3 one-line highlights
+  and `DONE:`. Every printed word is paid for and stays in your context, re-read on every later
+  turn.
 - **Safety:** you run with permissions pre-approved, and hivey's safety hooks block destructive
   commands, history rewrites and secret access. When one blocks you (or a command fails with
   a permission error), stop and ask the user. Never work around a block, and never turn safety

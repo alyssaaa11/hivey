@@ -14,16 +14,17 @@ usage: hivey hibernate                 hibernated agents, and how long the other
                                        CLAUDE.md, CLI version or autocompact setting)
        hivey hibernate restart all     restart every running agent of this session, each once it
                                        is idle (hibernated ones are left: waking starts them fresh)
-  hivey stops agents idle for the configured days by itself (default 2; hivey settings →
+  hivey stops agents idle for the configured time by itself (default 2 days; hivey settings →
   hibernate, a space's right-click menu → Settings…, or hivey agent-settings). Opening a
   hibernated agent's space resumes it, and so does a message sent to it.";
 
 const SETTINGS_HELP: &str = "\
-usage: hivey agent-settings [<space>] [--hibernate DAYS|off|default] [--autocompact TOKENS|auto|off|default]
+usage: hivey agent-settings [<space>] [--hibernate 2h|DAYS|off|default] [--autocompact TOKENS|auto|off|default]
   Without <space>: the defaults for every agent. With it (a swarm or agent slug): that
   space's own settings, where `default` goes back to the defaults. No flags: show them.
-  --hibernate DAYS   stop an agent idle this many days to free its memory, and resume it
-                     when its space is opened again (default: 2; off: never)
+  --hibernate TIME   stop an agent idle this long to free its memory (e.g. 2h for hours, 3 or 3d
+                     for days), and resume it when its space is opened again or a message
+                     reaches it (default: 2 days; off: never)
   --autocompact TOKENS
                      Claude Code's auto-compact window (100k to 1M, e.g. 400k, or auto),
                      typed into each Claude agent as /autocompact when it starts or this
@@ -148,11 +149,11 @@ pub(in crate::cli) fn run_agent_settings(args: &[String]) -> std::io::Result<i32
         eprintln!("`default` is for a space's own settings: hivey agent-settings <space> …");
         return Ok(2);
     }
-    let days = match hibernate.as_deref().filter(|v| *v != "default") {
-        Some(text) => match settings::parse_days(text) {
-            Some(days) => Some(days),
+    let hours = match hibernate.as_deref().filter(|v| *v != "default") {
+        Some(text) => match settings::parse_hibernate(text) {
+            Some(hours) => Some(hours),
             None => {
-                eprintln!("--hibernate takes days (e.g. 2), off or default");
+                eprintln!("--hibernate takes hours (e.g. 2h), days (e.g. 2), off or default");
                 return Ok(2);
             }
         },
@@ -174,9 +175,9 @@ pub(in crate::cli) fn run_agent_settings(args: &[String]) -> std::io::Result<i32
         settings::update(|all| {
             let layer = all.layer_mut(space);
             if reset(&hibernate) {
-                layer.hibernate_days = None;
-            } else if days.is_some() {
-                layer.hibernate_days = days;
+                layer.set_hibernate(None);
+            } else if hours.is_some() {
+                layer.set_hibernate(hours);
             }
             if reset(&compact) {
                 layer.autocompact = None;
@@ -201,10 +202,8 @@ fn print_settings(all: &settings::AgentSettings, space: Option<&str>) {
             " (default)"
         }
     };
-    let Layer {
-        hibernate_days,
-        autocompact,
-    } = own;
+    let own_hibernate = own.hibernate();
+    let Layer { autocompact, .. } = own;
     println!(
         "{}",
         space.map_or("defaults for every agent".to_string(), |s| format!(
@@ -213,8 +212,8 @@ fn print_settings(all: &settings::AgentSettings, space: Option<&str>) {
     );
     println!(
         "  hibernate after: {}{}",
-        settings::days_label(effective.hibernate_days),
-        mark(hibernate_days.is_some())
+        settings::hours_label(effective.hibernate_hours),
+        mark(own_hibernate.is_some())
     );
     println!(
         "  autocompact:     {}{}",

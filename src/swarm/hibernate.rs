@@ -1,5 +1,5 @@
-//! hivey: hibernation. An agent that stays idle for the configured days (hivey settings →
-//! hibernate, or a space's own Settings…; default 2, see `agent_settings`) is stopped to free
+//! hivey: hibernation. An agent that stays idle for the configured hours (hivey settings →
+//! hibernate, or a space's own Settings…; default 48, see `agent_settings`) is stopped to free
 //! its memory: its foreground process group (the agent CLI and its MCP servers) gets SIGTERM,
 //! the pane keeps its shell, place and name. Opening its space again resumes it with the same
 //! conversation (`claude --resume <id>` plus its launch flags), on the CLI version installed
@@ -29,7 +29,7 @@ const TICK: Duration = Duration::from_secs(1);
 const SCAN_EVERY: Duration = Duration::from_secs(60);
 /// After SIGTERM, how long an agent gets to exit before SIGKILL.
 const KILL_AFTER: Duration = Duration::from_secs(15);
-const DAY_MS: u64 = 24 * 3600 * 1000;
+const HOUR_MS: u64 = 3600 * 1000;
 /// "restart agents" restarts this many idle agents per second, so they don't all start at once.
 const RESTARTS_PER_TICK: usize = 2;
 /// Wait for a woken agent to be ready for input.
@@ -478,9 +478,9 @@ fn scan(api_tx: &ApiRequestSender, agents: &[AgentInfo], active: Option<&str>) {
                 continue;
             }
             let slug = super::agent_settings::space_slug(&info.workspace_id);
-            let days = settings.effective(slug.as_deref()).hibernate_days;
+            let hours = settings.effective(slug.as_deref()).hibernate_hours;
             let looking = info.focused || active == Some(info.workspace_id.as_str());
-            if days > 0 && !looking && now.saturating_sub(since) >= u64::from(days) * DAY_MS {
+            if hours > 0 && !looking && now.saturating_sub(since) >= u64::from(hours) * HOUR_MS {
                 candidates.push((info.clone(), false, false));
             }
         }

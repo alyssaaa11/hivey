@@ -476,8 +476,9 @@ impl ClientShellState {
             let layer = all.layer_mut(space.as_deref());
             match section {
                 ClientSettingsSection::Hibernate => {
-                    layer.hibernate_days =
-                        index.and_then(|i| agent::HIBERNATE_CHOICES.get(i).copied());
+                    layer.set_hibernate(
+                        index.and_then(|i| agent::HIBERNATE_CHOICES.get(i).copied()),
+                    );
                 }
                 _ => {
                     layer.autocompact =
@@ -489,12 +490,12 @@ impl ClientShellState {
             Ok(saved) => {
                 let effective = saved.effective(space.as_deref());
                 let what = match section {
-                    ClientSettingsSection::Hibernate if effective.hibernate_days == 0 => {
+                    ClientSettingsSection::Hibernate if effective.hibernate_hours == 0 => {
                         "agents are never hibernated".to_string()
                     }
                     ClientSettingsSection::Hibernate => format!(
                         "agents idle {} are hibernated",
-                        agent::days_label(effective.hibernate_days)
+                        agent::hours_label(effective.hibernate_hours)
                     ),
                     _ => match effective.autocompact.flag_value() {
                         None => "Claude agents keep their own auto-compact window".to_string(),
@@ -981,20 +982,20 @@ pub(super) fn agent_setting_choices(
         if section == ClientSettingsSection::Hibernate {
             let labels = agent::HIBERNATE_CHOICES
                 .iter()
-                .map(|days| match days {
+                .map(|hours| match hours {
                     0 => "off   never hibernate".to_string(),
-                    days => format!("after {} idle", agent::days_label(*days)),
+                    hours => format!("after {} idle", agent::hours_label(*hours)),
                 })
                 .collect();
             let value = if space.is_some() {
-                own.hibernate_days
+                own.hibernate()
             } else {
-                Some(defaults.hibernate_days)
+                Some(defaults.hibernate_hours)
             };
             (
                 labels,
-                value.map(|days| agent::HIBERNATE_CHOICES.iter().position(|d| *d == days)),
-                agent::days_label(defaults.hibernate_days),
+                value.map(|hours| agent::HIBERNATE_CHOICES.iter().position(|h| *h == hours)),
+                agent::hours_label(defaults.hibernate_hours),
             )
         } else {
             let labels = agent::AUTOCOMPACT_CHOICES

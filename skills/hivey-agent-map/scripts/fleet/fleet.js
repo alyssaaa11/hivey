@@ -342,11 +342,27 @@ const roomView = { yaw: 0, pitch: 0, zoom: 0 };
 let roomDragged = false;
 const TONE_RGB = { working: '74 222 128', needs: '250 204 21', done: '56 189 248', idle: '148 163 184', closed: '139 92 246' };
 const TONE_LABEL = { working: 'Running', needs: 'Needs you', done: 'Done', idle: 'Idle', closed: 'Closed' };
-function roomTile(a) {
+function roomTile(a, sub = false) {
   const t = tone(a);
-  return `<button class="tile ${t}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
-    <span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(a.name)}</span>
-    <span class="sl"><i></i>${TONE_LABEL[t]}</span></button>`;
+  const label = sub ? (a.name.split(' · ').slice(1).join(' · ') || a.name) : a.name;
+  return `<button class="tile ${t}${sub ? ' sub' : ''}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
+    <span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(label)}</span>
+    <span class="sl"><i></i>${sub ? '' : TONE_LABEL[t]}</span></button>`;
+}
+// sessions of the same agent ("ceo", "ceo · session 2", …) stay together: one stack, the most
+// urgent on top and the others joined under it as small rows
+const baseName = a => a.name.split(' · ')[0];
+function roomGroups(here) {
+  const m = new Map();
+  here.forEach(a => { const k = baseName(a); if (!m.has(k)) m.set(k, []); m.get(k).push(a); });
+  return [...m.values()];  // here is already sorted, so groups and their members keep that order
+}
+function roomCluster(g) {
+  if (g.length === 1) return roomTile(g[0]);
+  const rows = g.length + 1;  // half-height rows: the top tile takes 2, each other session 1
+  return `<div class="cluster ${tone(g[0])}" style="grid-row:span ${rows}">
+    <span class="cnt">×${g.length}</span>${roomTile(g[0])}
+    <div class="subs">${g.slice(1).map(a => roomTile(a, true)).join('')}</div></div>`;
 }
 function roomStage(a) {
   if (!a) return `<div class="stage empty"><div class="hint">Pick an agent on the walls</div></div>`;
@@ -456,8 +472,10 @@ function renderRoom() {
   const counts = Object.fromEntries(ROOM_TABS.map(([k]) => [k, list.filter(a => roomOf(a) === k).length]));
   const here = list.filter(a => roomOf(a) === ui.roomTab).sort((x, y) => order[tone(x)] - order[tone(y)] || x.name.localeCompare(y.name));
   if (roomPick && !here.some(a => a.id === roomPick)) roomPick = null;
-  // nearest the pedestal first: even places on the left wall, odd on the right
-  const left = here.filter((_, i) => i % 2 === 0), right = here.filter((_, i) => i % 2 === 1);
+  // whole groups go to a wall, nearest the pedestal first, to whichever wall has fewer agents so far
+  const left = [], right = [];
+  let nl = 0, nr = 0;
+  roomGroups(here).forEach(g => { if (nl <= nr) { left.push(g); nl += g.length; } else { right.push(g); nr += g.length; } });
   const pick = here.find(a => a.id === roomPick);
   const room = $('#room');
   const typed = $('#chatin')?.value;  // a refresh must not lose what you are typing
@@ -468,10 +486,10 @@ function renderRoom() {
     <div class="scene${pick ? ' has' : ''}" style="--rx:${roomTilt.x + roomView.pitch}deg;--ry:${roomTilt.y + roomView.yaw}deg;--rz:${roomView.zoom}px${pick ? `;--fc:${TONE_RGB[tone(pick)]}` : ''}">
       <div class="shell"><div class="ceiling"></div><div class="backwall"></div><div class="floor"></div></div>
       <div class="rig">
-        <div class="wall left">${left.map(roomTile).join('')}</div>
+        <div class="wall left">${left.map(roomCluster).join('')}</div>
         <div class="center${pick ? ' ' + tone(pick) : ''}"><div class="beam"></div><div class="parts">${PARTS}</div>
           ${roomStage(pick)}<div class="pedestal"><i></i><i></i><i></i><i></i></div></div>
-        <div class="wall right">${right.map(roomTile).join('')}</div>
+        <div class="wall right">${right.map(roomCluster).join('')}</div>
       </div>
       ${here.length ? '' : `<div class="nobody">No ${ui.roomTab} agents</div>`}
       <div class="rhint">drag to look around · wheel to move closer · double-click the floor to reset</div>

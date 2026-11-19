@@ -406,7 +406,7 @@ pub(super) enum ClientSettingsSection {
     Skills,
     // hivey: the safety hooks (on/off)
     Safety,
-    // hivey: after how many idle days agents are hibernated (all, or one space's)
+    // hivey: after how long idle agents are hibernated (all, or one space's)
     Hibernate,
     // hivey: Claude agents' auto-compact window, typed in as /autocompact (all, or one space's)
     Compact,

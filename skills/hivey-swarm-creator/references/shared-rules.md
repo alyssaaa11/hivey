@@ -5,6 +5,10 @@ Always end your final response with `DONE: <3 words max>` on its own line (e.g. 
 stop hooks`). hivey's Stop hook reads it as the run's summary and speaks it for masters and solo
 agents; swarm workers stay silent.
 
+Reports stay in files: never print a report or its contents in your reply or the terminal. Write it
+to its file and reply with only its path, at most 3 one-line highlights and `DONE:`. Every printed word
+is paid for and stays in your context, re-read on every later turn.
+
 # Messages
 
 Every message wakes someone and costs their turn. Send only what the other agent must act on:

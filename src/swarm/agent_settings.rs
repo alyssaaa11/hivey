@@ -2,15 +2,16 @@
 //! space (`~/.hivey/agent-settings.json`). Set in hivey settings → hibernate / autocompact (the
 //! defaults), a space's right-click menu → Settings… (its overrides) and `hivey agent-settings`.
 //!
-//! - `hibernate_days`: an agent idle this many days is stopped to free its memory and resumed
-//!   (same conversation, latest CLI) when its space is opened again; 0 = never. Default: 2.
+//! - `hibernate_hours`: an agent idle this many hours is stopped to free its memory and resumed
+//!   (same conversation, latest CLI) when its space is opened again; 0 = never. Default: 48.
+//!   Older files say `hibernate_days`, still read (× 24) until the layer is set again.
 //! - `autocompact`: Claude Code's auto-compact window, passed to each Claude agent as
 //!   `--autocompact <tokens|auto>` when hivey starts or resumes it (launch, new session, wake
 //!   from hibernation, restart, resume after a hivey restart). The flag lasts for that session
 //!   only, so Claude's own settings are not touched. `off` (the default) passes nothing.
 //!
 //! ```json
-//! { "default": { "hibernate_days": 2 },
+//! { "default": { "hibernate_hours": 2 },
 //!   "spaces": { "pharma-assets": { "autocompact": "400000" } } }
 //! ```
 
@@ -20,10 +21,12 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
-/// Days an agent may stay idle before it is hibernated, unless set otherwise.
-pub(crate) const DEFAULT_HIBERNATE_DAYS: u32 = 2;
-/// The day choices the settings offer (0 = off).
-pub(crate) const HIBERNATE_CHOICES: &[u32] = &[0, 1, 2, 3, 5, 7, 14];
+/// Hours an agent may stay idle before it is hibernated, unless set otherwise.
+pub(crate) const DEFAULT_HIBERNATE_HOURS: u32 = 48;
+/// The hour choices the settings offer (0 = off).
+pub(crate) const HIBERNATE_CHOICES: &[u32] = &[0, 1, 2, 4, 8, 24, 48, 72, 120, 168, 336];
+/// The longest idle time `--hibernate` takes: a year.
+const HIBERNATE_MAX_HOURS: u32 = 365 * 24;
 /// The auto-compact choices the settings offer.
 pub(crate) const AUTOCOMPACT_CHOICES: &[AutoCompact] = &[
     AutoCompact::Off,
@@ -184,6 +187,9 @@ impl TryFrom<String> for AutoCompact {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Layer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hibernate_hours: Option<u32>,
+    /// Older files: the idle time in days. Read through `hibernate()`, cleared by `set_hibernate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hibernate_days: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub autocompact: Option<AutoCompact>,
@@ -191,7 +197,18 @@ pub(crate) struct Layer {
 
 impl Layer {
     fn is_empty(&self) -> bool {
-        self.hibernate_days.is_none() && self.autocompact.is_none()
+        self.hibernate().is_none() && self.autocompact.is_none()
+    }
+
+    /// This layer's idle hours before hibernation, if it sets them.
+    pub(crate) fn hibernate(&self) -> Option<u32> {
+        self.hibernate_hours
+            .or(self.hibernate_days.map(|days| days.saturating_mul(24)))
+    }
+
+    pub(crate) fn set_hibernate(&mut self, hours: Option<u32>) {
+        self.hibernate_hours = hours;
+        self.hibernate_days = None;
     }
 }
 
@@ -212,7 +229,7 @@ pub(crate) struct AgentSettings {
 /// What applies to one space after the layers are merged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Effective {
-    pub hibernate_days: u32,
+    pub hibernate_hours: u32,
     pub autocompact: AutoCompact,
 }
 
@@ -220,10 +237,10 @@ impl AgentSettings {
     pub(crate) fn effective(&self, slug: Option<&str>) -> Effective {
         let space = slug.and_then(|slug| self.spaces.get(slug));
         Effective {
-            hibernate_days: space
-                .and_then(|layer| layer.hibernate_days)
-                .or(self.default.hibernate_days)
-                .unwrap_or(DEFAULT_HIBERNATE_DAYS),
+            hibernate_hours: space
+                .and_then(Layer::hibernate)
+                .or(self.default.hibernate())
+                .unwrap_or(DEFAULT_HIBERNATE_HOURS),
             autocompact: space
                 .and_then(|layer| layer.autocompact)
                 .or(self.default.autocompact)
@@ -311,11 +328,14 @@ pub(crate) fn update(change: impl FnOnce(&mut AgentSettings)) -> std::io::Result
 }
 
 /// "2 days", "1 day", "off".
-pub(crate) fn days_label(days: u32) -> String {
-    match days {
+/// "off", "2 hours", "1 day", "3 days", "30 hours".
+pub(crate) fn hours_label(hours: u32) -> String {
+    match hours {
         0 => "off".into(),
-        1 => "1 day".into(),
-        n => format!("{n} days"),
+        1 => "1 hour".into(),
+        24 => "1 day".into(),
+        n if n % 24 == 0 => format!("{} days", n / 24),
+        n => format!("{n} hours"),
     }
 }
 
@@ -337,17 +357,26 @@ fn tokens_label(tokens: u64) -> String {
 }
 
 /// Days from "2", "2d", "off", "0", "never".
-pub(crate) fn parse_days(text: &str) -> Option<u32> {
+/// `--hibernate` values: "off", "2h", "90m" is not taken; "2" or "2d" are days (as before).
+pub(crate) fn parse_hibernate(text: &str) -> Option<u32> {
     let text = text.trim().to_ascii_lowercase();
     if matches!(text.as_str(), "off" | "never" | "no") {
         return Some(0);
     }
-    let digits = text
-        .trim_end_matches("days")
-        .trim_end_matches("day")
-        .trim_end_matches('d')
-        .trim();
-    digits.parse().ok().filter(|days| *days <= 365)
+    let hours_unit = ["hours", "hour", "hrs", "hr", "h"]
+        .iter()
+        .find_map(|unit| text.strip_suffix(unit));
+    let hours = match hours_unit {
+        Some(digits) => digits.trim().parse::<u32>().ok()?,
+        None => {
+            let digits = ["days", "day", "d"]
+                .iter()
+                .find_map(|unit| text.strip_suffix(unit))
+                .unwrap_or(&text);
+            digits.trim().parse::<u32>().ok()?.checked_mul(24)?
+        }
+    };
+    Some(hours).filter(|hours| *hours <= HIBERNATE_MAX_HOURS)
 }
 
 #[cfg(test)]
@@ -372,20 +401,20 @@ mod tests {
         assert_eq!(
             settings.effective(Some("x")),
             Effective {
-                hibernate_days: DEFAULT_HIBERNATE_DAYS,
+                hibernate_hours: DEFAULT_HIBERNATE_HOURS,
                 autocompact: AutoCompact::Off
             }
         );
         settings.default.autocompact = Some(AutoCompact::Tokens(200_000));
-        settings.layer_mut(Some("x")).hibernate_days = Some(0);
+        settings.layer_mut(Some("x")).set_hibernate(Some(0));
         assert_eq!(
             settings.effective(Some("x")),
             Effective {
-                hibernate_days: 0,
+                hibernate_hours: 0,
                 autocompact: AutoCompact::Tokens(200_000)
             }
         );
-        assert_eq!(settings.effective(Some("y")).hibernate_days, 2);
+        assert_eq!(settings.effective(Some("y")).hibernate_hours, 48);
         assert_eq!(
             settings.effective(None).autocompact,
             AutoCompact::Tokens(200_000)
@@ -413,11 +442,11 @@ mod tests {
 
     #[test]
     fn parses_labels_and_commands() {
-        assert_eq!(parse_days("2"), Some(2));
-        assert_eq!(parse_days("3d"), Some(3));
-        assert_eq!(parse_days("7 days"), Some(7));
-        assert_eq!(parse_days("off"), Some(0));
-        assert_eq!(parse_days("x"), None);
+        assert_eq!(parse_hibernate("2"), Some(48));
+        assert_eq!(parse_hibernate("3d"), Some(72));
+        assert_eq!(parse_hibernate("7 days"), Some(168));
+        assert_eq!(parse_hibernate("off"), Some(0));
+        assert_eq!(parse_hibernate("x"), None);
         assert_eq!(
             AutoCompact::parse("400k"),
             Some(AutoCompact::Tokens(400_000))
@@ -456,7 +485,28 @@ mod tests {
             claude_args_for_space("codex", &args(&["--x"]), None),
             args(&["--x"])
         );
-        assert_eq!(days_label(1), "1 day");
-        assert_eq!(days_label(0), "off");
+        assert_eq!(hours_label(1), "1 hour");
+        assert_eq!(hours_label(2), "2 hours");
+        assert_eq!(hours_label(48), "2 days");
+        assert_eq!(hours_label(0), "off");
+    }
+
+    #[test]
+    fn hibernate_takes_hours_and_still_reads_days() {
+        assert_eq!(parse_hibernate("2h"), Some(2));
+        assert_eq!(parse_hibernate("3 hours"), Some(3));
+        assert_eq!(parse_hibernate("2"), Some(48));
+        assert_eq!(parse_hibernate("1d"), Some(24));
+        assert_eq!(parse_hibernate("off"), Some(0));
+        assert_eq!(parse_hibernate("x"), None);
+        assert_eq!(parse_hibernate("400d"), None);
+        let old: Layer = serde_json::from_str(r#"{"hibernate_days":3}"#).expect("old layer");
+        assert_eq!(old.hibernate(), Some(72));
+        let mut layer = old;
+        layer.set_hibernate(Some(2));
+        assert_eq!(
+            serde_json::to_string(&layer).expect("layer json"),
+            r#"{"hibernate_hours":2}"#
+        );
     }
 }
