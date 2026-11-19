@@ -11,6 +11,9 @@ pub(super) enum ClientGlobalMenuAction {
     /// hivey: open the agent fleet, what every live agent does now, with the agent jobs pages
     /// (scheduled and background jobs) in its Jobs tab (`hivey agent-map fleet`)
     AgentFleet,
+    /// hivey: the self-improve page: the learning loop, patterns found, the Wednesday review
+    /// with yes/no buttons and AI updates (`hivey evolve open`)
+    SelfImprove,
     /// hivey: restart every agent of the session (each once idle) to pick up updates; the
     /// first click arms it, the second runs `hivey hibernate restart all`
     RestartAgents,
@@ -77,6 +80,7 @@ pub(super) fn global_menu_items(
     ));
     if AGENT_MAP_SUPPORTED {
         items.push(("agent fleet", ClientGlobalMenuAction::AgentFleet));
+        items.push(("self-improve", ClientGlobalMenuAction::SelfImprove));
     }
     items.push((
         if RESTART_ARMED.load(std::sync::atomic::Ordering::Relaxed) {
@@ -171,6 +175,12 @@ impl ClientShellState {
                 outcome.actions.push(ClientShellAction::RunHivey(vec![
                     "agent-map".to_string(),
                     "fleet".to_string(),
+                ]))
+            }
+            ClientGlobalMenuAction::SelfImprove => {
+                outcome.actions.push(ClientShellAction::RunHivey(vec![
+                    "evolve".to_string(),
+                    "open".to_string(),
                 ]))
             }
             ClientGlobalMenuAction::RestartAgents => {

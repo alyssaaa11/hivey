@@ -8,6 +8,7 @@ use crate::api::schema::{Method, PaneTarget, Request};
 use crate::swarm::SwarmParams;
 
 mod agent_map;
+mod evolve;
 mod agent_settings;
 mod claude_md;
 mod cloud;
@@ -26,6 +27,7 @@ mod skills;
 mod slack;
 mod voice;
 pub(super) use agent_map::run as run_agent_map_command;
+pub(super) use evolve::run as run_evolve_command;
 pub(super) use agent_settings::{run_agent_settings, run_hibernate};
 pub(super) use claude_md::run as run_claude_md_command;
 pub(super) use cloud::run as run_cloud_command;

@@ -175,6 +175,9 @@ main{position:relative}
 #jobs{display:none;background:#fff}
 #jobs iframe{display:block;width:100%;height:calc(100vh - 70px);border:0}
 body.v-jobs .search{visibility:hidden}
+#evolve{background:#f3f7f5}
+body.v-evolve .search{visibility:hidden}
+body.v-evolve #inbox{display:none}
 /* failing scheduled jobs, live from /hv-job-health: a banner over the jobs pages and a count on the tab */
 #jobhealth{background:var(--bg);color:var(--text);padding:10px 18px;border-bottom:1px solid var(--line);max-height:46vh;overflow:auto}
 #jobhealth:empty{display:none}
@@ -485,6 +488,7 @@ td.j{max-width:420px}
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
     <button data-v="jobs" title="Agent jobs: scheduled and background jobs, their map, spend, logs and sessions (4)">📊 Jobs</button>
     <button data-v="dash" title="Dashboards your agents keep: one place to open them all (5)">🖥 Dashboards</button>
+    <button data-v="evolve" title="Self-improve: what should change in how we work, and whether hivey is learning (6)">🔁 Self-improve</button>
   </div>
   <button class="iconbtn" id="music" title="Background music on/off (m)">🔇</button>
   <button class="iconbtn" id="refresh" title="Read every terminal and session log again now (r)">⟳</button>
@@ -539,6 +543,7 @@ td.j{max-width:420px}
   <section id="board"></section>
   <section id="list"></section>
   <section id="dash"></section>
+  <section id="evolve" style="display:none"><iframe id="evolveframe" title="Self-improve" style="width:100%;border:0;display:block"></iframe></section>
   <section id="jobs"><div id="jobhealth"></div><iframe id="jobsframe" title="Agent jobs"></iframe></section>
 </main>
 <aside id="drawer"></aside>

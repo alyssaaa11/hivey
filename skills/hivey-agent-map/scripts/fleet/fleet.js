@@ -25,7 +25,7 @@ let data = null, agents = [], selected = null;
 // settings saved before the rename (the page was the agent office) carry over
 const ui = JSON.parse(localStorage.getItem('hv-fleet-ship') || localStorage.getItem('hv-' + 'off' + 'ice-ship') || '{}');
 // the 3D spaceship view is switched off: its code stays, but no tab or key opens it
-const VIEWS = ['room', 'board', 'list', 'jobs', 'dash'];
+const VIEWS = ['room', 'board', 'list', 'jobs', 'dash', 'evolve'];
 if (!VIEWS.includes(ui.view)) ui.view = 'room';
 ui.roomTab ||= 'running';
 let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
@@ -1248,6 +1248,7 @@ function renderAll() {
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
   showJobs();
   showDash();
+  showEvolve();
   if (ui.view === 'fleet') { fleet.build(agents.filter(visible), data.sessions); fleet.resize(); }
   if (ui.view === 'room') renderRoom();
   if (ui.view === 'board') renderBoard();
@@ -1269,6 +1270,20 @@ function showJobs() {
   }
   fitJobs();
 }
+// 🔁 Self-improve: the hivey-evolve page in a frame; /hv-evolve starts its server when needed and redirects
+function showEvolve() {
+  const on = ui.view === 'evolve', frame = $('#evolveframe');
+  document.body.classList.toggle('v-evolve', on);
+  $('#evolve').style.display = on ? 'block' : 'none';
+  if (!on) return;
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/hv-evolve'; }
+  fitEvolve();
+}
+function fitEvolve() {
+  const frame = $('#evolveframe');
+  if (ui.view === 'evolve') frame.style.height = Math.max(420, innerHeight - frame.getBoundingClientRect().top - 8) + 'px';
+}
+addEventListener('resize', fitEvolve);
 // 🖥 Dashboards: the dashboards your agents keep, listed on the left; the one you pick shows in a frame on the
 // right. One list on the fleet server (fleet-settings.json), so every browser sees it; agents add theirs from
 // the shell with `hivey agent-map dashboard add NAME URL` (hivey-dashboards skill). A dashboard with a login
@@ -1699,7 +1714,7 @@ addEventListener('keydown', e => {
   if (e.target.matches('input')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
   else if (e.key === 'Escape') { if (roomChat) closeChat(); else closeDrawer(); }
-  else if (e.key >= '1' && e.key <= '5') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
+  else if (e.key >= '1' && e.key <= '6') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
   else if (e.key === 'r') refreshNow();
   else if (e.key === 'f') fleet.fit();
   else if (e.key === 't') toggleStyle();
