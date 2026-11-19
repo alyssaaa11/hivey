@@ -52,6 +52,7 @@ rustPlatform.buildRustPackage {
         ../Cargo.lock
         ../Cargo.toml
         ../hooks
+        ../plugins/skills/skills.md
         ../skills
       ]
     );
