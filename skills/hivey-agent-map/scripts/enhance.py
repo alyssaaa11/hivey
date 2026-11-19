@@ -88,7 +88,7 @@ def nav(active: str, generated: str, days: int = 7) -> str:
     toggle = (f'<span class="hv-span"><a href="{active if day else DAY_DIR + "/" + active}"{" class=on" if day else ""}>24 h</a>'
               f'<a href="{"../" + active if day else active}"{"" if day else " class=on"}>7 days</a></span>')
     # back to the fleet page (it shows these pages in its Jobs tab, where the link hides itself)
-    fleet = ('<a class="hv-fleet" href="/fleet/?view=fleet" target="_top" title="The hivey fleet: every live agent now">'
+    fleet = ('<a class="hv-fleet" href="/fleet/?view=board" target="_top" title="The hivey fleet: every live agent now">'
              '🚀 Fleet</a><script>if(window.top!==window)document.currentScript.previousElementSibling.remove()</script>')
     return (f'<nav class="hv-nav">{fleet}{items}{toggle}<span class="hv-when">scan {when}</span>'
             '<button class="hv-refresh" type="button" title="Scan again now and reload (free: no model run)" '

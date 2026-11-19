@@ -136,7 +136,24 @@ main{position:relative}
 @keyframes wave{0%,60%,100%{transform:rotate(0)}70%{transform:rotate(-12deg)}85%{transform:rotate(10deg)}}
 .name{font-weight:650;font-size:14.5px}
 .meta{color:var(--muted);font-size:11.5px}
-.card .say{margin:11px 0 8px;padding:8px 10px;border-radius:11px;background:var(--panel2);font-size:13px}
+.card .say{margin:11px 0 8px;padding:9px 11px;border-radius:11px;background:#eef2f8;color:#141a26;font-size:13px;font-weight:500}
+/* working: a soft green glow drifts across the card; needs you: amber */
+.card.working,.card.blocked,.card.asks{background-size:300% 300%;animation:drift 6s ease-in-out infinite}
+.card.working{background-image:linear-gradient(120deg,var(--panel) 20%,rgba(74,222,128,.16) 50%,var(--panel) 80%);border-color:rgba(74,222,128,.5)}
+.card.blocked,.card.asks{background-image:linear-gradient(120deg,var(--panel) 20%,rgba(250,204,21,.2) 50%,var(--panel) 80%);border-color:rgba(250,204,21,.6);box-shadow:0 0 0 1px rgba(250,204,21,.25)}
+.card.blocked{animation-duration:3s}
+.card.working .say{background:#e7f8ec}
+.card.blocked .say,.card.asks .say{background:#fdf6dc}
+@keyframes drift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@media (prefers-reduced-motion:reduce){.card.working,.card.blocked,.card.asks{animation:none;background-position:50% 50%}}
+.jobrow{display:flex;align-items:center;gap:7px;margin:7px 0;font-size:12px}
+.jobrow .jn{white-space:nowrap;max-width:40%;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+.jobrow .bar{flex:1;height:6px;border-radius:9px;background:#0e131c;overflow:hidden}
+.jobrow .bar i{display:block;height:100%;border-radius:9px;background:var(--done);transition:width .6s cubic-bezier(.3,1.4,.5,1)}
+.jobrow .jc{color:var(--muted);white-space:nowrap}
+.jobrow.fin .jn:after{content:" ✓";color:var(--done)}
+.jobrow .jlink{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:11.5px;color:var(--text);cursor:pointer;white-space:nowrap}
+.jobrow .jlink:hover{border-color:var(--done)}
 .card .job{font-size:12.5px;margin:6px 0}
 .card ul{margin:4px 0 6px;padding:0;list-style:none;font-size:12px;color:#c7d0de}
 .card li:before{content:"✓ ";color:var(--done)}
@@ -284,6 +301,163 @@ td.j{max-width:420px}
 .flash{animation:flash 1.4s ease-out}
 @keyframes flash{0%,30%,60%{box-shadow:0 0 0 2px #ffd36a,0 0 28px 6px rgba(127,232,255,.75);background-color:rgba(127,232,255,.12)}15%,45%,75%{box-shadow:0 0 0 1px #7fe8ff,0 0 10px 2px rgba(255,211,106,.4)}100%{box-shadow:none}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+
+/* approve / deny / change, chat and voice on the agent in the middle */
+.holo .decide{display:flex;gap:6px;justify-content:center;margin:10px 0 2px}
+.holo .decide button{flex:1;padding:7px 8px;border-radius:10px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;color:#0b1020;border:0;transition:transform .12s,filter .12s}
+.holo .decide button:hover{transform:translateY(-1px);filter:brightness(1.1)}
+.holo .decide button:disabled{opacity:.7;cursor:default;transform:none}
+.holo .decide [data-say=approve]{background:#4ade80;box-shadow:0 0 16px rgba(74,222,128,.55)}
+.holo .decide [data-say=deny]{background:#fb7185;box-shadow:0 0 16px rgba(251,113,133,.5)}
+.holo .decide [data-say=change]{background:#e2e8f0}
+.holo .talk{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.holo .talk button{background:rgba(var(--c)/.12);border:1px solid rgba(var(--c)/.5);color:var(--text);border-radius:8px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
+.holo .talk button:hover{background:rgba(var(--c)/.25)}
+.rtabs .vt{margin-left:10px}
+.rtabs .vt.on{border-color:#38bdf8;box-shadow:0 0 12px rgba(56,189,248,.3)}
+#room.chatting .rig{--ty:-118px;--sc:.86}
+#room.chatting .scene{min-height:calc(100vh - 230px + 40px)}
+#chatdock .cyes,#chatdock .cno{font-weight:700;color:#05070d!important;border:0!important}
+#chatdock .cyes{background:#4ade80!important}#chatdock .cno{background:#fb7185!important}
+#chatdock{position:fixed;left:50%;bottom:14px;z-index:60;width:min(860px,calc(100vw - 32px));transform:translateX(-50%);perspective:900px;--c:56 189 248}
+#chatdock.working{--c:74 222 128}#chatdock.needs{--c:250 204 21}#chatdock.done{--c:56 189 248}#chatdock.idle{--c:148 163 184}
+#chatdock .console{transform:rotateX(7deg);transform-origin:50% 100%;border-radius:16px;overflow:hidden;
+  background:linear-gradient(#060a12,#03060c);border:1.5px solid rgba(var(--c)/.8);
+  box-shadow:0 0 40px rgba(var(--c)/.4),0 20px 60px rgba(0,0,0,.7),inset 0 0 30px rgba(var(--c)/.08);animation:dockin .35s cubic-bezier(.2,1.2,.4,1)}
+@keyframes dockin{from{opacity:0;transform:rotateX(40deg) translateY(60px)}}
+#chatdock .chead{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(var(--c)/.12);border-bottom:1px solid rgba(var(--c)/.35);font-size:12.5px}
+#chatdock .dots{display:flex;gap:5px}#chatdock .dots i{width:10px;height:10px;border-radius:50%;background:#fb7185}#chatdock .dots i:nth-child(2){background:#f5b83d}#chatdock .dots i:nth-child(3){background:#4ade80}
+#chatdock .cst{color:rgb(var(--c));margin-right:auto}
+#chatdock .chead button{background:none;border:1px solid rgba(var(--c)/.4);color:var(--text);border-radius:6px;padding:1px 8px;cursor:pointer;font:inherit}
+#chatdock .term{margin:0;height:min(200px,26vh);overflow:auto;padding:10px 12px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe8d6;white-space:pre-wrap;
+  background:repeating-linear-gradient(0deg,rgba(var(--c)/.04) 0 1px,transparent 1px 3px);text-shadow:0 0 4px rgba(var(--c)/.35)}
+#chatdock .cin{display:flex;gap:8px;align-items:center;padding:8px 10px;border-top:1px solid rgba(var(--c)/.35);background:rgba(255,255,255,.03)}
+#chatdock .pr{color:rgb(var(--c));font-weight:700}
+#chatdock input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:13px ui-monospace,Menlo,monospace}
+#chatdock .cin button{background:rgb(var(--c));color:#05070d;border:0;border-radius:8px;padding:5px 14px;font:inherit;font-weight:700;cursor:pointer}
+@media (prefers-reduced-motion:reduce){#chatdock .console{animation:none}}
+@media (max-width:820px){#chatdock .console{transform:none}#room.chatting .rig{--ty:0px;--sc:1}#room.chatting{padding-bottom:330px}}
+/* ---------- 3D command room ---------- */
+#room{display:none;padding:10px 16px 18px}
+.rtabs{display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap}
+.rtabs button{background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:5px 14px;font:inherit;font-size:13px;cursor:pointer}
+.rtabs button b{color:var(--text);margin-left:3px}
+.rtabs button.on{color:var(--text);border-color:#4ade80;box-shadow:0 0 14px rgba(74,222,128,.35),inset 0 0 10px rgba(74,222,128,.15)}
+.scene{--tile:118px;--rx:0deg;--ry:0deg;--rz:0px;cursor:grab;touch-action:pan-y;user-select:none;position:relative;min-height:calc(100vh - 230px);border-radius:22px;overflow:hidden;
+  perspective:1000px;perspective-origin:50% 42%;border:1px solid #1d2740;
+  background:radial-gradient(ellipse 45% 40% at 50% 46%,rgba(56,189,248,.18),transparent 70%),
+    radial-gradient(ellipse 90% 55% at 50% 108%,rgba(139,92,246,.32),transparent 70%),linear-gradient(#05070d,#0a0f1e 50%,#080b16);
+  box-shadow:inset 0 0 120px rgba(0,0,0,.8),inset 0 0 60px rgba(56,189,248,.06)}
+/* the room shell: ceiling with light strips, back wall with pillars, floor grid */
+.shell{position:absolute;inset:0;transform-style:preserve-3d;pointer-events:none;transform:translateZ(calc(var(--rz) * .5)) rotateX(calc(var(--rx) * .8)) rotateY(calc(var(--ry) * .8));transition:transform .25s ease-out}
+.ceiling{position:absolute;left:-40%;right:-40%;top:0;height:44%;transform:rotateX(-76deg);transform-origin:50% 0;
+  background:repeating-linear-gradient(90deg,transparent 0 140px,rgba(56,189,248,.5) 140px 144px,transparent 144px 150px),
+    linear-gradient(rgba(56,189,248,.12) 1px,transparent 1px) 0 0/80px 80px;
+  -webkit-mask:linear-gradient(#000,transparent 85%);mask:linear-gradient(#000,transparent 85%);filter:drop-shadow(0 0 6px rgba(56,189,248,.8))}
+.backwall{position:absolute;left:12%;right:12%;top:20%;height:44%;transform:translateZ(-380px);
+  background:linear-gradient(90deg,transparent,rgba(56,189,248,.08) 20%,rgba(56,189,248,.08) 80%,transparent),
+    repeating-linear-gradient(90deg,transparent 0 12.5%,rgba(56,189,248,.18) 12.5% calc(12.5% + 2px));
+  border-top:2px solid rgba(56,189,248,.45);border-bottom:2px solid rgba(139,92,246,.5);box-shadow:0 -10px 40px rgba(56,189,248,.25),0 10px 50px rgba(139,92,246,.3)}
+.floor{position:absolute;left:-40%;right:-40%;bottom:0;height:50%;transform:rotateX(78deg);transform-origin:50% 100%;
+  background:radial-gradient(ellipse 30% 40% at 50% 30%,rgba(var(--fc,56 189 248)/.35),transparent 70%),
+    linear-gradient(rgba(56,189,248,.25) 1px,transparent 1px) 0 0/60px 60px,linear-gradient(90deg,rgba(56,189,248,.25) 1px,transparent 1px) 0 0/60px 60px;
+  -webkit-mask:linear-gradient(transparent,#000 55%);mask:linear-gradient(transparent,#000 55%);animation:floorrun 6s linear infinite}
+@keyframes floorrun{to{background-position:0 0,0 60px,0 0}}
+/* the things you touch, tilted with the mouse */
+.rig{position:relative;z-index:1;display:grid;grid-template-columns:1fr minmax(300px,380px) 1fr;gap:14px;align-items:center;
+  min-height:calc(100vh - 232px);padding:26px 18px 46px;transform-style:preserve-3d;
+  transform:translateY(var(--ty,0px)) scale(var(--sc,1)) translateZ(var(--rz)) rotateX(var(--rx)) rotateY(var(--ry));transition:transform .25s ease-out;--c:56 189 248}
+.wall{position:relative;display:grid;grid-template-columns:repeat(auto-fill,var(--tile));grid-auto-rows:var(--tile);gap:12px;align-content:center;
+  max-height:calc(100vh - 300px);overflow:auto;padding:18px;border-radius:26px;scrollbar-width:thin;
+  background:linear-gradient(180deg,rgba(56,189,248,.07),rgba(10,14,26,.5));border:1px solid rgba(56,189,248,.28);border-top:3px solid rgba(56,189,248,.75);
+  box-shadow:inset 0 0 40px rgba(56,189,248,.08),0 0 30px rgba(56,189,248,.12);
+  -webkit-box-reflect:below 10px linear-gradient(transparent 78%,rgba(255,255,255,.12))}
+.wall.left{transform:rotateY(26deg) translateZ(-30px);transform-origin:100% 50%;direction:rtl}
+.wall.right{transform:rotateY(-26deg) translateZ(-30px);transform-origin:0 50%}
+.tile{position:relative;overflow:hidden;direction:ltr;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:8px 6px;border-radius:16px;cursor:pointer;
+  --c:148 163 184;color:var(--text);font:inherit;text-align:center;
+  background:linear-gradient(160deg,rgba(var(--c)/.26),rgba(8,12,22,.9) 68%);border:1.5px solid rgba(var(--c)/.8);
+  box-shadow:0 0 16px rgba(var(--c)/.35),inset 0 0 18px rgba(var(--c)/.18),inset 0 1px 0 rgba(255,255,255,.25);transition:transform .2s,box-shadow .2s}
+.tile:before{content:"";position:absolute;inset:0 0 55% 0;background:linear-gradient(rgba(255,255,255,.14),transparent);pointer-events:none}
+.tile:after{content:"";position:absolute;top:0;bottom:0;width:40%;left:-60%;transform:skewX(-20deg);background:linear-gradient(90deg,transparent,rgba(255,255,255,.18),transparent);pointer-events:none}
+.tile:hover:after{animation:sheen .8s ease-out}
+@keyframes sheen{to{left:130%}}
+.tile:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 8px 26px rgba(var(--c)/.6),inset 0 0 18px rgba(var(--c)/.25),inset 0 1px 0 rgba(255,255,255,.35)}
+.tile.picked{transform:scale(1.06);box-shadow:0 0 0 2px rgb(var(--c)),0 0 34px rgba(var(--c)/.85)}
+.tile .ic{font-size:30px;line-height:1;filter:drop-shadow(0 0 8px rgba(var(--c)/.85))}
+.tile .nm{font-size:12.5px;font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 0 8px rgba(var(--c)/.5)}
+.tile .sl,.stage .sl{display:flex;align-items:center;gap:5px;font-size:11px;color:rgb(var(--c))}
+.tile .sl i,.stage .sl i{width:7px;height:7px;border-radius:50%;background:rgb(var(--c));box-shadow:0 0 8px rgb(var(--c))}
+.working{--c:74 222 128}.needs{--c:250 204 21}.done{--c:56 189 248}.idle{--c:148 163 184}.closed{--c:139 92 246}
+.tile.closed{opacity:.75;filter:saturate(.7)}
+.tile.working{animation:tglow 2.4s ease-in-out infinite}.tile.needs{animation:tglow 1.3s ease-in-out infinite}
+@keyframes tglow{50%{box-shadow:0 0 30px rgba(var(--c)/.75),inset 0 0 24px rgba(var(--c)/.35),inset 0 1px 0 rgba(255,255,255,.3)}}
+/* the middle: pedestal, light beam, rising particles, the picked agent as a hologram */
+.center{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-height:460px;transform-style:preserve-3d;transform:translateZ(40px)}
+.beam{position:absolute;left:50%;bottom:44px;width:300px;height:78%;transform:translateX(-50%);pointer-events:none;
+  background:linear-gradient(0deg,rgba(var(--c)/.38),rgba(var(--c)/.08) 60%,transparent);clip-path:polygon(32% 100%,68% 100%,100% 0,0 0);filter:blur(2px);
+  opacity:.55;animation:beam 3.5s ease-in-out infinite}
+@keyframes beam{50%{opacity:.85}}
+.parts{position:absolute;left:50%;bottom:50px;width:220px;height:75%;transform:translateX(-50%);pointer-events:none}
+.parts i{position:absolute;bottom:0;width:3px;height:3px;border-radius:50%;background:rgb(var(--c));box-shadow:0 0 6px rgb(var(--c));opacity:0;animation:rise2 var(--d,4s) linear var(--w,0s) infinite}
+@keyframes rise2{10%{opacity:.9}100%{transform:translateY(-330px);opacity:0}}
+.stage{position:relative;z-index:2;width:100%}
+.stage.empty{height:330px;display:flex;align-items:center;justify-content:center}
+.stage.empty .hint{color:#7d8db0;font-size:13px;letter-spacing:.06em;padding:8px 16px;border:1px dashed #33425f;border-radius:999px;background:rgba(5,8,15,.6);animation:breathe 3s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.55}}
+.holo{position:relative;overflow:hidden;padding:20px 18px 16px;border-radius:26px;text-align:center;backdrop-filter:blur(6px);
+  background:linear-gradient(170deg,rgba(var(--c)/.24),rgba(6,10,20,.86) 42%);border:2px solid rgba(var(--c)/.9);
+  box-shadow:0 0 50px rgba(var(--c)/.5),inset 0 0 44px rgba(var(--c)/.2),inset 0 1px 0 rgba(255,255,255,.3);
+  animation:float 5s ease-in-out infinite;-webkit-box-reflect:below 70px linear-gradient(transparent 82%,rgba(255,255,255,.1))}
+.holo.fresh{animation:rise .5s cubic-bezier(.2,1.3,.4,1),float 5s ease-in-out .5s infinite}
+.holo:before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:repeating-linear-gradient(0deg,rgba(var(--c)/.07) 0 1px,transparent 1px 4px);mix-blend-mode:screen}
+.holo:after{content:"";position:absolute;top:-20%;bottom:-20%;width:35%;left:-50%;transform:skewX(-18deg);pointer-events:none;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.12),transparent);animation:sweep 5.5s ease-in-out 1s infinite}
+@keyframes sweep{0%,60%{left:-50%}100%{left:140%}}
+.holo>*{position:relative;z-index:1}
+@keyframes rise{from{opacity:0;transform:translateY(60px) scale(.85) rotateX(20deg);filter:blur(6px)}}
+@keyframes float{50%{transform:translateY(-7px)}}
+.bigav{position:relative;width:100px;height:100px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;font-size:54px;
+  background:radial-gradient(circle at 35% 30%,var(--hue1),var(--hue2));box-shadow:0 0 0 3px rgba(var(--c)/.75),0 0 40px rgba(var(--c)/.75),inset 0 -8px 18px rgba(0,0,0,.35)}
+.bigav[data-open]{cursor:pointer;transition:transform .2s,box-shadow .2s}
+.bigav[data-open]:hover{transform:scale(1.07);box-shadow:0 0 0 3px rgb(var(--c)),0 0 60px rgba(var(--c)/.95),inset 0 -8px 18px rgba(0,0,0,.35)}
+.bigav[data-open]:active{transform:scale(.97)}
+.bigav:after{content:"";position:absolute;inset:-9px;border-radius:50%;border:2px dashed rgba(var(--c)/.55);animation:spin 12s linear infinite}
+.holo .nm{font-size:21px;font-weight:800;text-shadow:0 0 14px rgba(var(--c)/.6)}
+.holo .sl{justify-content:center;font-size:12.5px;margin:4px 0 10px}
+.holo .say{padding:9px 11px;border-radius:12px;background:#eef2f8;color:#141a26;font-size:13px;font-weight:500;text-align:left;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.holo .need{margin:8px 0;padding:7px 9px;border-radius:9px;background:rgba(250,204,21,.14);border:1px solid rgba(250,204,21,.45);font-size:12.5px;text-align:left}
+.holo .job{font-size:12.5px;margin:8px 0;text-align:left}
+.holo .ctx{text-align:left}
+.holo .actions{justify-content:center}
+.pedestal{position:relative;width:310px;height:80px;margin-top:-10px;pointer-events:none;transform-style:preserve-3d}
+.pedestal i{position:absolute;left:50%;top:50%;border-radius:50%;transform:translate(-50%,-50%) rotateX(74deg);
+  border:2px solid rgba(var(--c)/.7);box-shadow:0 0 24px rgba(var(--c)/.65),inset 0 0 24px rgba(var(--c)/.45)}
+.pedestal i:nth-child(1){width:310px;height:310px;background:radial-gradient(rgba(10,16,30,.95) 55%,rgba(var(--c)/.25) 70%,transparent 72%)}
+.pedestal i:nth-child(2){width:240px;height:240px;border-style:dashed;animation:spin3 14s linear infinite}
+.pedestal i:nth-child(3){width:170px;height:170px;border-width:1px;animation:spin3 9s linear infinite reverse;border-style:dotted}
+.pedestal i:nth-child(4){width:110px;height:110px;background:radial-gradient(rgba(var(--c)/.6),transparent 70%);animation:pulse3 2.6s ease-in-out infinite}
+@keyframes spin3{to{transform:translate(-50%,-50%) rotateX(74deg) rotate(360deg)}}
+@keyframes pulse3{50%{width:140px;height:140px;opacity:.6}}
+.scene.dragging{cursor:grabbing}.scene.dragging .rig,.scene.dragging .shell{transition:none}
+.tile,.stage:not(.empty){cursor:pointer}.holo{cursor:default;user-select:text}.holo button,.holo .bigav{cursor:pointer;user-select:none}
+.rhint{position:absolute;left:0;right:0;bottom:8px;text-align:center;font-size:11px;color:#56668a;pointer-events:none;z-index:3}
+.nobody{position:absolute;left:0;right:0;top:45%;text-align:center;color:#5b6b86;z-index:2}
+@media (prefers-reduced-motion:reduce){.tile,.holo,.pedestal i,.parts i,.beam,.floor,.bigav:after,.stage.empty .hint{animation:none!important}.rig,.shell{transform:none!important}}
+@media (max-width:820px){
+  #room{padding:8px 0 14px}
+  .scene{perspective:none;--tile:104px}
+  .shell,.beam,.parts,.rhint{display:none}
+  .scene{cursor:auto}
+  .rig{grid-template-columns:minmax(0,1fr);transform:none!important;padding:14px 8px 24px;min-height:0}
+  .center,.stage{min-width:0;max-width:100%}.holo .actions{flex-wrap:wrap}
+  .pedestal{transform:scale(.8)}
+  .wall,.holo{-webkit-box-reflect:unset}
+  .wall.left,.wall.right{transform:none;direction:ltr;max-height:none;justify-content:center}
+  .center{order:-1;min-height:0;transform:none}.stage.empty{height:auto;padding:16px}
+}
 </style>
 </head>
 <body>
@@ -293,7 +467,7 @@ td.j{max-width:420px}
   <div class="spacer"></div>
   <input class="search" id="q" placeholder="Search agents, jobs…  ( / )" autocomplete="off">
   <div class="seg" id="views">
-    <button data-v="fleet" title="Your spaceships, one per hivey session (1)">🚀 Fleet</button>
+    <button data-v="room" title="3D command room: agents on the walls, the one you pick in the middle (1)">🛸 Room</button>
     <button data-v="board" title="Cards by what needs you (2)">▦ Board</button>
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
     <button data-v="jobs" title="Agent jobs: scheduled and background jobs, their map, spend, logs and sessions (4)">📊 Jobs</button>
@@ -348,6 +522,7 @@ td.j{max-width:420px}
     <div id="labels"></div>
     <div id="hud"><button id="fit" title="Show everyone (f)">⤢ fit</button><button id="style" title="Comic or realistic look (t)">🎨 comic</button><span>drag to move · scroll to zoom · click an agent to open it in hivey · right-click for details</span></div>
   </section>
+  <section id="room"></section>
   <section id="board"></section>
   <section id="list"></section>
   <section id="dash"></section>

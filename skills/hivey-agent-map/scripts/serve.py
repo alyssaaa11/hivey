@@ -21,8 +21,14 @@ trigger them:
   POST /hv-refresh          `agent_map.py refresh` (free: no model)
   GET  /fleet/              the agent fleet page (files in reports/fleet/; old /fleet/ links redirect here)
   POST /hv-fleet-refresh   `fleet.py run` in the background (the agent fleet, /fleet/)
+  POST /hv-fleet-say       {"id"} an MP3 of the agent saying what it wants (local Kokoro voice, `tts`)
   POST /hv-fleet-action    {"action": "session", "session": "<name>"} shows a hivey session in a terminal (a
                             new one if none shows it; `hivey session attach` starts a stopped session),
+                            {"id", "action": "read"} the bottom of its terminal (the chat window),
+                            {"id", "action": "send", "text"} types a message into it and presses Enter,
+                            {"id", "action": "approve" | "deny"} answers what it waits for (a permission
+                            prompt: Enter / Esc; a question in its reply: a short typed yes or no),
+                            {"action": "job-board"} starts hivey-job-creator's job board server,
                             {"action": "stop-session", "session": "<name>"} stops a non-default session (all
                             its agents) and closes its terminal windows, or
                             {"id": "wN:p1" | "<session>/wN:p1", "action": "focus" | "compact" | "clear"} for a desk on the
@@ -378,6 +384,85 @@ def send_command(exe: str, sock: str | None, pane: str, command: str) -> tuple[b
     return True, f"sent {command} and Enter"
 
 
+ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)")
+
+
+def read_pane(exe: str, sock: str | None, pane: str, lines: int = 40) -> tuple[bool, str | dict]:
+    """The bottom of an agent's terminal, as text (the chat window shows it live)."""
+    try:
+        p = hv(exe, sock, "pane", "read", pane, "--source", "recent", "--lines", str(lines), timeout=5)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"cannot read its terminal: {e}"[:200]
+    if p.returncode != 0:
+        return False, (p.stderr or p.stdout).strip()[-200:] or "cannot read its terminal"
+    out = p.stdout
+    try:  # the CLI answers JSON or plain text depending on the version
+        out = json.loads(out)["result"].get("text", out)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        pass
+    return True, {"screen": ANSI_RE.sub("", out).rstrip(), "status": live_status(exe, sock, pane)}
+
+
+def send_message(exe: str, sock: str | None, pane: str, text: str) -> tuple[bool, str]:
+    """Type a message into the agent's input box and press Enter (the chat window's Send)."""
+    text = " ".join(text.split())[:4000]  # one line: a pasted newline would only add a line to its input box
+    if not text:
+        return False, "nothing to send"
+    status = live_status(exe, sock, pane)
+    if status == "blocked":
+        return False, "it is waiting on a question in its terminal: use Approve or Deny, or answer it there"
+    ok, msg = send_command(exe, sock, pane, text)
+    return ok, "sent" if ok else msg
+
+
+def answer_agent(exe: str, sock: str | None, pane: str, yes: bool) -> tuple[bool, str]:
+    """Approve or deny what the agent is waiting for: a permission prompt in its terminal (Enter picks
+    its first option, Yes; Esc says no), or a question it asked in its reply (a short typed answer)."""
+    if live_status(exe, sock, pane) == "blocked":
+        p = hv(exe, sock, "pane", "send-keys", pane, "Enter" if yes else "esc")
+        if p.returncode != 0:
+            return False, (p.stderr or p.stdout).strip()[-200:] or "the key press failed"
+        return True, "approved" if yes else "denied"
+    ok, msg = send_command(exe, sock, pane, "Yes, go ahead." if yes else "No, don't do that. Wait for my instructions.")
+    return ok, ("approved" if yes else "denied") if ok else msg
+
+
+VOICE_DIR = STATE / "voice"
+
+
+def speak(desk_id: str) -> tuple[bytes | None, str]:
+    """What the agent is doing and wants from you, in its own words (no name), spoken by the local Kokoro voice (`tts`):
+    an MP3, cached by its text."""
+    desk = fleet_desk(desk_id)
+    if not desk:
+        return None, "unknown agent"
+    s = desk.get("summary") or {}
+    said = re.sub(r"^[^\w\"'(]+", "", (s.get("bubble") or "").strip())  # drop the leading emoji
+    ask = (s.get("needs_you") or "").strip()
+    text = said  # what it is doing, in its own words (no name)
+    if ask and ask.lower() not in said.lower():
+        text += f" {ask}"
+    if not text.strip():
+        text = (s.get("job") or "Nothing to report.").strip()
+    text = re.sub(r"[\U0001F000-\U0001FAFF☀-➿]", "", text)[:600]
+    tts = shutil.which("tts") or str(Path.home() / ".local" / "bin" / "tts")
+    if not Path(tts).exists():
+        return None, "no local voice: the tts command (Kokoro) is not installed"
+    import hashlib
+    VOICE_DIR.mkdir(parents=True, exist_ok=True)
+    out = VOICE_DIR / (hashlib.sha1(text.encode()).hexdigest()[:16] + ".mp3")
+    if not out.exists():
+        for old in sorted(VOICE_DIR.glob("*.mp3"), key=lambda f: f.stat().st_mtime)[:-50]:
+            old.unlink(missing_ok=True)  # keep the 50 newest
+        try:
+            p = subprocess.run([tts, "-o", str(out), text], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as e:
+            return None, f"the local voice failed: {e}"[:200]
+        if p.returncode != 0 or not out.exists():
+            return None, (p.stderr or p.stdout).strip()[-200:] or "the local voice failed"
+    return out.read_bytes(), text
+
+
 def stop_session(session: str) -> tuple[bool, str]:
     """Stop a (non-default) hivey session: its server and every agent in it, then close its terminal windows."""
     exe = hivey_bin()
@@ -430,11 +515,13 @@ def open_wiki_page(desk: dict, rel: str) -> tuple[bool, str]:
     return True, f"opened (not an Obsidian vault yet: in Obsidian, Open folder as vault → {wiki.get('short')})"
 
 
-def fleet_action(desk_id: str, action: str, session: str = "", path: str = "") -> tuple[bool, str]:
+def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", text: str = "") -> tuple[bool, str | dict]:
     if action == "session":
         return session_action(session)
     if action == "stop-session":
         return stop_session(session)
+    if action == "job-board":
+        return job_board()
     exe = hivey_bin()
     if not exe:
         return False, "hivey not found"
@@ -459,12 +546,33 @@ def fleet_action(desk_id: str, action: str, session: str = "", path: str = "") -
                       "raised": "opened in hivey"}.get(how, "focused in hivey (bring its terminal forward yourself)")
     if action == "clean-claude-md":
         return clean_claude_md(exe, sock, pane)
+    if action == "read":  # the chat window's live terminal
+        return read_pane(exe, sock, pane)
+    if action == "send":
+        return send_message(exe, sock, pane, text)
+    if action in ("approve", "deny"):
+        return answer_agent(exe, sock, pane, action == "approve")
     if action in ("compact", "clear"):
         status = live_status(exe, sock, pane)
         if status in ("working", "blocked"):
             return False, f"it is {status} now; try when it is idle"
         return send_command(exe, sock, pane, f"/{action}")
     return False, "unknown action"
+
+
+def job_board() -> tuple[bool, str]:
+    """Start hivey-job-creator's board server if it isn't running (`job.py board`); the page then
+    opens the job's board link."""
+    script = Path.home() / ".claude" / "skills" / "hivey-job-creator" / "scripts" / "job.py"
+    if not script.exists():
+        return False, "the hivey-job-creator skill is not installed (run hivey update)"
+    try:
+        p = subprocess.run([sys.executable, "-I", str(script), "board"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"cannot start the job board: {e}"[:200]
+    if p.returncode != 0:
+        return False, (p.stderr or p.stdout).strip()[-200:] or "the job board did not start"
+    return True, "job board running"
 
 
 def clean_claude_md(exe: str, sock: str | None, pane: str) -> tuple[bool, str]:
@@ -673,7 +781,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         Handler.last_used = time.time()
         port = self.server.server_address[1]
-        if self.path not in ("/hv-refresh", "/hv-fleet-refresh", "/hv-fleet-action", "/hv-fleet-settings"):
+        if self.path not in ("/hv-refresh", "/hv-fleet-refresh", "/hv-fleet-action", "/hv-fleet-settings", "/hv-fleet-say"):
             return self.answer(404, b'{"ok":false,"error":"not found"}')
         if self.headers.get("Origin") not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
             return self.answer(403, b'{"ok":false,"error":"only the agent map pages can do this"}')
@@ -728,12 +836,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                 "dashboards": dashboards_public(),
                                                 "dashboard_folders": dashboard_folders(),
                                                 "default_token": has_default_token()}).encode())
-        if self.path == "/hv-fleet-action":
+        if self.path == "/hv-fleet-say":
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), 4096)
                 req = json.loads(self.rfile.read(length) or b"{}")
+                audio, said = speak(str(req.get("id") or ""))
+            except (ValueError, OSError, subprocess.SubprocessError) as e:
+                audio, said = None, str(e)[:200]
+            if audio is None:
+                return self.answer(200, json.dumps({"ok": False, "message": said}).encode())
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Length", str(len(audio)))
+            self.send_header("X-Said", urllib.parse.quote(said))
+            self.end_headers()
+            self.wfile.write(audio)
+            return
+        if self.path == "/hv-fleet-action":
+            try:
+                length = min(int(self.headers.get("Content-Length") or 0), 16384)
+                req = json.loads(self.rfile.read(length) or b"{}")
                 ok, msg = fleet_action(str(req.get("id") or req.get("pane") or ""), str(req.get("action", "")),
-                                        str(req.get("session") or ""), str(req.get("path") or ""))
+                                        str(req.get("session") or ""), str(req.get("path") or ""),
+                                        str(req.get("text") or ""))
             except (ValueError, OSError, subprocess.SubprocessError) as e:
                 ok, msg = False, str(e)[:200]
             return self.answer(200, json.dumps({"ok": ok, "message": msg}).encode())

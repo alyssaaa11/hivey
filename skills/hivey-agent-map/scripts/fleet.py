@@ -58,6 +58,9 @@ BATCH = 10
 STALE_SECONDS = 240  # `open` refreshes first when the data is older than this
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07]*(\x07|\x1b\\)")
 BOX = re.compile(r"[─━│┃┌┐└┘├┤┬┴┼╭╮╯╰═║╔╗╚╝╠╣╦╩╬╌╍┄┅]+")
+JOBS = HOME / ".hivey" / "jobs"  # hivey-job-creator's job files
+COORDINATORS = HOME / ".hivey" / "coordinators"
+JOB_BOARD = "http://127.0.0.1:42830"
 CLIS = {"claude": "Claude Code", "codex": "Codex", "grok": "Grok", "agy": "Antigravity", "gemini": "Antigravity"}
 
 
@@ -531,6 +534,49 @@ def claude_md_info(folder: str | None) -> dict | None:
     return {"chars": chars, "limit": CLAUDE_MD_LIMIT, "over": chars > CLAUDE_MD_LIMIT, "path": str(path)}
 
 
+def job_files() -> list[dict]:
+    """hivey-job-creator's jobs (~/.hivey/jobs/<name>.json), newest first."""
+    out = []
+    for p in sorted(JOBS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            job = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if isinstance(job, dict) and isinstance(job.get("issues"), dict) and job.get("name"):
+            out.append(job)
+    return out
+
+
+def jobs_for(folder: str | None, jobs: list[dict]) -> list[dict]:
+    """The jobs an agent coordinates (its folder is ~/.hivey/coordinators/<slug>) or works in
+    (its folder is the job's repo): name, progress and the job board's link. Finished jobs show
+    only for a day."""
+    if not folder:
+        return []
+    real = os.path.realpath(folder)
+    slug = Path(real).name if Path(real).parent == Path(os.path.realpath(COORDINATORS)) else None
+    out = []
+    for job in jobs:
+        repo = os.path.realpath(job.get("repo") or "/nonexistent")
+        if not ((slug and job.get("coordinator") == slug) or real == repo or real.startswith(repo + os.sep)):
+            continue
+        done = str(job.get("finished") or "")
+        if done:
+            try:
+                if time.time() - dt.datetime.fromisoformat(done).timestamp() > 86400:
+                    continue
+            except ValueError:
+                continue
+        issues = job["issues"].values()
+        project = Path(job.get("repo", "")).name
+        out.append({"name": job["name"], "project": project, "total": len(job["issues"]),
+                    "merged": sum(1 for e in issues if e.get("status") == "merged"),
+                    "running": sum(1 for e in issues if e.get("status") not in ("planned", "merged")),
+                    "finished": bool(done),
+                    "url": f"{JOB_BOARD}/{job['name']}/?project={project}"})
+    return out
+
+
 def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     """Every agent of every running hivey session (one spaceship per session on the page)."""
     people = [d for hs in (sessions or hv_sessions(hv))
@@ -538,8 +584,10 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     with cf.ThreadPoolExecutor(max_workers=8) as pool:
         screens = list(pool.map(lambda d: "" if d.get("asleep") else screen(hv, d["pane"], d.get("sock")), people))
     vaults = obsidian_vaults()
+    jobs = job_files()
     for d, scr in zip(people, screens):
         d["screen"] = scr
+        d["jobs"] = jobs_for(d.get("folder"), jobs)
         d["wiki"] = wiki_info(d.get("folder"), vaults, d.get("space", ""))
         d["claude_md"] = claude_md_info(d.get("folder")) if d.get("cli_id") == "claude" else None
         log = session_log(transcript_of(d["session"], d["cli_id"]))

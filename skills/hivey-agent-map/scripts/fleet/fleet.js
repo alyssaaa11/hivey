@@ -24,13 +24,15 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let data = null, agents = [], selected = null;
 // settings saved before the rename (the page was the agent office) carry over
 const ui = JSON.parse(localStorage.getItem('hv-fleet-ship') || localStorage.getItem('hv-' + 'off' + 'ice-ship') || '{}');
-ui.view ||= 'fleet';
-const VIEWS = ['fleet', 'board', 'list', 'jobs', 'dash'];
+// the 3D spaceship view is switched off: its code stays, but no tab or key opens it
+const VIEWS = ['room', 'board', 'list', 'jobs', 'dash'];
+if (!VIEWS.includes(ui.view)) ui.view = 'room';
+ui.roomTab ||= 'running';
 let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
 { const v = new URLSearchParams(location.search).get('view'); if (VIEWS.includes(v)) ui.view = v; if (v) history.replaceState(null, '', location.pathname); }  // ?view=jobs from the menu or a jobs page
 ui.filter = null;  // a status filter lasts until reload: a reload always shows every agent
 if (ui.toon === undefined) ui.toon = false;
-const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
+const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, roomTab: ui.roomTab, voice: ui.voice, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
 // ship positions also live on the fleet server, so every browser opens the fleet where you left it
 const saveShips = () => { save(); fetch('/hv-fleet-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
 
@@ -186,12 +188,14 @@ function wireActions(root) {
     const a = agents.find(x => x.id === el.dataset.id);
     if (!a) return;
     el.addEventListener('click', e => {
+      const jl = e.target.closest('button[data-job]');
+      if (jl) { e.stopPropagation(); return openJob(jl.dataset.job); }
       const b = e.target.closest('button[data-act]');
       if (!b) return act(a, 'focus');
       e.stopPropagation();
       if (b.disabled) return;
       const k = b.dataset.act;
-      if (k === 'info') return openDrawer(a);
+      if (k === 'info') return toggleDrawer(a);
       if (k === 'focus' || k === 'compact') return act(a, k);
       armed(b, a, k);
     });
@@ -247,9 +251,29 @@ function renderInbox() {
 }
 
 // ---------------------------------------------------------------- board & list
+// the jobs an agent coordinates or works in (hivey-job-creator): progress and a link to the job board
+function jobRows(a) {
+  return (a.jobs || []).map(j => {
+    const pct = j.total ? Math.round(100 * j.merged / j.total) : 0;
+    return `<div class="jobrow${j.finished ? ' fin' : ''}" title="${esc(j.project)} · job ${esc(j.name)}: ${j.merged} of ${j.total} tasks merged${j.running ? `, ${j.running} in progress` : ''}">
+      <span class="jn">🧩 ${esc(j.name)}</span><span class="bar"><i style="width:${pct}%"></i></span>
+      <span class="jc">${j.merged}/${j.total}</span>
+      <button class="jlink" data-job="${esc(j.url)}" title="Open the job board: tasks, arrows and the agents working on them">📊 Board</button></div>`;
+  }).join('');
+}
+async function openJob(url) {
+  const w = window.open('', '_blank');  // opened during the click so the browser doesn't block it
+  try {
+    const r = await fetch('/hv-fleet-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'job-board' }) });
+    const j = await r.json();
+    if (!j.ok) { w?.close(); return toast(`Job board: ${j.message}`); }
+  } catch (e) { /* an older fleet server: try the link anyway */ }
+  if (w) w.location = url; else window.open(url, '_blank');
+}
 function card(a) {
   const s = a.summary || {}, h = hue(a.space), S = st(a.status);
-  return `<div class="card ${esc(a.status)}" data-id="${esc(a.id)}" title="Click: open in hivey · right-click: details">
+  const asks = a.status !== 'blocked' && a.status !== 'working' && !a.asleep && s.needs_you ? ' asks' : '';
+  return `<div class="card ${esc(a.status)}${asks}" data-id="${esc(a.id)}" title="Click: open in hivey · right-click: details">
     <div class="top"><div class="avatar" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}<span class="st" style="background:${S.color}"></span></div>
       <div style="min-width:0"><div class="name">${esc(a.name)}</div>
       <div class="meta">${S.emoji} ${S.label} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''}${a.team?.length ? ` · 👥 ${a.team.length}` : ''} · ${ago(a.last_activity)}</div></div></div>
@@ -258,6 +282,7 @@ function card(a) {
     ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
     ${(s.done || []).length ? `<ul>${s.done.map(d => `<li>${esc(d)}</li>`).join('')}</ul>` : ''}
     ${s.next ? `<div class="next">→ ${esc(s.next)}</div>` : ''}
+    ${jobRows(a)}
     <div class="ctx">🧠 <span class="bar"><i style="width:${Math.min(100, a.context_pct)}%;background:${ctxColor(a.context_pct)}"></i></span>
       ${a.context ? `${a.context_pct}% of ${ktok(a.window)}` : 'no session log'} ${adviceBadge(a)}</div>
     ${actionButtons(a)}</div>`;
@@ -293,7 +318,251 @@ function renderList() {
   wireActions($('#list'));
 }
 
+// ---------------------------------------------------------------- 3D command room
+// Agents as glowing tiles on the two walls of a 3D room (CSS perspective, real DOM: clickable,
+// any browser). Click a tile: that agent stands on the pedestal in the middle with its summary,
+// jobs and actions; click it again (or the empty floor) and the pedestal is empty. Three rooms:
+// running (working, needs you, just finished), paused (idle) and closed (session stopped).
+let roomPick = null, roomShown = null, roomChat = null, chatTimer = null, voice = null;
+ui.voice ??= true;
+const PARTS = Array.from({ length: 16 }, (_, i) => `<i style="left:${(i * 37) % 100}%;--d:${3 + (i * 7) % 4}s;--w:${(i * 0.53) % 4}s"></i>`).join('');
+const ROOM_TABS = [['running', '⚡ Running'], ['paused', '⏸ Paused'], ['closed', '💤 Closed']];
+function roomOf(a) {
+  if (a.asleep) return 'closed';
+  return a.status === 'idle' && !a.summary?.needs_you ? 'paused' : 'running';
+}
+function tone(a) {
+  if (a.asleep) return 'closed';
+  if (a.status === 'blocked' || a.summary?.needs_you) return 'needs';
+  return { working: 'working', done: 'done' }[a.status] || 'idle';
+}
+const roomTilt = { x: 0, y: 0 };
+// where you look from: drag the room to turn it, the wheel to come closer; kept across refreshes
+const roomView = { yaw: 0, pitch: 0, zoom: 0 };
+let roomDragged = false;
+const TONE_RGB = { working: '74 222 128', needs: '250 204 21', done: '56 189 248', idle: '148 163 184', closed: '139 92 246' };
+const TONE_LABEL = { working: 'Running', needs: 'Needs you', done: 'Done', idle: 'Idle', closed: 'Closed' };
+function roomTile(a) {
+  const t = tone(a);
+  return `<button class="tile ${t}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
+    <span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(a.name)}</span>
+    <span class="sl"><i></i>${TONE_LABEL[t]}</span></button>`;
+}
+function roomStage(a) {
+  if (!a) return `<div class="stage empty"><div class="hint">Pick an agent on the walls</div></div>`;
+  const s = a.summary || {}, t = tone(a), h = hue(a.space);
+  return `<div class="stage ${t}" data-id="${esc(a.id)}">
+    <div class="holo${roomShown !== a.id ? ' fresh' : ''}">
+      <div class="bigav" data-open title="Open its terminal in hivey" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}</div>
+      <div class="nm">${esc(a.name)}</div>
+      <div class="sl"><i></i>${TONE_LABEL[t]} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''} · ${ago(a.last_activity)}</div>
+      <div class="say">${esc(s.bubble || '…')}</div>
+      ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
+      ${s.job ? `<div class="job">📌 ${esc(s.job)}</div>` : ''}
+      ${jobRows(a)}
+      <div class="ctx">🧠 <span class="bar"><i style="width:${Math.min(100, a.context_pct)}%;background:${ctxColor(a.context_pct)}"></i></span>
+        ${a.context ? `${a.context_pct}% of ${ktok(a.window)}` : 'no session log'} ${adviceBadge(a)}</div>
+      ${t === 'needs' && !a.asleep ? `<div class="decide">
+        <button data-say="approve" title="${a.status === 'blocked' ? 'Press Enter on its question (its first option, Yes)' : 'Answer “Yes, go ahead.”'}">✅ Approve</button>
+        <button data-say="deny" title="${a.status === 'blocked' ? 'Press Esc on its question (No)' : 'Answer “No, don’t do that.”'}">✋ Deny</button>
+        <button data-say="change" title="Tell it what to do instead (opens the chat)">✏️ Change</button></div>` : ''}
+      ${actionButtons(a)}
+      <div class="talk">${a.asleep ? '' : `<button data-chat title="Chat with it: its live terminal and a message box at the bottom">💬 Chat</button>`}
+        <button data-voice title="Hear what it wants (local Kokoro voice)">🔊 Say it</button></div>
+    </div></div>`;
+}
+// ---- talking to the agent in the middle: approve/deny, the chat console, its voice
+async function fleetCall(a, action, extra = {}) {
+  try {
+    const r = await fetch('/hv-fleet-action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id, pane: a.pane, action, ...extra }) });
+    return await r.json();
+  } catch (e) { return { ok: false, message: 'The fleet server is not answering: run `hivey agent-map fleet` again' }; }
+}
+async function decide(a, yes, btn) {
+  btn.disabled = true; btn.textContent = yes ? '✅ Approving…' : '✋ Denying…';
+  const j = await fleetCall(a, yes ? 'approve' : 'deny');
+  toast(j.ok ? `${a.name}: ${j.message}` : `${a.name}: ${j.message}`);
+  if (j.ok) { btn.textContent = yes ? '✅ Approved' : '✋ Denied'; if (roomChat === a.id) chatRead(); }
+  else { btn.disabled = false; btn.textContent = yes ? '✅ Approve' : '✋ Deny'; }
+}
+function openChat(a) {
+  roomChat = a.id;
+  renderChat();
+  setTimeout(() => $('#chatin')?.focus(), 50);
+}
+function closeChat() { roomChat = null; clearInterval(chatTimer); chatTimer = null; renderChat(); }
+function renderChat() {
+  let dock = $('#chatdock');
+  const a = agents.find(x => x.id === roomChat);
+  $('#room').classList.toggle('chatting', !!a && ui.view === 'room');
+  if (!a || ui.view !== 'room') { dock?.remove(); clearInterval(chatTimer); chatTimer = null; return; }
+  if (!dock || dock.dataset.id !== a.id) {
+    dock?.remove();
+    dock = document.createElement('div');
+    dock.id = 'chatdock'; dock.dataset.id = a.id; dock.className = tone(a);
+    dock.innerHTML = `<div class="console">
+      <div class="chead"><span class="dots"><i></i><i></i><i></i></span><b>${esc(a.emoji)} ${esc(a.name)}</b><span class="cst" id="chatst">${esc(TONE_LABEL[tone(a)])}</span>
+        ${tone(a) === 'needs' ? '<button class="cyes" data-say="approve" title="Approve what it waits for">✅ Approve</button><button class="cno" data-say="deny" title="Deny it">✋ Deny</button>' : ''}
+        <button class="cx" title="Open its terminal in hivey">↗</button><button class="cclose" title="Close the chat (Esc)">✕</button></div>
+      <pre class="term" id="chatterm">${esc(a.screen || '')}</pre>
+      <form class="cin"><span class="pr">❯</span><input id="chatin" autocomplete="off" placeholder="Message ${esc(a.name)}… (Enter sends)" maxlength="4000"><button type="submit">Send</button></form></div>`;
+    $('#room').appendChild(dock);
+    dock.querySelector('.cclose').onclick = closeChat;
+    dock.querySelector('.cx').onclick = () => act(a, 'focus');
+    dock.querySelectorAll('[data-say]').forEach(b => b.onclick = () => decide(a, b.dataset.say === 'approve', b));
+    dock.querySelector('form').onsubmit = async e => {
+      e.preventDefault();
+      const inp = $('#chatin'), text = inp.value.trim();
+      if (!text) return;
+      inp.disabled = true;
+      const j = await fleetCall(a, 'send', { text });
+      inp.disabled = false;
+      if (j.ok) { inp.value = ''; chatRead(); setTimeout(chatRead, 1500); } else toast(`${a.name}: ${j.message}`);
+      inp.focus();
+    };
+    const term = dock.querySelector('.term'); term.scrollTop = term.scrollHeight;
+    clearInterval(chatTimer);
+    chatRead();
+    chatTimer = setInterval(chatRead, 2000);
+  }
+}
+async function chatRead() {
+  const a = agents.find(x => x.id === roomChat);
+  if (!a || document.hidden) return;
+  const j = await fleetCall(a, 'read');
+  const term = $('#chatterm');
+  if (!term || !j.ok || !j.message?.screen) return;
+  const atEnd = term.scrollTop + term.clientHeight >= term.scrollHeight - 8;
+  term.textContent = j.message.screen;
+  if (atEnd) term.scrollTop = term.scrollHeight;
+  const st = $('#chatst');
+  if (st && j.message.status) st.textContent = { working: 'Working', blocked: 'Waiting on you', idle: 'Ready', done: 'Done' }[j.message.status] || j.message.status;
+}
+async function sayIt(a, force) {
+  if (!force && !ui.voice) return;
+  voice?.pause();
+  try {
+    const r = await fetch('/hv-fleet-say', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.id }) });
+    if (!(r.headers.get('Content-Type') || '').startsWith('audio/')) { const j = await r.json(); if (force) toast(j.message); return; }
+    const blob = await r.blob();
+    if (roomPick !== a.id && !force) return;  // you picked someone else meanwhile
+    voice = new Audio(URL.createObjectURL(blob));
+    voice.play().catch(() => {});
+  } catch (e) { if (force) toast('The fleet server is not answering'); }
+}
+function renderRoom() {
+  const list = agents.filter(visible);
+  const order = { needs: 0, working: 1, done: 2, idle: 3, closed: 4 };
+  const counts = Object.fromEntries(ROOM_TABS.map(([k]) => [k, list.filter(a => roomOf(a) === k).length]));
+  const here = list.filter(a => roomOf(a) === ui.roomTab).sort((x, y) => order[tone(x)] - order[tone(y)] || x.name.localeCompare(y.name));
+  if (roomPick && !here.some(a => a.id === roomPick)) roomPick = null;
+  // nearest the pedestal first: even places on the left wall, odd on the right
+  const left = here.filter((_, i) => i % 2 === 0), right = here.filter((_, i) => i % 2 === 1);
+  const pick = here.find(a => a.id === roomPick);
+  const room = $('#room');
+  const typed = $('#chatin')?.value;  // a refresh must not lose what you are typing
+  room.querySelector('#chatdock')?.remove();
+  room.innerHTML = `<div class="rtabs">${ROOM_TABS.map(([k, label]) =>
+      `<button data-rtab="${k}" class="${ui.roomTab === k ? 'on' : ''}">${label} <b>${counts[k]}</b></button>`).join('')}
+      <button data-voicetoggle class="vt ${ui.voice ? 'on' : ''}" title="Agents say what they want when you bring them to the middle (local voice)">${ui.voice ? '🔊 Voice on' : '🔇 Voice off'}</button></div>
+    <div class="scene${pick ? ' has' : ''}" style="--rx:${roomTilt.x + roomView.pitch}deg;--ry:${roomTilt.y + roomView.yaw}deg;--rz:${roomView.zoom}px${pick ? `;--fc:${TONE_RGB[tone(pick)]}` : ''}">
+      <div class="shell"><div class="ceiling"></div><div class="backwall"></div><div class="floor"></div></div>
+      <div class="rig">
+        <div class="wall left">${left.map(roomTile).join('')}</div>
+        <div class="center${pick ? ' ' + tone(pick) : ''}"><div class="beam"></div><div class="parts">${PARTS}</div>
+          ${roomStage(pick)}<div class="pedestal"><i></i><i></i><i></i><i></i></div></div>
+        <div class="wall right">${right.map(roomTile).join('')}</div>
+      </div>
+      ${here.length ? '' : `<div class="nobody">No ${ui.roomTab} agents</div>`}
+      <div class="rhint">drag to look around · wheel to move closer · double-click the floor to reset</div>
+    </div>`;
+  if (pick && roomShown !== pick.id) sayIt(pick);
+  if (!pick) voice?.pause();
+  roomShown = pick ? pick.id : null;
+  if (roomChat) {
+    const had = $('#chatdock'); if (had) had.remove();
+    renderChat();
+    if (typed) { const i = $('#chatin'); if (i) i.value = typed; }
+  }
+  const scene = room.querySelector('.scene');
+  const view = () => {
+    scene.style.setProperty('--rx', (roomTilt.x + roomView.pitch).toFixed(2) + 'deg');
+    scene.style.setProperty('--ry', (roomTilt.y + roomView.yaw).toFixed(2) + 'deg');
+    scene.style.setProperty('--rz', roomView.zoom + 'px');
+  };
+  let drag = null;
+  scene.onpointerdown = e => {  // drag anywhere but a tile or the panel to look around the room
+    if (e.button !== 0 || e.target.closest('.tile, .stage:not(.empty), .rtabs')) return;
+    drag = { x: e.clientX, y: e.clientY, yaw: roomView.yaw, pitch: roomView.pitch, moved: false };
+    roomDragged = false;
+    scene.setPointerCapture(e.pointerId);
+  };
+  scene.onpointermove = e => {
+    if (drag) {
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+      if (!drag.moved) { drag.moved = roomDragged = true; scene.classList.add('dragging'); }
+      roomView.yaw = Math.max(-42, Math.min(42, drag.yaw + dx * 0.12));
+      roomView.pitch = Math.max(-14, Math.min(14, drag.pitch - dy * 0.06));
+      roomTilt.x = roomTilt.y = 0;
+      return view();
+    }
+    if (REDUCED || e.pointerType !== 'mouse') return;  // otherwise the room turns a little toward the mouse
+    const r = scene.getBoundingClientRect();
+    roomTilt.y = +(((e.clientX - r.left) / r.width - 0.5) * 6).toFixed(2);
+    roomTilt.x = +((0.5 - (e.clientY - r.top) / r.height) * 3).toFixed(2);
+    view();
+  };
+  scene.onpointerup = scene.onpointercancel = () => { drag = null; scene.classList.remove('dragging'); };
+  scene.onmouseleave = () => { if (!drag) { roomTilt.x = roomTilt.y = 0; view(); } };
+  scene.onwheel = e => {  // the wheel on the floor or the ceiling moves you closer or back (walls still scroll)
+    if (e.target.closest('.wall, .stage:not(.empty)')) return;
+    e.preventDefault();
+    roomView.zoom = Math.max(-420, Math.min(260, roomView.zoom - e.deltaY * 0.6));
+    view();
+  };
+  scene.ondblclick = e => {  // double-click the floor: back to the front view
+    if (e.target.closest('.tile, .stage:not(.empty)')) return;
+    roomView.yaw = roomView.pitch = roomView.zoom = 0; view();
+  };
+  room.querySelector('[data-voicetoggle]').onclick = () => { ui.voice = !ui.voice; if (!ui.voice) voice?.pause(); save(); renderRoom(); };
+  room.querySelectorAll('[data-rtab]').forEach(b => b.onclick = () => { ui.roomTab = b.dataset.rtab; roomPick = null; save(); renderRoom(); });
+  room.querySelectorAll('[data-pick]').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); roomPick = roomPick === b.dataset.pick ? null : b.dataset.pick; renderRoom(); };
+    b.ondblclick = e => { e.stopPropagation(); const a = agents.find(x => x.id === b.dataset.pick); if (a) act(a, 'focus'); };
+    b.oncontextmenu = e => { e.preventDefault(); const a = agents.find(x => x.id === b.dataset.pick); if (a) openDrawer(a); };
+  });
+  room.querySelector('.scene').onclick = e => { if (roomDragged) { roomDragged = false; return; } if (!e.target.closest('.stage:not(.empty)') && roomPick) { roomPick = null; renderRoom(); } };
+  const stage = room.querySelector('.stage[data-id]');
+  if (stage) wireRoomStage(stage);
+}
+function wireRoomStage(el) {
+  const a = agents.find(x => x.id === el.dataset.id);
+  if (!a) return;
+  el.addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.target.closest('[data-open]')) return act(a, 'focus');  // the agent's picture opens its terminal
+    const d = e.target.closest('button[data-say]');
+    if (d) return d.dataset.say === 'change' ? openChat(a) : decide(a, d.dataset.say === 'approve', d);
+    if (e.target.closest('button[data-chat]')) return roomChat === a.id ? closeChat() : openChat(a);
+    if (e.target.closest('button[data-voice]')) return sayIt(a, true);
+    const jl = e.target.closest('button[data-job]');
+    if (jl) return openJob(jl.dataset.job);
+    const b = e.target.closest('button[data-act]');
+    if (!b || b.disabled) return;
+    const k = b.dataset.act;
+    if (k === 'info') return toggleDrawer(a);
+    if (k === 'focus' || k === 'compact') return act(a, k);
+    armed(b, a, k);
+  });
+}
+
 // ---------------------------------------------------------------- drawer
+// ⓘ Details opens the side panel; pressing it again for the same agent closes it
+function toggleDrawer(a) {
+  if ($('#drawer').classList.contains('open') && selected === a.id) return closeDrawer();
+  openDrawer(a);
+}
 function openDrawer(a) {
   selected = a.id;
   const s = a.summary || {}, S = st(a.status);
@@ -308,6 +577,7 @@ function openDrawer(a) {
     ${actionButtons(a)}
     <dl>
       <dt>Current job</dt><dd>📌 ${esc(s.job)}</dd>
+      ${(a.jobs || []).length ? `<dt>Jobs</dt><dd>${jobRows(a)}</dd>` : ''}
       ${(s.done || []).length ? `<dt>Achieved</dt><dd>${s.done.map(d => '✓ ' + esc(d)).join('<br>')}</dd>` : ''}
       ${s.next ? `<dt>Next</dt><dd>→ ${esc(s.next)}</dd>` : ''}
       ${a.about ? `<dt>About</dt><dd>${esc(a.about)}</dd>` : ''}
@@ -344,12 +614,13 @@ function wireDrawer(a) {
       toast(j.ok ? `📚 ${j.message}` : `${a.name}: ${j.message}`);
     } catch (err) { toast('The fleet server is not answering: run `hivey agent-map fleet` again'); }
   });
+  $('#drawer').querySelectorAll('button[data-job]').forEach(b => b.onclick = e => { e.stopPropagation(); openJob(b.dataset.job); });
   $('#drawer').querySelectorAll('button[data-act]').forEach(b => b.onclick = e => {
     e.stopPropagation();
     if (b.disabled) return;
     const k = b.dataset.act;
     if (k === 'focus' || k === 'compact') return act(a, k);
-    if (k === 'info') return;
+    if (k === 'info') return closeDrawer();
     armed(b, a, k);
   });
 }
@@ -954,11 +1225,13 @@ function renderAll() {
   renderInbox();
   document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
   $('#fleet').style.display = ui.view === 'fleet' ? '' : 'none';
+  $('#room').style.display = ui.view === 'room' ? 'block' : 'none';
   $('#board').style.display = ui.view === 'board' ? 'block' : 'none';
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
   showJobs();
   showDash();
   if (ui.view === 'fleet') { fleet.build(agents.filter(visible), data.sessions); fleet.resize(); }
+  if (ui.view === 'room') renderRoom();
   if (ui.view === 'board') renderBoard();
   if (ui.view === 'list') renderList();
   if (selected) { const a = agents.find(x => x.id === selected); if (a && $('#drawer').classList.contains('open')) openDrawer(a); }
@@ -1404,17 +1677,16 @@ $('#style').textContent = ui.toon ? '🎨 comic' : '✨ HD';
 let qTimer;
 $('#q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(renderAll, 150); });
 addEventListener('keydown', e => {
+  if (e.target.id === 'chatin' && e.key === 'Escape') return closeChat();
   if (e.target.matches('input')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
-  else if (e.key === 'Escape') closeDrawer();
+  else if (e.key === 'Escape') { if (roomChat) closeChat(); else closeDrawer(); }
   else if (e.key >= '1' && e.key <= '5') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
   else if (e.key === 'r') refreshNow();
   else if (e.key === 'f') fleet.fit();
   else if (e.key === 't') toggleStyle();
   else if (e.key === 'm') setMusic(!ui.music);
 });
-if (!fleet.ok && ui.view === 'fleet') ui.view = 'board';
-if (!fleet.ok) document.querySelector('#views [data-v="fleet"]').disabled = true;
 setInterval(poll, 15000);
 setInterval(tickSub, 1000);
 poll();
