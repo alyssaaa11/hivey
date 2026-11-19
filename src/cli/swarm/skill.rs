@@ -156,6 +156,37 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
         ],
     ),
     // Current library docs in seconds, from any agent (no MCP server needed).
+    // The job creator: one coordinator, a GitHub issue + brief + tests per task, one agent per
+    // issue (Claude Code cloud sessions via hivey cloud), checked PRs merged into job/<name>.
+    (
+        "hivey-job-creator",
+        &[
+            (
+                "SKILL.md",
+                include_str!("../../../skills/hivey-job-creator/SKILL.md"),
+            ),
+            (
+                "references/plan-template.md",
+                include_str!("../../../skills/hivey-job-creator/references/plan-template.md"),
+            ),
+            (
+                "references/task-brief.md",
+                include_str!("../../../skills/hivey-job-creator/references/task-brief.md"),
+            ),
+            (
+                "scripts/job.py",
+                include_str!("../../../skills/hivey-job-creator/scripts/job.py"),
+            ),
+            (
+                "scripts/board.html",
+                include_str!("../../../skills/hivey-job-creator/scripts/board.html"),
+            ),
+            (
+                "references/coordinator-brief.md",
+                include_str!("../../../skills/hivey-job-creator/references/coordinator-brief.md"),
+            ),
+        ],
+    ),
     (
         "hivey-context7",
         &[(

@@ -184,5 +184,70 @@ class BundleTest(unittest.TestCase):
         self.assertFalse((cloud_home / ".hivey-cloud").exists())
 
 
+    def test_session_settings_pin_model_and_effort(self):
+        out = self.tmp / "out"
+        out.mkdir()
+        spec = {**self.spec, "session_settings": {"model": "sonnet", "effortLevel": "low",
+                                                  "env": {"CLAUDE_CODE_EFFORT_LEVEL": "low"}}}
+        self.cloud.build_bundle(self.repo, out, spec, self.recipient)
+        settings = json.loads((out / ".claude/settings.json").read_text())
+        self.assertEqual(settings["model"], "sonnet")
+        self.assertEqual(settings["effortLevel"], "low")
+        self.assertEqual(settings["env"]["CLAUDE_CODE_EFFORT_LEVEL"], "low")
+        self.assertEqual(settings["env"]["DISABLE_AUTOUPDATER"], "1")
+
+    def test_make_branch_starts_from_the_base_ref(self):
+        subprocess.run(["git", "switch", "-qc", "job/x"], cwd=self.repo, check=True)
+        (self.repo / "tests.txt").write_text("acceptance")
+        subprocess.run(["git", "add", "-A"], cwd=self.repo, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "t"],
+                       cwd=self.repo, check=True)
+        subprocess.run(["git", "switch", "-q", "-"], cwd=self.repo, check=True)
+        (self.repo / ".hivey").mkdir(exist_ok=True)
+        (self.repo / ".hivey/cloud.toml").write_text('hivey_skills = false\nglobal_claude_md = false\n')
+        self.cloud.STATE = self.tmp / "state"
+        os.environ["GIT_AUTHOR_NAME"] = os.environ["GIT_COMMITTER_NAME"] = "t"
+        os.environ["GIT_AUTHOR_EMAIL"] = os.environ["GIT_COMMITTER_EMAIL"] = "t@t"
+        tmp, manifest = self.cloud.make_branch(self.repo, "hivey-cloud/t-1", push=False,
+                                               base="job/x", session_settings={"model": "haiku"})
+        try:
+            self.assertTrue((tmp / "tests.txt").exists())
+            job_head = subprocess.run(["git", "rev-parse", "job/x"], cwd=self.repo,
+                                      capture_output=True, text=True).stdout.strip()
+            self.assertEqual(manifest["source_commit"], job_head)
+            self.assertEqual(json.loads((tmp / ".claude/settings.json").read_text())["model"], "haiku")
+        finally:
+            self.cloud.remove_worktree(self.repo, tmp)
+
+    def test_hand_off_and_issue_task(self):
+        manifest = {"source_commit": "abc123def4567"}
+        text = self.cloud.hand_off("hivey-cloud/j-3", manifest, "job/j", "hivey-job:j#3")
+        self.assertIn("origin/job/j", text)
+        self.assertIn("gh pr create --base job/j", text)
+        self.assertIn("hivey-job:j#3", text)
+        task = self.cloud.issue_task(self.repo, {"number": 3, "title": "Fix it", "body": "Do X",
+                                                 "url": "u"}, "j")
+        self.assertIn("issue #3: Fix it", task)
+        self.assertIn("Do X", task)
+        self.assertIn("never edit", task)
+        issue = {"labels": [{"name": "model:sonnet"}, {"name": "Effort:low"}]}
+        self.assertEqual(self.cloud.label_value(issue, "model"), "sonnet")
+        self.assertEqual(self.cloud.label_value(issue, "effort"), "low")
+        self.assertIsNone(self.cloud.label_value(issue, "where"))
+
+    def test_job_status_finds_the_pr_by_its_marker(self):
+        self.cloud.find_prs = lambda root: [
+            {"number": 9, "body": "fix\nhivey-job:j#4", "state": "OPEN", "url": "pr9", "headRefOid": "h"},
+            {"number": 8, "body": "hivey-job:j#40", "state": "MERGED", "url": "pr8"}]
+        self.cloud.pushed_branches = lambda root: {"claude/x": "work\n\nhivey-job:j#5"}
+        rows = self.cloud.job_status([
+            {"job": "j", "issue": 4, "session": "s4", "repo": str(self.repo)},
+            {"job": "j", "issue": 5, "session": "s5", "repo": str(self.repo)},
+            {"job": "j", "issue": 6, "session": "s6", "repo": str(self.repo)}])
+        self.assertEqual([r["state"] for r in rows], ["pr-open", "pushed", "working"])
+        self.assertEqual(rows[0]["pr"]["number"], 9)
+        self.assertEqual(rows[1]["branch"], "claude/x")
+
+
 if __name__ == "__main__":
     unittest.main()

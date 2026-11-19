@@ -266,6 +266,12 @@ def merge_settings(root: Path, out_root: Path, spec: dict, warnings: list[str]) 
     command = "bash \"$CLAUDE_PROJECT_DIR/.hivey-cloud/bootstrap.sh\""
     if not any(h.get("command") == command for g in starts for h in g.get("hooks", [])):
         starts.append({"hooks": [{"type": "command", "command": command, "timeout": 300}]})
+    # This session's own model and effort (hivey cloud run --model/--effort): each session has
+    # its own branch, so its settings file can pin them.
+    extra = spec.get("session_settings") or {}
+    settings.update({k: v for k, v in extra.items() if k != "env"})
+    if extra.get("env"):
+        settings["env"] = {**(settings.get("env") or {}), **extra["env"]}
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings, indent=2) + "\n")
 
@@ -417,7 +423,9 @@ def build_bundle(root: Path, out_root: Path, spec: dict, recipient: str | None) 
         warnings.append(f"the bundle is {total // (1024 * 1024)} MB: drop big skills you don't need")
     manifest = {
         "built": dt.datetime.now().isoformat(timespec="seconds"),
-        "source_commit": git("rev-parse", "HEAD", cwd=root),
+        # The worktree's commit (its base ref); the repo's when building into a plain folder.
+        "source_commit": git("rev-parse", "HEAD", cwd=out_root, check=False)
+        if (out_root / ".git").exists() else git("rev-parse", "HEAD", cwd=root),
         **copied,
         "bytes": total,
         "warnings": warnings,
@@ -440,16 +448,19 @@ def print_manifest(manifest: dict) -> None:
         say(f"  ! {w}")
 
 
-def make_branch(root: Path, branch: str, push: bool = True) -> tuple[Path, dict]:
-    """A temporary worktree on `branch` = HEAD + bundle commit, pushed to origin unless
-    `push` is false (then `claude --cloud` uploads the worktree itself)."""
-    spec = load_toml(root)
+def make_branch(root: Path, branch: str, push: bool = True, base: str = "HEAD",
+                session_settings: dict | None = None) -> tuple[Path, dict]:
+    """A temporary worktree on `branch` = `base` (default HEAD) + bundle commit, pushed to
+    origin unless `push` is false (then `claude --cloud` uploads the worktree itself)."""
+    spec = {**load_toml(root), "session_settings": session_settings or {}}
     cfg = load_json(CONFIG, {})
     if push and not git("remote", cwd=root, check=False):
         die("the repo has no git remote: use --upload (Claude Code uploads the repo itself)")
     (STATE / "worktrees").mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=f"{slugify(root.name)}-", dir=STATE / "worktrees"))
-    git("worktree", "add", "--quiet", "-B", branch, str(tmp), "HEAD", cwd=root)
+    if git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}", cwd=root, check=False) == "":
+        die(f"{base}: no such branch or commit in {root}")
+    git("worktree", "add", "--quiet", "-B", branch, str(tmp), base, cwd=root)
     set_trust(tmp, inherit_from=root)
     try:
         manifest = build_bundle(root, tmp, spec, cfg.get("recipient"))
@@ -595,40 +606,100 @@ def record(entry: dict) -> None:
     save_json(SESSIONS, data[-200:])
 
 
+def take(args: list[str], flag: str) -> tuple[list[str], str | None]:
+    """Removes `flag VALUE` from args; returns (args, value)."""
+    if flag not in args:
+        return args, None
+    i = args.index(flag)
+    if i + 1 >= len(args):
+        die(f"{flag} needs a value", 2)
+    return args[:i] + args[i + 2:], args[i + 1]
+
+
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+RUN_USAGE = ("usage: hivey cloud run \"<task>\" [--name <slug>] [--model M] [--effort E] "
+             "[--base REF] [--pr-base BRANCH] [--job NAME --issue N] [--upload]")
+
+
 def cmd_run(args: list[str]) -> int:
-    name = None
-    if "--name" in args:
-        i = args.index("--name")
-        name = args[i + 1]
-        args = args[:i] + args[i + 2:]
+    opts = {}
+    for flag in ("--name", "--model", "--effort", "--base", "--pr-base", "--job", "--issue"):
+        args, opts[flag[2:]] = take(args, flag)
     upload = "--upload" in args
     args = [a for a in args if a != "--upload"]
     task = " ".join(args).strip()
+    root = repo_root()
+    if opts["issue"] and not task:
+        task = issue_task(root, gh_issue(root, opts["issue"]), opts["job"])
     if not task:
-        die("usage: hivey cloud run \"<task>\" [--name <slug>] [--upload]", 2)
-    return start_session(repo_root(), task, name, upload)
+        die(RUN_USAGE, 2)
+    return start_session(root, task, opts["name"], upload, base=opts["base"] or "HEAD",
+                         model=opts["model"], effort=opts["effort"], pr_base=opts["pr-base"],
+                         job=opts["job"], issue=opts["issue"])
 
 
-def start_session(root: Path, task: str, name: str | None, upload: bool) -> int:
+def job_marker(job: str | None, issue: str | int | None) -> str | None:
+    """The line a job's cloud agent puts in its PR body and commits, so hivey finds them."""
+    return f"hivey-job:{job}#{issue}" if job and issue else None
+
+
+def hand_off(branch: str, manifest: dict, pr_base: str | None, marker: str | None) -> str:
+    """What every cloud agent is told about its branch, its PR and the bundle."""
+    start = f"origin/{pr_base}" if pr_base else manifest["source_commit"][:12]
+    target = pr_base or "the repository's default branch"
+    lines = [
+        "", "---", "(hivey) Your branch and pull request:",
+        f"- You are on {branch}: the code plus one generated commit 'chore: hivey cloud bundle' "
+        "(.claude/ additions, .hivey-cloud/, .mcp.json). That commit must never reach a pull request.",
+        f"- When the work is done, put your own commits on a new claude/ branch made from {start} "
+        "(git cherry-pick them; no bundle files), push it, and open a pull request into "
+        f"{target} (`gh pr create --base {pr_base or '<default branch>'}`).",
+    ]
+    if marker:
+        lines += [
+            f"- Put the line `{marker}` in the pull request body and in your last commit message: "
+            "the coordinator finds your work by it.",
+            "- If `gh pr create` fails (no GitHub token here), push the branch anyway and say so: "
+            "the coordinator opens the pull request.",
+            "- Afterwards the coordinator may send you failing test output. Fix it, push to the "
+            "same branch (the pull request updates), and reply with what you changed.",
+        ]
+    return "\n".join(lines)
+
+
+def start_session(root: Path, task: str, name: str | None, upload: bool, base: str = "HEAD",
+                  model: str | None = None, effort: str | None = None,
+                  pr_base: str | None = None, job: str | None = None,
+                  issue: str | None = None) -> int:
     need("claude", "install Claude Code")
-    slug = slugify(name or task)
+    if effort and effort not in EFFORTS:
+        die(f"--effort is one of {', '.join(EFFORTS)}", 2)
+    slug = slugify(name or (f"{job}-{issue}" if job and issue else task))
     stamp = dt.datetime.now().strftime("%m%d-%H%M")
     branch = f"{BRANCH_PREFIX}{slug}-{stamp}"
-    tmp, manifest = make_branch(root, branch, push=not upload)
+    pinned = {}
+    if model:
+        pinned["model"] = model
+    if effort:
+        pinned["effortLevel"] = effort
+        pinned["env"] = {"CLAUDE_CODE_EFFORT_LEVEL": effort}
+    tmp, manifest = make_branch(root, branch, push=not upload, base=base, session_settings=pinned)
     print_manifest(manifest)
-    prompt = (f"{task}\n\n(hivey: you are on branch {branch}, which carries a generated "
-              f".claude/ bundle. Push your work to a new claude/ branch made from the original "
-              f"commit {manifest['source_commit'][:12]} without the bundle files: .claude/"
-              f" changes from commit 'chore: hivey cloud bundle', .hivey-cloud/, .mcp.json "
-              f"additions.)")
-    say(f"starting the cloud session from {branch} …")
+    marker = job_marker(job, issue)
+    prompt = task + "\n" + hand_off(branch, manifest, pr_base, marker)
+    args = ["claude", "--cloud", prompt]
+    if model:
+        args[1:1] = ["--model", model]
+    if effort:
+        args[1:1] = ["--effort", effort]
+    say(f"starting the cloud session from {branch}"
+        f"{f' ({model}' + (f', {effort} effort' if effort else '') + ')' if model else ''} …")
     session = None
     env = {**os.environ, **({"CCR_FORCE_BUNDLE": "1"} if upload else {})}
     # `claude --cloud` needs a terminal; `script` gives it one and keeps a log for the ID.
     log = Path(tempfile.mkstemp(prefix="hivey-cloud-", suffix=".log")[1])
     try:
-        code = subprocess.call(["script", "-q", str(log), "claude", "--cloud", prompt],
-                               cwd=tmp, env=env)
+        code = subprocess.call(["script", "-q", str(log), *args], cwd=tmp, env=env)
         text = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", log.read_text(errors="ignore"))
         found = re.search(r"\b((?:session|cse)_[A-Za-z0-9]{8,})", text)
         session = found.group(1) if found else None
@@ -636,10 +707,180 @@ def start_session(root: Path, task: str, name: str | None, upload: bool) -> int:
         log.unlink(missing_ok=True)
         remove_worktree(root, tmp)
     if session:
-        record({"session": session, "branch": branch, "task": task, "repo": str(root),
-                "started": dt.datetime.now().isoformat(timespec="seconds")})
+        record({"session": session, "branch": branch, "task": task.splitlines()[0][:200],
+                "repo": str(root), "started": dt.datetime.now().isoformat(timespec="seconds"),
+                "base": base, "pr_base": pr_base, "job": job,
+                "issue": int(issue) if issue else None, "model": model, "effort": effort})
         say(f"\nsession {session} — follow it at https://claude.ai/code/{session}")
         say(f"steer it:  hivey cloud send {session} \"…\"   bring it here:  hivey cloud pull {session}")
+    else:
+        print("hivey cloud: no cloud session ID in Claude Code's output; nothing recorded",
+              file=sys.stderr)
+    return code if session else (code or 1)
+
+
+# ---------------------------------------------------------------- GitHub issues and job status
+
+def gh(root: Path, *args: str) -> str:
+    need("gh", "brew install gh, then gh auth login")
+    proc = run(["gh", *args], cwd=root, check=False)
+    if proc.returncode != 0:
+        die(f"gh {' '.join(args[:3])} failed: {(proc.stderr or proc.stdout).strip()[:300]}")
+    return proc.stdout
+
+
+def gh_issue(root: Path, number: str | int) -> dict:
+    return json.loads(gh(root, "issue", "view", str(number), "--json", "number,title,body,labels,url"))
+
+
+def label_value(issue: dict, prefix: str) -> str | None:
+    for label in issue.get("labels") or []:
+        name = label.get("name", "") if isinstance(label, dict) else str(label)
+        if name.lower().startswith(prefix + ":"):
+            return name.split(":", 1)[1].strip()
+    return None
+
+
+def issue_task(root: Path, issue: dict, job: str | None) -> str:
+    """The cloud agent's task for one GitHub issue. The issue text goes in the prompt: a cloud
+    session may have no GitHub token to read it."""
+    return "\n".join([
+        f"Work on GitHub issue #{issue['number']}: {issue['title']}",
+        f"({issue.get('url', '')})", "", "Issue text:", "", (issue.get("body") or "").strip(), "",
+        "How to work:",
+        "- Make the tests this issue lists pass. They were written by the coordinator before you "
+        "started; never edit, skip, delete or weaken them. Add more tests of your own if useful.",
+        "- Keep the change to this issue. Don't reformat or refactor unrelated code.",
+        "- Run the project's full test suite before you push; push only when it passes, or explain "
+        "exactly what still fails and why.",
+        "- In your final message: what you changed, the test command and its result.",
+    ])
+
+
+def find_prs(root: Path) -> list[dict]:
+    proc = run(["gh", "pr", "list", "--state", "all", "--limit", "200", "--json",
+                "number,title,body,state,headRefName,baseRefName,url,updatedAt,headRefOid"],
+               cwd=root, check=False)
+    try:
+        return json.loads(proc.stdout) if proc.returncode == 0 else []
+    except ValueError:
+        return []
+
+
+def pushed_branches(root: Path) -> dict[str, str]:
+    """origin's claude/* branches -> the message of their last commit."""
+    remote = (git("remote", cwd=root, check=False).splitlines() or ["origin"])[0]
+    git("fetch", "--quiet", "--prune", remote, f"+refs/heads/claude/*:refs/remotes/{remote}/claude/*",
+        cwd=root, check=False)
+    out = git("for-each-ref", f"refs/remotes/{remote}/claude", "--format=%(refname:short)",
+              cwd=root, check=False)
+    return {ref.split("/", 1)[1]: git("log", "-1", "--format=%B", ref, cwd=root, check=False)
+            for ref in out.splitlines() if ref}
+
+
+def job_status(entries: list[dict]) -> list[dict]:
+    """Each job session with its pull request (found by its hivey-job marker) or pushed branch."""
+    rows, prs, branches = [], {}, {}
+    for e in entries:
+        repo = Path(e.get("repo") or ".")
+        marker = job_marker(e.get("job"), e.get("issue"))
+        row = {k: e.get(k) for k in ("job", "issue", "session", "model", "effort", "started", "pr_base")}
+        row["url"] = f"https://claude.ai/code/{e.get('session')}"
+        row["state"], row["pr"] = "working", None
+        if marker:
+            if repo not in prs:
+                prs[repo] = find_prs(repo)
+            pr = next((p for p in prs[repo] if marker in (p.get("body") or "")), None)
+            if pr:
+                row["pr"] = {k: pr.get(k) for k in ("number", "url", "state", "headRefName",
+                                                     "baseRefName", "updatedAt", "headRefOid")}
+                row["state"] = {"OPEN": "pr-open", "MERGED": "merged"}.get(pr.get("state"), "pr-closed")
+            else:
+                if repo not in branches:
+                    branches[repo] = pushed_branches(repo)
+                hit = next((b for b, msg in branches[repo].items() if marker in msg), None)
+                if hit:
+                    row["state"], row["branch"] = "pushed", hit
+        rows.append(row)
+    return rows
+
+
+def cmd_status(args: list[str]) -> int:
+    args, job = take(args, "--job")
+    data = [e for e in load_json(SESSIONS, []) if e.get("job") and (not job or e.get("job") == job)
+            and ("--all" in args or not e.get("closed"))]
+    rows = job_status(data)
+    if "--json" in args:
+        say(json.dumps(rows, indent=2))
+        return 0
+    if not rows:
+        say(f"no cloud agents for {'job ' + job if job else 'any job'} (hivey cloud run --job … --issue …)")
+    for r in rows:
+        pr = r.get("pr") or {}
+        where = pr.get("url") or r.get("branch") or r["url"]
+        say(f"{r['job']} #{r['issue']:<5} {r['state']:10} {(r.get('model') or '-'):>8} "
+            f"{(r.get('effort') or '-'):>6}  {where}")
+    return 0
+
+
+def cmd_close(args: list[str]) -> int:
+    """A finished job: forget its cloud agents (status no longer shows them) and delete the
+    hivey-cloud/* bundle branches they started from. Their claude/ branches and pull requests
+    stay. Cloud sessions themselves can't be ended from here; idle ones cost nothing and can be
+    archived on claude.ai/code."""
+    args, job = take(args, "--job")
+    if not job:
+        die("usage: hivey cloud close --job NAME", 2)
+    data = load_json(SESSIONS, [])
+    mine = [e for e in data if e.get("job") == job and not e.get("closed")]
+    if not mine:
+        say(f"job {job}: no open cloud agents")
+        return 0
+    deleted = 0
+    for e in mine:
+        repo = Path(e.get("repo") or ".")
+        remote = (git("remote", cwd=repo, check=False).splitlines() or [""])[0]
+        if remote and e.get("branch"):
+            gone = run(["git", "push", "--quiet", remote, "--delete", e["branch"]], cwd=repo,
+                       check=False).returncode == 0
+            deleted += gone
+        git("branch", "-D", e.get("branch", ""), cwd=repo, check=False)
+        e["closed"] = dt.datetime.now().isoformat(timespec="seconds")
+    save_json(SESSIONS, data)
+    say(f"job {job}: closed {len(mine)} cloud agent(s), deleted {deleted} bundle branch(es); "
+        "archive the sessions on claude.ai/code if you like")
+    return 0
+
+
+def cmd_issues(args: list[str]) -> int:
+    opts = {}
+    for flag in ("--label", "--job", "--base", "--pr-base", "--model", "--effort", "--max"):
+        args, opts[flag[2:]] = take(args, flag)
+    if not opts["label"]:
+        die("usage: hivey cloud issues --label L [--job NAME] [--max 3] [--base REF] "
+            "[--pr-base BRANCH] [--model M] [--effort E] [--dry-run]", 2)
+    root = repo_root()
+    job = opts["job"] or slugify(opts["label"].split(":", 1)[-1])
+    started = {e.get("issue") for e in load_json(SESSIONS, []) if e.get("job") == job}
+    issues = json.loads(gh(root, "issue", "list", "--label", opts["label"], "--state", "open",
+                           "--limit", "100", "--json", "number,title,body,labels,url"))
+    todo = [i for i in sorted(issues, key=lambda i: i["number"])
+            if i["number"] not in started and not label_value(i, "where") == "local"]
+    todo = todo[:int(opts["max"] or 3)]
+    if not todo:
+        say(f"no open {opts['label']} issues without a cloud agent")
+        return 0
+    code = 0
+    for issue in todo:
+        model = label_value(issue, "model") or opts["model"]
+        effort = label_value(issue, "effort") or opts["effort"]
+        say(f"#{issue['number']} {issue['title']}  ({model or 'default model'}"
+            f"{', ' + effort if effort else ''})")
+        if "--dry-run" in args:
+            continue
+        code = start_session(root, issue_task(root, issue, job), None, False,
+                             base=opts["base"] or "HEAD", model=model, effort=effort,
+                             pr_base=opts["pr-base"], job=job, issue=str(issue["number"])) or code
     return code
 
 
@@ -809,6 +1050,7 @@ COMMANDS = {
     "setup": cmd_setup, "init": cmd_init, "bundle": cmd_bundle, "run": cmd_run,
     "send": cmd_send, "pull": cmd_pull, "list": cmd_list, "secrets": cmd_secrets,
     "schedule": cmd_schedule, "refresh": cmd_refresh, "clean": cmd_clean,
+    "status": cmd_status, "issues": cmd_issues, "close": cmd_close,
 }
 
 

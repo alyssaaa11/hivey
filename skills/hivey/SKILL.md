@@ -237,7 +237,10 @@ hivey-* skills, chosen skills/commands/agents/plugins, user MCP servers, `~/.cla
 hivey cloud setup                 # once, in a terminal: age key (private half → clipboard only)
 hivey cloud init                  # .hivey/cloud.toml in this repo
 hivey cloud secrets               # network secrets → paste into claude.ai one by one (clipboard)
-hivey cloud run "<task>" [--name n] [--upload]   # one cloud session per call
+hivey cloud run "<task>" [--name n] [--model M] [--effort E] [--base REF] [--pr-base B] [--upload]
+hivey cloud run --job J --issue N --base job/J --pr-base job/J --model M   # one agent per GitHub issue
+hivey cloud issues --label job:J --job J [--max 3] …   # one agent per open labelled issue
+hivey cloud status [--job J] [--json]            # working / pushed / pr-open / merged per agent
 hivey cloud send <session> "<msg>" | pull <session> | list
 hivey cloud schedule "<when>" "<task>"           # scheduled cloud task (confirm in Claude)
 hivey cloud refresh | bundle [--out DIR] | clean [--yes]
@@ -250,7 +253,12 @@ through a shim. `kind = "network"` → a claude.ai network secret the proxy adds
 VM never sees it). hivey reads values with `envsave get es_...` (no Touch ID). Never ask for
 secret values in chat. Not in the cloud: plugins as such (their skills/MCP are copied), global
 hooks, MCP servers that run a file from the Mac or need an OAuth sign-in (use a claude.ai
-connector), hivey's bus and Slack relays.
+connector), hivey's bus and Slack relays. The model pinned with `--model` applies in the cloud;
+`--effort` is passed but cloud sessions may keep their default effort.
+
+To split a job into GitHub issues and have one cloud agent per issue hand in a pull request that
+you check and merge into a job branch, use the `hivey-job-creator` skill (plan, briefs, tests
+first, waves, `job.py check|merge|wait|finish`, one final PR for the user).
 
 ## Desktop pet (macOS)
 

@@ -44,6 +44,7 @@ In `~/.claude/skills/`, and `~/.codex/skills/` when Codex is set up (`hivey skil
 |---|---|---|
 | `hivey` | operate hivey: sessions, swarms, plugins, messages, troubleshooting; scripts `new_wiki.py`, `handoff.py` | now |
 | `hivey-create-wiki` | create the `<name>-wiki` Obsidian vault of an agent or a swarm | now |
+| `hivey-job-creator` | split a job into small tasks, each a GitHub issue with a brief and acceptance tests the coordinator writes first; one Claude Code cloud agent per issue (`hivey cloud run --job --issue`, model per task via model-picker), each PR checked (`job.py check`: tests in a clean worktree, protected tests, no bundle files) and merged into `job/<name>`, then one final PR; scripts: `job.py` | now |
 | `hivey-dashboards` | add, list, edit and remove the dashboards on the agent fleet page's 🖥 Dashboards tab from any agent (`hivey agent-map dashboard …`); agents register the dashboards they build | now |
 | `hivey-context7` | current docs for any library, API or CLI in seconds (Context7 web API; every agent's first stop for docs) | now |
 | `hivey-codex` | run a task with Codex headless (`codex exec`): models, sandbox, review, resume | now |

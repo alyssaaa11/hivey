@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job board</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1d232b; --muted: #687384; --line: #c9d0da;
+  --planned: #8a94a3; --running: #2f7de1; --pushed: #7a5af5; --pr: #d08a00; --failing: #d64545;
+  --passed: #1f9d6a; --merged: #15803d; --blocked: #b4232c; --local: #0e8f9e;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11151b; --panel: #1a2029; --ink: #e6eaf0; --muted: #94a0b2; --line: #3a4555; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+header { padding: 14px 16px 6px; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: baseline; }
+h1 { font-size: 18px; margin: 0; }
+.meta { color: var(--muted); font-size: 12px; }
+.bar { flex-basis: 100%; height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+.bar > div { height: 100%; background: var(--merged); transition: width .4s; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; padding: 4px 16px 0; font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; background: var(--c); vertical-align: -1px; }
+#wrap { overflow: auto; padding: 8px 16px 24px; }
+svg { display: block; }
+.node rect.box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+.node.live rect.box { stroke: var(--running); stroke-width: 2; }
+.node text { fill: var(--ink); }
+.node .sub { fill: var(--muted); font-size: 11.5px; }
+.node .chip { font-size: 11px; font-weight: 600; fill: #fff; }
+.node a text { text-decoration: underline; fill: var(--running); }
+.edge { fill: none; stroke: var(--line); stroke-width: 1.6; }
+.edge.done { stroke: var(--merged); }
+.edge.fin { stroke-dasharray: 4 5; opacity: .7; }
+.pulse { animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+#agents { padding: 0 16px 24px; }
+#agents table { border-collapse: collapse; width: 100%; font-size: 13px; }
+#agents th, #agents td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+#agents th { color: var(--muted); font-weight: 600; }
+a { color: var(--running); }
+.err { color: var(--failing); padding: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Job</h1>
+  <span class="meta" id="meta"></span>
+  <div class="bar"><div id="progress" style="width:0"></div></div>
+</header>
+<div class="legend" id="legend"></div>
+<div id="wrap"><svg id="graph" role="img" aria-label="Job tasks and dependencies"></svg></div>
+<div id="agents"></div>
+<script>
+const STATUS = {
+  planned: 'planned', running: 'agent working', working: 'agent working', pushed: 'pushed',
+  'pr-open': 'PR open', failing: 'tests failing', passed: 'tests passed', merged: 'merged',
+  blocked: 'blocked', local: 'local', 'pr-closed': 'PR closed'
+};
+const COLOR = s => `var(--${({working: 'running', 'pr-open': 'pr', 'pr-closed': 'blocked'})[s] || s})`;
+const LIVE = new Set(['running', 'working', 'pushed', 'pr-open', 'failing']);
+const W = 250, H = 104, GX = 70, GY = 22;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
+
+function layout(tasks) {
+  const depth = {};
+  const d = n => {
+    if (depth[n] !== undefined) return depth[n];
+    depth[n] = 0;  // cycle guard
+    const deps = (tasks[n]?.deps || []).map(String).filter(x => tasks[x]);
+    return depth[n] = deps.length ? 1 + Math.max(...deps.map(d)) : 0;
+  };
+  Object.keys(tasks).forEach(d);
+  const cols = [];
+  Object.keys(tasks).sort((a, b) => a - b).forEach(n => (cols[depth[n]] ||= []).push(n));
+  const pos = {};
+  cols.forEach((col, c) => col.forEach((n, r) => pos[n] = {x: c * (W + GX), y: r * (H + GY)}));
+  return {pos, cols};
+}
+
+function render(job) {
+  document.title = `Job: ${job.name}`;
+  document.getElementById('title').textContent = `Job: ${job.name}`;
+  const tasks = job.tasks, ids = Object.keys(tasks);
+  const merged = ids.filter(n => tasks[n].status === 'merged').length;
+  const live = ids.filter(n => LIVE.has(tasks[n].status)).length;
+  document.getElementById('meta').textContent =
+    `${job.branch} → ${job.base} · ${merged}/${ids.length} merged · ${live} agent${live === 1 ? '' : 's'} active · updated ${job.updated?.slice(11, 16) || '?'}`;
+  document.getElementById('progress').style.width = ids.length ? `${100 * merged / ids.length}%` : '0';
+  const used = [...new Set(ids.map(n => tasks[n].status))];
+  document.getElementById('legend').innerHTML = used.map(s => `<span style="--c:${COLOR(s)}">${esc(STATUS[s] || s)}</span>`).join('');
+
+  const {pos, cols} = layout(tasks);
+  const finalX = cols.length * (W + GX), rows = Math.max(1, ...cols.map(c => c.length));
+  const finalY = (rows * (H + GY) - GY) / 2 - H / 2;
+  const svg = document.getElementById('graph');
+  svg.setAttribute('width', finalX + W + 4);
+  svg.setAttribute('height', rows * (H + GY));
+  const edge = (a, b, done, fin) => {
+    const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 6, y2 = b.y + H / 2, m = (x1 + x2) / 2;
+    return `<path class="edge ${done ? 'done' : ''} ${fin ? 'fin' : ''}" d="M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}" marker-end="url(#${done ? 'ahd' : 'ah'})"/>`;
+  };
+  let out = `<defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--line)"/></marker>
+    <marker id="ahd" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--merged)"/></marker></defs>`;
+  const fin = {x: finalX, y: finalY};
+  ids.forEach(n => (tasks[n].deps || []).map(String).filter(x => pos[x]).forEach(dep =>
+    out += edge(pos[dep], pos[n], tasks[dep].status === 'merged')));
+  const leaves = ids.filter(n => !ids.some(m => (tasks[m].deps || []).map(String).includes(n)));
+  leaves.forEach(n => out += edge(pos[n], fin, tasks[n].status === 'merged', true));
+
+  ids.forEach(n => {
+    const t = tasks[n], p = pos[n], s = t.status, isLive = LIVE.has(s);
+    const title = (t.title || `Task ${n}`).slice(0, 34);
+    const agent = t.where === 'local' ? 'local agent' : `${t.model || 'default model'}${t.effort ? ' · ' + t.effort : ''}`;
+    const link = (href, label, x) => href ? `<a href="${esc(href)}" target="_blank" rel="noopener"><text x="${x}" y="88" font-size="12">${esc(label)}</text></a>` : '';
+    out += `<g class="node ${isLive ? 'live' : ''}" transform="translate(${p.x},${p.y})">
+      <title>${esc(t.title || '')}</title>
+      <rect class="box" width="${W}" height="${H}" rx="10"/>
+      <rect width="6" height="${H}" rx="3" fill="${COLOR(s)}"/>
+      <text x="16" y="22" font-weight="600">#${esc(n)} ${esc(title)}</text>
+      <rect x="16" y="32" rx="8" height="17" width="${(STATUS[s] || s).length * 6.6 + 16}" fill="${COLOR(s)}"/>
+      <text class="chip" x="24" y="45">${esc(STATUS[s] || s)}</text>
+      ${isLive ? `<circle class="pulse" cx="${W - 18}" cy="20" r="5" fill="var(--running)"/>` : ''}
+      <text class="sub" x="16" y="68">🤖 ${esc(agent)}${t.attempts ? ` · ${t.attempts} check${t.attempts > 1 ? 's' : ''}` : ''}</text>
+      ${link(t.issue_url, 'issue', 16)}${link(t.session_url, 'session', 62)}${link(t.pr_url, 'PR', 126)}
+    </g>`;
+  });
+  const done = merged === ids.length && ids.length;
+  out += `<g class="node" transform="translate(${fin.x},${fin.y})">
+    <rect class="box" width="${W}" height="${H}" rx="10" stroke-dasharray="${done ? '' : '5 4'}"/>
+    <text x="16" y="24" font-weight="600">Final PR</text>
+    <text class="sub" x="16" y="46">${esc(job.branch)} → ${esc(job.base)}</text>
+    <text class="sub" x="16" y="68">${done ? (job.final_pr ? 'opened for your review' : 'ready: job.py finish') : `waiting for ${ids.length - merged} task${ids.length - merged === 1 ? '' : 's'}`}</text>
+  </g>`;
+  svg.innerHTML = out;
+
+  const rowsHtml = ids.filter(n => LIVE.has(tasks[n].status)).map(n => {
+    const t = tasks[n];
+    return `<tr><td>#${esc(n)}</td><td>${esc(t.title || '')}</td><td>${esc(t.model || '-')}${t.effort ? ' · ' + esc(t.effort) : ''}</td><td>${esc(STATUS[t.status] || t.status)}</td>
+      <td>${t.session_url ? `<a href="${esc(t.session_url)}" target="_blank" rel="noopener">session</a>` : ''} ${t.pr_url ? `<a href="${esc(t.pr_url)}" target="_blank" rel="noopener">PR</a>` : ''}</td></tr>`;
+  }).join('');
+  document.getElementById('agents').innerHTML = rowsHtml
+    ? `<table><thead><tr><th>Task</th><th>Title</th><th>Agent</th><th>State</th><th>Links</th></tr></thead><tbody>${rowsHtml}</tbody></table>`
+    : '';
+}
+
+// Which job: /<name>/ or ?job=<name>; on / the first active job (the picker switches).
+let current = decodeURIComponent(location.pathname.split('/').filter(Boolean)[0] || '') ||
+  new URLSearchParams(location.search).get('job') || '';
+async function load() {
+  try {
+    const jobs = await (await fetch('/api/jobs', {cache: 'no-store'})).json();
+    if (!jobs.length) {
+      document.getElementById('title').textContent = 'No jobs yet';
+      document.getElementById('meta').textContent = 'Give the job coordinator a job: hivey msg send job-coordinator/master "<the job>"';
+      return;
+    }
+    if (!jobs.some(j => j.name === current)) current = (jobs.find(j => j.active) || jobs[0]).name;
+    const pick = jobs.length > 1 ? `<select id="pick">${jobs.map(j => `<option ${j.name === current ? 'selected' : ''} value="${esc(j.name)}">${esc(j.name)} · ${j.merged}/${j.total}${j.active ? ' · active' : j.finished ? ' · done' : ''}</option>`).join('')}</select>` : '';
+    const r = await fetch('/api/job/' + encodeURIComponent(current), {cache: 'no-store'});
+    if (!r.ok) throw new Error(r.status);
+    render(await r.json());
+    document.getElementById('meta').insertAdjacentHTML('afterend', pick ? `<span id="pickwrap">${pick}</span>` : '');
+    document.querySelectorAll('#pickwrap').forEach((el, i, all) => i < all.length - 1 && el.remove());
+    const sel = document.getElementById('pick');
+    if (sel) sel.onchange = () => { current = sel.value; history.replaceState(null, '', '/' + encodeURIComponent(current) + '/'); load(); };
+  } catch (e) {
+    document.getElementById('agents').innerHTML = `<div class="err">Cannot reach the job board server (${esc(e.message)}): python3 job.py board</div>`;
+  }
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

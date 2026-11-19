@@ -20,10 +20,24 @@ usage: hivey cloud setup [--rotate]     once: make the age key for secrets, then
                                       cloud agents get
        hivey cloud secrets              paste the network secrets into claude.ai, one by one
                                       from the clipboard (values are never shown)
-       hivey cloud run \"<task>\" [--name <slug>] [--upload]
+       hivey cloud run \"<task>\" [--name <slug>] [--model M] [--effort E] [--base REF]
+                     [--pr-base BRANCH] [--job NAME --issue N] [--upload]
                                       start a cloud session on a hivey-cloud/<slug> branch
-                                      (this commit + your bundle); run several in parallel.
+                                      (REF, default this commit, + your bundle); run several
+                                      in parallel. --model/--effort: pinned for that session.
+                                      --pr-base: the branch its pull request goes into.
+                                      --issue N (with --job): the task is GitHub issue N.
                                       --upload: no push, Claude Code uploads the repo itself
+       hivey cloud issues --label L [--job NAME] [--max 3] [--base REF] [--pr-base BRANCH]
+                     [--model M] [--effort E] [--dry-run]
+                                      one cloud agent per open issue with label L that has
+                                      none yet (labels model:X, effort:Y override per issue;
+                                      where:local issues are skipped)
+       hivey cloud status [--job NAME] [--json] [--all]
+                                      each job agent: working, pushed, pr-open, merged, with
+                                      its pull request (found by its hivey-job:<job>#<n> line)
+       hivey cloud close --job NAME     a finished job: forget its cloud agents and delete their
+                                      hivey-cloud/* branches (PRs and claude/ branches stay)
        hivey cloud test [--secret es_...]
                                       a throwaway self-test agent in the cloud that checks
                                       skills, rules, hook, MCP and the EnvSave shim
@@ -51,7 +65,7 @@ pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
         Some("remote-control") => remote_control(&rest),
         Some(
             "setup" | "init" | "secrets" | "run" | "send" | "pull" | "list" | "schedule"
-            | "refresh" | "bundle" | "clean" | "test",
+            | "refresh" | "bundle" | "clean" | "test" | "status" | "issues" | "close",
         ) => run_script(args),
         Some("help" | "--help" | "-h") => {
             println!("{HELP}");
