@@ -302,28 +302,28 @@ td.j{max-width:420px}
 .holo .talk button:hover{background:rgba(var(--c)/.25)}
 .rtabs .vt{margin-left:10px}
 .rtabs .vt.on{border-color:#38bdf8;box-shadow:0 0 12px rgba(56,189,248,.3)}
-#room.chatting .rig{--ty:-118px;--sc:.86}
+#room.chatting .rig{--ty:-190px;--sc:.78}
 #room.chatting .scene{min-height:calc(100vh - 230px + 40px)}
 #chatdock .cyes,#chatdock .cno{font-weight:700;color:#05070d!important;border:0!important}
 #chatdock .cyes{background:#4ade80!important}#chatdock .cno{background:#fb7185!important}
-#chatdock{position:fixed;left:50%;bottom:14px;z-index:60;width:min(860px,calc(100vw - 32px));transform:translateX(-50%);perspective:900px;--c:56 189 248}
+#chatdock{position:fixed;left:50%;bottom:14px;z-index:60;width:min(1180px,calc(100vw - 32px));transform:translateX(-50%);perspective:900px;--c:56 189 248}
 #chatdock.working{--c:74 222 128}#chatdock.needs{--c:250 204 21}#chatdock.done{--c:56 189 248}#chatdock.idle{--c:148 163 184}
-#chatdock .console{transform:rotateX(7deg);transform-origin:50% 100%;border-radius:16px;overflow:hidden;
+#chatdock .console{transform-origin:50% 100%;border-radius:16px;overflow:hidden;
   background:linear-gradient(#060a12,#03060c);border:1.5px solid rgba(var(--c)/.8);
   box-shadow:0 0 40px rgba(var(--c)/.4),0 20px 60px rgba(0,0,0,.7),inset 0 0 30px rgba(var(--c)/.08);animation:dockin .35s cubic-bezier(.2,1.2,.4,1)}
-@keyframes dockin{from{opacity:0;transform:rotateX(40deg) translateY(60px)}}
+@keyframes dockin{from{opacity:0;transform:translateY(60px)}}
 #chatdock .chead{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(var(--c)/.12);border-bottom:1px solid rgba(var(--c)/.35);font-size:12.5px}
 #chatdock .dots{display:flex;gap:5px}#chatdock .dots i{width:10px;height:10px;border-radius:50%;background:#fb7185}#chatdock .dots i:nth-child(2){background:#f5b83d}#chatdock .dots i:nth-child(3){background:#4ade80}
 #chatdock .cst{color:rgb(var(--c));margin-right:auto}
 #chatdock .chead button{background:none;border:1px solid rgba(var(--c)/.4);color:var(--text);border-radius:6px;padding:1px 8px;cursor:pointer;font:inherit}
-#chatdock .term{margin:0;height:min(200px,26vh);overflow:auto;padding:10px 12px;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe8d6;white-space:pre-wrap;
+#chatdock .term{margin:0;height:min(440px,46vh);overflow:auto;padding:12px 14px;font:13.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cfe8d6;white-space:pre-wrap;
   background:repeating-linear-gradient(0deg,rgba(var(--c)/.04) 0 1px,transparent 1px 3px);text-shadow:0 0 4px rgba(var(--c)/.35)}
 #chatdock .cin{display:flex;gap:8px;align-items:center;padding:8px 10px;border-top:1px solid rgba(var(--c)/.35);background:rgba(255,255,255,.03)}
 #chatdock .pr{color:rgb(var(--c));font-weight:700}
-#chatdock input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:13px ui-monospace,Menlo,monospace}
+#chatdock input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:14px ui-monospace,Menlo,monospace}
 #chatdock .cin button{background:rgb(var(--c));color:#05070d;border:0;border-radius:8px;padding:5px 14px;font:inherit;font-weight:700;cursor:pointer}
 @media (prefers-reduced-motion:reduce){#chatdock .console{animation:none}}
-@media (max-width:820px){#chatdock .console{transform:none}#room.chatting .rig{--ty:0px;--sc:1}#room.chatting{padding-bottom:330px}}
+@media (max-width:820px){#chatdock .console{transform:none}#room.chatting .rig{--ty:0px;--sc:1}#room.chatting{padding-bottom:560px}}
 /* ---------- 3D command room ---------- */
 #room{display:none;padding:10px 16px 18px}
 .rtabs{display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap}
