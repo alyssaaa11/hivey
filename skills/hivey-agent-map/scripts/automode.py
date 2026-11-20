@@ -356,6 +356,105 @@ def set_fields(sid: str, sheet: str = "", goal: str = "") -> tuple[bool, str]:
     return True, "saved"
 
 
+GITIGNORE = """.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+id_rsa*
+credentials*.json
+node_modules/
+__pycache__/
+.venv/
+venv/
+dist/
+build/
+.next/
+*.log
+"""
+LEAKS_CONFIG = HOME / ".claude/skills/git-scan-secrets/gitleaks.toml"  # allowlists EnvSave es_ keys
+
+
+def git(folder: str, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", folder, *args], capture_output=True, text=True, timeout=timeout)
+
+
+def leaks(folder: str) -> str:
+    """gitleaks over every commit that would be pushed; '' when clean, else what it found (redacted)."""
+    gl = shutil.which("gitleaks") or "/opt/homebrew/bin/gitleaks"
+    if not os.path.exists(gl):
+        return "gitleaks is not installed (brew install gitleaks), so the secret check could not run"
+    out = STATE_DIR / f"leaks-{os.getpid()}.json"
+    cmd = [gl, "git", folder, "--no-banner", "--redact", "--exit-code", "1", "--log-level", "error",
+           "--report-format", "json", "--report-path", str(out)]
+    if LEAKS_CONFIG.exists():
+        cmd += ["--config", str(LEAKS_CONFIG)]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if r.returncode == 0:
+            return ""
+        try:
+            files = sorted({f.get("File", "?") for f in json.loads(out.read_text() or "[]")})
+        except (OSError, ValueError):
+            files = []
+        return ("possible secrets in: " + ", ".join(files[:10])) if files else \
+            "the secret check failed: " + ((r.stderr or r.stdout).strip()[-300:] or f"gitleaks exit {r.returncode}")
+    finally:
+        out.unlink(missing_ok=True)
+
+
+def remote(sid: str) -> tuple[bool, str]:
+    """Make sure the agent's folder is a git repository with a GitHub remote: a new private repo when it has none."""
+    st = load(sid)
+    if not st:
+        return False, "unknown Auto Mode run"
+    folder = st["folder"]
+    inside = git(folder, "rev-parse", "--show-toplevel")
+    if inside.returncode == 0:
+        top = inside.stdout.strip()
+        if Path(top) == HOME:
+            return False, "the folder sits inside a git repository at your home folder: needs the user"
+        if git(top, "remote").stdout.strip():
+            url = git(top, "remote", "get-url", "origin").stdout.strip() or git(top, "remote", "-v").stdout.split()[1]
+            return True, f"already has a remote: {url}"
+        fresh_repo = False
+    else:  # not a repository yet: init, a safe .gitignore, one commit of what is there
+        top, fresh_repo, made_gi = folder, True, False
+        git(top, "init", "-q", "-b", "main")
+        gi = Path(top) / ".gitignore"
+        made_gi = not gi.exists()
+        if made_gi:
+            gi.write_text(GITIGNORE)
+        git(top, "add", "-A")
+        c = git(top, "commit", "-q", "-m", "chore: initial commit (hivey Auto Mode)")
+        if c.returncode != 0:
+            return False, "git commit failed: " + (c.stderr or c.stdout).strip()[-300:]
+    found = leaks(top)
+    if found:
+        if fresh_repo:  # undo what this made, keep the user's files
+            shutil.rmtree(Path(top) / ".git", ignore_errors=True)
+            if made_gi:
+                (Path(top) / ".gitignore").unlink(missing_ok=True)
+        return False, f"not pushed: {found}. Needs the user: move them out (EnvSave) or add them to .gitignore"
+    name = slugify(Path(top).name) or st["slug"]
+    if subprocess.run(["gh", "repo", "view", name], capture_output=True, timeout=30).returncode == 0:
+        name = f"{name}-{dt.datetime.now().strftime('%Y%m%d')}"
+    r = subprocess.run(["gh", "repo", "create", name, "--private", "--source", top, "--remote", "origin"],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        return False, "gh repo create failed: " + (r.stderr or r.stdout).strip()[-300:]
+    branch = git(top, "branch", "--show-current").stdout.strip() or "main"
+    p = git(top, "push", "-u", "origin", branch, timeout=600)
+    if p.returncode != 0:
+        return False, "repo created but the push failed: " + (p.stderr or p.stdout).strip()[-300:]
+    url = git(top, "remote", "get-url", "origin").stdout.strip()
+    update(sid, repo=url)
+    return True, (f"new private repo {url}, {branch} pushed. Cloud workers need the Claude GitHub App to reach it: "
+                  "if the app is limited to selected repositories, add a 'Needs the user' row and use local workers")
+
+
 # ---------------------------------------------------------------- the watcher
 
 CLOUD_EVERY = 120  # seconds between looks at the cloud workers' pull requests
@@ -515,6 +614,8 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--model", default="sonnet"); s.add_argument("--cloud", action="store_true")
     s = sub.add_parser("set", help="the supervisor: save the task list's link or the goal")
     s.add_argument("id"); s.add_argument("--sheet", default=""); s.add_argument("--goal", default="")
+    s = sub.add_parser("remote", help="the supervisor: give the agent's folder a private GitHub repo if it has no remote")
+    s.add_argument("id")
     s = sub.add_parser("watch", help=argparse.SUPPRESS)
     s.add_argument("id")
     a = ap.parse_args(argv)
@@ -538,6 +639,7 @@ def main(argv: list[str] | None = None) -> int:
         "read": lambda: read(a.id, a.who, a.lines),
         "worker": lambda: worker(a.id, a.name, a.task, a.model, a.cloud),
         "set": lambda: set_fields(a.id, a.sheet, a.goal),
+        "remote": lambda: remote(a.id),
     }[a.cmd]()
     print(msg)
     return 0 if ok else 1

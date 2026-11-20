@@ -115,7 +115,8 @@ hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | st
   (or `hivey agent-map auto start <fleet id> --hours 2 --goal "…"`). It opens a 🤖 autopilot tab in the agent's space:
   Claude on Fable (your subscription) in its own folder `~/.hivey/auto/<agent>/`, briefed by `scripts/autopilot_brief.md`
   to supervise the agent until the time is up. It sets the goal (`GOAL.md`) and a task list (a Claude spreadsheet
-  artifact, else `TASKS.md`), asks the agent to save its Status, then `/clear`s it and switches it to Fable, and hands
+  artifact, else `TASKS.md`), makes sure the agent's folder has a GitHub remote (`auto remote`: a new private repo,
+  pushed only after a gitleaks secret check; with none, a commit on a branch counts as done), asks the agent to save its Status, then `/clear`s it and switches it to Fable, and hands
   out the work: to the agent, to cloud workers (`hivey cloud run`, preferred for code in a GitHub repo) or to local
   worker panes in `workers/<name>/` (for local files, apps, the browser or secrets), each on the model the task needs.
   `scripts/automode.py watch` types an `[auto]` event into it whenever the agent or a worker finishes a turn or asks

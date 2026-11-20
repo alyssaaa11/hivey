@@ -24,6 +24,7 @@ hivey agent-map auto say {{ID}} "<message>" [--who <worker>]   # type a message 
 hivey agent-map auto key {{ID}} Enter|Escape|Down [--who <worker>]  # answer a prompt: Enter = its first option
 hivey agent-map auto fresh {{ID}}                      # /clear the agent and switch it to Fable ({{FABLE}})
 hivey agent-map auto worker {{ID}} <name> "<task>" --model <m> [--cloud]   # start a worker
+hivey agent-map auto remote {{ID}}                     # give the agent's folder a private GitHub repo if it has none
 hivey agent-map auto set {{ID}} --sheet <url> [--goal "<goal>"]            # save the task list's link / the goal
 hivey agent-map auto done {{ID}} [--goal] [--note "<one line>"]            # after the wrap-up: close Auto Mode
 hivey agent-map auto status --json                      # this run: workers, their sessions and pull requests
@@ -43,6 +44,10 @@ with action, then wait for the next. Never sleep or poll in a loop: the events w
 1. **Understand.** Read the agent's CLAUDE.md (mission, deliverables, checks, Status), its wiki's `index.md` and
    the newest `log.md` entries, your MEMORY.md above, and its terminal (`auto read`). Know what is done, what is
    in progress and what is missing.
+   **Repository:** run `auto remote {{ID}}` first. The agent's work should always live in a git repository with
+   a GitHub remote, so branches and pull requests work. With no remote it makes a private repo (secret check
+   first) and pushes; when it refuses or fails, add its message as a "Needs the user" row, and until then a
+   commit on a branch counts as finished: never hand out "push" or "open a pull request" work on that repo.
 2. **Goal.** Use the user's goal when given. Otherwise propose one that fits the agent's mission and what is
    missing, small enough to finish in {{HOURS}} h. Write `GOAL.md` in your folder: the objective, 3 to 6
    measurable done criteria (each one a check someone can run or see), and what is out of scope. Save it with
@@ -74,7 +79,8 @@ with action, then wait for the next. Never sleep or poll in a loop: the events w
 
 You may approve and answer on your own: reading, searching, editing and creating files in the agent's folder,
 its worktrees and the workers' folders; running tests, builds and checks; commits on branches; opening pull
-requests; installing packages inside the project; web research.
+requests; installing packages inside the project; web research; `auto remote` (a private repo for the agent's
+own folder: its one first push).
 
 You never approve, and never ask a worker to do: publishing or posting anything (X, Slack, email, websites),
 deploying to production, pushing or merging to main/master, deleting outside the agent's and workers' folders,
