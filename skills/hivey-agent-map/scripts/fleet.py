@@ -141,7 +141,7 @@ def desks(hv: str, hs: dict | None = None) -> list[dict]:
         data = json.loads(sh([hv, "agent", "list"], sock=sock) or "{}")
     except ValueError:
         return []
-    agents = data.get("result", {}).get("agents", [])
+    agents = data.get("result", {}).get("agents", []) + sleepers(hv, hs)
     rooms = spaces(hv, sock)
     team: dict[str, list] = {}
     for a in agents:
@@ -175,10 +175,32 @@ def desks(hv: str, hs: dict | None = None) -> list[dict]:
             "model_hint": title.rsplit("·", 1)[-1].strip() if "·" in title else "",
             "team": members, "team_working": sum(1 for m in members if m["status"] == "working"),
             "focused": bool(a.get("focused")), "queued": bool(tok.get("queued")),
+            "hibernated": bool(a.get("hibernated")),
         })
     for d in out:  # the only desk in a space is just the space
         if d["role"] == "session" and per_space.get(d["workspace"]) == 1:
             d["name"] = d["space"]
+    return out
+
+
+def sleepers(hv: str, hs: dict) -> list[dict]:
+    """Agents hivey hibernated (stopped while idle to free memory; pane and conversation kept), shaped like
+    `hivey agent list` entries so they stay on the page as paused desks. Listed in <session dir>/hibernated.json."""
+    try:
+        saved = json.loads((Path(hs.get("dir") or HOME / ".config/hivey") / "hibernated.json").read_text()).get("sleepers") or {}
+        panes = {p.get("pane_id"): p for p in
+                 json.loads(sh([hv, "pane", "list"], sock=hs.get("socket")) or "{}").get("result", {}).get("panes", [])}
+    except (OSError, ValueError, AttributeError):
+        return []
+    out = []
+    for pane_id, z in saved.items():
+        p = panes.get(pane_id)
+        if not isinstance(z, dict) or not p:  # its pane was closed since
+            continue
+        argv = z.get("argv") or []
+        resume = argv[argv.index("--resume") + 1] if "--resume" in argv[:-1] else None
+        out.append({**p, "agent": z.get("agent") or "claude", "agent_status": "idle", "hibernated": True,
+                    "agent_session": {"value": resume} if resume else {}})
     return out
 
 
@@ -587,12 +609,48 @@ def jobs_for(folder: str | None, jobs: list[dict]) -> list[dict]:
     return out
 
 
+OUTSIDE_STATUS = {"busy": "working", "idle": "idle", "waiting": "blocked"}
+
+
+def outside_desks(known: set) -> list[dict]:
+    """Interactive Claude Code sessions running outside hivey (a plain Terminal or iTerm tab, an IDE), from the
+    file Claude Code keeps per running session in ~/.claude/sessions/<pid>.json. Sessions hivey runs are left
+    out (known: the conversation ids already on the page; a handed-off hivey server is no longer their parent)."""
+    try:
+        rows = subprocess.run(["ps", "-axo", "pid=,tty="], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    ttys = dict(line.split(None, 1) for line in rows.splitlines() if len(line.split()) == 2)
+    out = []
+    for f in sorted(glob.glob(str(HOME / ".claude/sessions/*.json"))):
+        try:
+            s = json.loads(Path(f).read_text())
+            pid = int(s["pid"])
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if str(pid) not in ttys or s.get("kind") != "interactive" or s.get("sessionId") in known:
+            continue
+        folder = s.get("cwd") or ""
+        tty = ttys[str(pid)].strip()
+        out.append({
+            "id": f"outside/{pid}", "pane": "", "pid": pid, "tty": "" if tty in ("?", "??") else f"/dev/{tty}",
+            "hv_session": "", "sock": None, "outside": True, "workspace": "outside", "space": "outside hivey",
+            "space_label": "🖥 outside hivey", "emoji": "🖥", "about": "",
+            "name": f"{Path(folder).name or folder} (outside hivey)", "role": "session",
+            "cli": "Claude Code", "cli_id": "claude", "status": OUTSIDE_STATUS.get(s.get("status"), "idle"),
+            "cwd": short(folder), "folder": folder, "session": s.get("sessionId"), "model_hint": "",
+            "team": [], "team_working": 0, "focused": False, "queued": False, "hibernated": False,
+        })
+    return out
+
+
 def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     """Every agent of every running hivey session (one spaceship per session on the page)."""
     people = [d for hs in (sessions or hv_sessions(hv))
               for d in (desks(hv, hs) if hs["running"] else asleep_desks(hs))]
+    people += outside_desks({d.get("session") for d in people})
     with cf.ThreadPoolExecutor(max_workers=8) as pool:
-        screens = list(pool.map(lambda d: "" if d.get("asleep") else screen(hv, d["pane"], d.get("sock")), people))
+        screens = list(pool.map(lambda d: "" if d.get("asleep") or d.get("outside") else screen(hv, d["pane"], d.get("sock")), people))
     vaults = obsidian_vaults()
     jobs = job_files()
     for d, scr in zip(people, screens):

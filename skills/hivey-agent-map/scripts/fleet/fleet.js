@@ -260,7 +260,7 @@ function card(a) {
   return `<div class="card ${esc(a.status)}${asks}" data-id="${esc(a.id)}" title="Click: open in hivey · right-click: details">
     <div class="top"><div class="avatar" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}<span class="st" style="background:${S.color}"></span></div>
       <div style="min-width:0"><div class="name">${esc(a.name)}</div>
-      <div class="meta">${S.emoji} ${a.status === 'blocked' || asks ? needLabel(a) : S.label} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''}${a.team?.length ? ` · 👥 ${a.team.length}` : ''} · ${ago(a.last_activity)}</div></div></div>
+      <div class="meta">${S.emoji} ${a.hibernated ? '💤 Hibernated' : a.status === 'blocked' || asks ? needLabel(a) : S.label} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''}${a.team?.length ? ` · 👥 ${a.team.length}` : ''} · ${ago(a.last_activity)}</div></div></div>
     <div class="say">${esc(s.bubble || '…')}</div>
     <div class="job">📌 ${esc(s.job || '')}</div>
     ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
@@ -317,6 +317,7 @@ function roomOf(a) {
 }
 function tone(a) {
   if (a.asleep) return 'closed';
+  if (a.hibernated) return 'idle';  // stopped by hivey while idle: paused, it wakes when opened
   if (a.status === 'blocked' || a.summary?.needs_you) return 'needs';
   return { working: 'working', done: 'done' }[a.status] || 'idle';
 }
@@ -335,7 +336,7 @@ function needLabel(a) {
   if (/yes|go ahead|deploy|publish|confirm/.test(t)) return 'Say yes or no';
   return 'Has a question';
 }
-const toneLabel = a => tone(a) === 'needs' ? needLabel(a) : TONE_LABEL[tone(a)];
+const toneLabel = a => a.hibernated ? '💤 Hibernated' : tone(a) === 'needs' ? needLabel(a) : TONE_LABEL[tone(a)];
 function roomTile(a, sub = false) {
   const t = tone(a);
   const label = sub ? (a.name.split(' · ').slice(1).join(' · ') || a.name) : a.name;

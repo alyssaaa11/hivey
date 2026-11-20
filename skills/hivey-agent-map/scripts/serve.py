@@ -320,6 +320,23 @@ def raise_terminal(session: str | None = None) -> str:
     return "raised"
 
 
+def raise_tty(tty: str) -> bool:
+    """Bring the Terminal or iTerm tab with this tty to the front."""
+    if not re.match(r"^/dev/ttys\d+$", tty):
+        return False
+    for app, script in (("Terminal", RAISE_TERMINAL), ("iTerm", RAISE_ITERM)):
+        if app == "iTerm" and not Path("/Applications/iTerm.app").exists():  # asking for it would open a dialog
+            continue
+        try:
+            p = subprocess.run(["osascript", "-e", script, tty], capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if p.stdout.strip() == "ok":
+            subprocess.run(["open", "-a", app], capture_output=True, timeout=10)
+            return True
+    return False
+
+
 def fleet_desk(desk_id: str) -> dict | None:
     """The desk on the fleet page with this id (pane id, or "<session>/<pane>" outside the default session)."""
     try:
@@ -535,6 +552,13 @@ def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", t
     if not exe:
         return False, "hivey not found"
     desk = fleet_desk(desk_id)
+    if desk and desk.get("outside"):  # a Claude session in a plain terminal tab: hivey can't type into it
+        if action == "focus":
+            return (True, "its terminal tab is in front") if raise_tty(desk.get("tty") or "") else \
+                (False, "runs outside hivey; could not find its terminal tab")
+        if action == "wiki":
+            return open_wiki_page(desk, path)
+        return False, "it runs outside hivey, so only opening its terminal works; start it in hivey for the rest"
     pane = (desk or {}).get("pane") or ""
     if not desk or not PANE.match(pane):
         return False, "unknown agent"
@@ -546,6 +570,8 @@ def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", t
             return session_action(desk.get("hv_session") or "")
         return False, f"session {desk.get('hv_session')} is stopped; open it first"
     if action == "focus":
+        if desk.get("hibernated"):  # hivey stopped it while idle: resume its conversation in its pane
+            hv(exe, sock, "hibernate", "wake", pane, timeout=20)
         p = hv(exe, sock, "agent", "focus", pane)
         if p.returncode != 0 and not focus_pane_tab(exe, sock, pane):  # the agent exited: its pane is a shell now
             return False, (p.stderr or p.stdout).strip()[-200:] or "focus failed"
