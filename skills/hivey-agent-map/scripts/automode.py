@@ -116,7 +116,8 @@ def summary(desk_id: str) -> dict | None:
         return None
     return {"id": st["id"], "status": st["status"], "ends": iso(st["ends"]), "left": max(0, int(st["ends"] - now())),
             "hours": st["hours"], "goal": st.get("goal", ""), "sheet": st.get("sheet", ""),
-            "workers": [{"name": w["name"], "kind": w["kind"], "model": w.get("model", "")} for w in st.get("workers", [])]}
+            "workers": [{"name": w["name"], "kind": w["kind"], "model": w.get("model", ""), "url": w.get("url", ""),
+                         "pr": w.get("pr", "")} for w in st.get("workers", [])]}
 
 
 def auto_panes() -> set[str]:
@@ -305,13 +306,23 @@ def worker(sid: str, name: str, task: str, model: str, cloud: bool) -> tuple[boo
     if not NAME.match(name) or any(w["name"] == name for w in st.get("workers", [])):
         return False, "name: lowercase letters, digits and dashes, not used yet in this run"
     if cloud:
+        marker = f"hivey-auto:{sid}/{name}"
+        task += (f"\n\nPut the line `{marker}` in your pull request's body: your supervisor finds your work by it. "
+                 "If `gh pr create` fails, push your claude/ branch anyway and say so.")
         p = subprocess.run([hivey_bin(), "cloud", "run", task, "--name", name, "--model", model],
                            cwd=st["folder"], capture_output=True, text=True, timeout=600)
         if p.returncode != 0:
             return False, (p.stderr or p.stdout).strip()[-600:] or "hivey cloud run failed"
-        st["workers"].append({"name": name, "kind": "cloud", "model": model, "task": task[:300], "started": now()})
+        out = p.stdout + p.stderr
+        session = (re.search(r"\b((?:session|cse)_[A-Za-z0-9]{8,})", out) or [None, ""])[1]
+        branch = (re.search(r"\b(hivey-cloud/[\w.-]+)", out) or [None, ""])[1]
+        st = load(sid) or st
+        st["workers"].append({"name": name, "kind": "cloud", "model": model, "task": task[:300], "started": now(),
+                              "session": session, "url": f"https://claude.ai/code/{session}" if session else "",
+                              "branch": branch, "marker": marker, "pr": ""})
         save(st)
-        return True, p.stdout.strip()[-800:]
+        return True, (f"cloud worker {name} started" + (f": https://claude.ai/code/{session}" if session else "")
+                      + ". The watcher tells you when its pull request opens.")
     folder = Path(st["sup_folder"]) / "workers" / name
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "TASK.md").write_text(
@@ -347,6 +358,50 @@ def set_fields(sid: str, sheet: str = "", goal: str = "") -> tuple[bool, str]:
 
 # ---------------------------------------------------------------- the watcher
 
+CLOUD_EVERY = 120  # seconds between looks at the cloud workers' pull requests
+
+
+def cloud_news(sid: str) -> list[str]:
+    """Pull requests the cloud workers opened (found by their marker line) and claude/ branches they pushed."""
+    st = load(sid)
+    if not st:
+        return []
+    out, changed = [], False
+    for w in st.get("workers", []):
+        if w.get("kind") != "cloud" or w.get("pr"):
+            continue
+        try:
+            p = subprocess.run(["gh", "pr", "list", "--state", "all", "--search", f"\"{w['marker']}\" in:body",
+                                "--json", "url,state,headRefName"], cwd=st["folder"], capture_output=True, text=True, timeout=30)
+            prs = json.loads(p.stdout or "[]")
+        except (OSError, ValueError, subprocess.SubprocessError, KeyError):
+            continue
+        if prs:
+            w["pr"] = prs[0]["url"]
+            changed = True
+            out.append(f"[auto] cloud worker {w['name']} opened its pull request: {w['pr']} ({prs[0]['state'].lower()}). "
+                       "Check it (gh pr view / gh pr diff, run its tests).")
+            continue
+        try:
+            heads = subprocess.run(["git", "ls-remote", "--heads", "origin", "claude/*"], cwd=st["folder"],
+                                   capture_output=True, text=True, timeout=30).stdout.split()
+        except (OSError, subprocess.SubprocessError):
+            heads = []
+        new = [h.removeprefix("refs/heads/") for h in heads if h.startswith("refs/heads/claude/")
+               and h.removeprefix("refs/heads/") not in w.get("seen_branches", [])]
+        if new:
+            w.setdefault("seen_branches", []).extend(new)
+            changed = True
+            out.append(f"[auto] a claude/ branch was pushed ({', '.join(new)}): maybe cloud worker {w['name']}'s work "
+                       f"without a pull request. Look at it; its session: {w.get('url') or '(unknown)'}")
+    if changed:
+        fresh = load(sid) or st
+        by_name = {w["name"]: w for w in st.get("workers", [])}
+        fresh["workers"] = [by_name.get(w["name"], w) for w in fresh.get("workers", [])]
+        save(fresh)
+    return out
+
+
 WRAP_UP = ("Do the wrap-up in your CLAUDE.md (report, wiki, MEMORY.md, task list), stop your local workers, "
            "then run: hivey agent-map auto done {sid}")
 
@@ -354,7 +409,7 @@ WRAP_UP = ("Do the wrap-up in your CLAUDE.md (report, wiki, MEMORY.md, task list
 def watch(sid: str) -> int:
     seen: dict[str, str] = {}
     events: list[str] = []
-    last_event = now()
+    last_event = last_cloud = now()
     inbox = STATE_DIR / f"{sid}.inbox"
     while True:
         st = load(sid)
@@ -388,6 +443,10 @@ def watch(sid: str) -> int:
                 events.append(f"[auto] {label} finished its turn. Read it: {read_cmd}")
             elif cur == "gone":
                 events.append(f"[auto] {label}'s pane is gone.")
+        if now() - last_cloud > CLOUD_EVERY:  # cloud workers: their pull request, or a pushed claude/ branch
+            last_cloud = now()
+            for msg in cloud_news(sid):
+                events.append(msg)
         if st["status"] == "running" and now() >= st["ends"]:
             st = update(sid, status="wrapping", wrap_since=now()) or st
             events.append("[auto] TIME UP: Auto Mode ends now. " + WRAP_UP.format(sid=sid))

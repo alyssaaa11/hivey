@@ -26,11 +26,16 @@ hivey agent-map auto fresh {{ID}}                      # /clear the agent and sw
 hivey agent-map auto worker {{ID}} <name> "<task>" --model <m> [--cloud]   # start a worker
 hivey agent-map auto set {{ID}} --sheet <url> [--goal "<goal>"]            # save the task list's link / the goal
 hivey agent-map auto done {{ID}} [--goal] [--note "<one line>"]            # after the wrap-up: close Auto Mode
-hivey cloud status                                      # the cloud workers and their pull requests
+hivey agent-map auto status --json                      # this run: workers, their sessions and pull requests
+hivey cloud send <session> "<message>"                  # steer a cloud worker (it gets the message; no reply here)
 ```
 
-Events arrive typed into your prompt, starting with `[auto]`: the agent or a worker finished its turn or is
-waiting for an answer, a check-in when nothing happened for a while, and TIME UP or STOPPED. Answer each one
+Cloud workers can't be read from here: the watcher tells you when one opens its pull request (or pushes a claude/
+branch), and you check the result on GitHub (`gh pr view <url>`, `gh pr diff <url>`, run its tests on a checkout).
+Their claude.ai session link is in `auto status --json`; put it in the task list so the user can follow them.
+
+Events arrive typed into your prompt, starting with `[auto]`: the agent or a local worker finished its turn or is
+waiting for an answer, a cloud worker opened its pull request, a check-in when nothing happened for a while, and TIME UP or STOPPED. Answer each one
 with action, then wait for the next. Never sleep or poll in a loop: the events wake you.
 
 ## Steps

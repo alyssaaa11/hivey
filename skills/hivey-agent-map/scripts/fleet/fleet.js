@@ -394,7 +394,7 @@ function autoBlock(a) {
     return `<div class="auto on"><div class="ah">🤖 Auto Mode · ${a.auto.status === 'wrapping' ? 'wrapping up' : autoLeft(a) + ' left'}
         <button data-auto-stop title="End Auto Mode now: its supervisor writes what it achieved first">⏹ Stop</button></div>
       ${a.auto.goal ? `<div class="ag">🎯 ${esc(a.auto.goal)}</div>` : '<div class="ag">🎯 the supervisor is setting the goal…</div>'}
-      ${w.length ? `<div class="aw">${w.map(x => `${x.kind === 'cloud' ? '☁️' : '💻'} ${esc(x.name)} <span>${esc(x.model)}</span>`).join(' · ')}</div>` : ''}
+      ${w.length ? `<div class="aw">${w.map(x => `${x.kind === 'cloud' ? '☁️' : '💻'} ${x.pr || x.url ? `<a href="${esc(x.pr || x.url)}" target="_blank" rel="noopener" title="${x.pr ? 'its pull request' : 'its cloud session'}">${esc(x.name)}</a>` : esc(x.name)} <span>${esc(x.model)}${x.pr ? ' · PR' : ''}</span>`).join(' · ')}</div>` : ''}
       ${a.auto.sheet ? `<a class="asheet" href="${esc(a.auto.sheet)}" target="_blank" rel="noopener">📋 Task list ↗</a>` : ''}</div>`;
   }
   if (a.asleep || a.outside || a.cli_id !== 'claude') return '';

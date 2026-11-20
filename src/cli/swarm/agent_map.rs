@@ -45,10 +45,13 @@ fn script() -> Option<std::path::PathBuf> {
 }
 
 pub(in crate::cli) fn run(args: &[String]) -> std::io::Result<i32> {
+    // `auto … --help` is the Auto Mode script's own help (every subcommand has one)
+    let auto = args.first().map(String::as_str) == Some("auto");
     if args.is_empty()
-        || args
-            .iter()
-            .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help"))
+        || (!auto
+            && args
+                .iter()
+                .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help")))
     {
         println!("{HELP}");
         return Ok(0);
