@@ -1761,6 +1761,8 @@ function fitJobs() {
   if (ui.view === 'jobs') frame.style.height = Math.max(420, innerHeight - frame.getBoundingClientRect().top) + 'px';
 }
 addEventListener('resize', fitJobs);
+// the health banner grows and shrinks (opening "more to check", a new poll): refit the jobs frame under it
+if (window.ResizeObserver) new ResizeObserver(fitJobs).observe($('#jobhealth'));
 async function poll() {
   try {
     if (fleet.ready) await fleet.ready.catch(() => {});
