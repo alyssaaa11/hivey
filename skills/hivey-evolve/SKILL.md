@@ -5,6 +5,8 @@ description: hivey's self-improvement loop. Agents' Claude Code hooks log facts 
 
 # hivey evolve: the self-improvement loop
 
+> Local additions: if `EXTRA_SKILL.md` exists in this skill's folder, read it too and follow it.
+
 `hivey evolve <command>` runs `scripts/evolve.py`. State lives in `~/.hivey/evolve/`
 (facts/, reviews/, decisions.json, locks.json, activity.jsonl).
 
