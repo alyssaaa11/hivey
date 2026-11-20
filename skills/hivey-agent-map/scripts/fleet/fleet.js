@@ -32,8 +32,9 @@ let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
 { const v = new URLSearchParams(location.search).get('view'); if (VIEWS.includes(v)) ui.view = v; if (v) history.replaceState(null, '', location.pathname); }  // ?view=jobs from the menu or a jobs page
 ui.filter = null;  // a status filter lasts until reload: a reload always shows every agent
 if (ui.toon === undefined) ui.toon = false;
-const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, roomTab: ui.roomTab, voice: ui.voice, toon: ui.toon, music: ui.music, ships: ui.ships, space: ui.space, track: ui.track }));
+const save = () => localStorage.setItem('hv-fleet-ship', JSON.stringify({ view: ui.view, roomTab: ui.roomTab, voice: ui.voice, toon: ui.toon, music: ui.music, ships: ui.ships, spots: ui.spots, roomTheme: ui.roomTheme, space: ui.space, track: ui.track }));
 // ship positions also live on the fleet server, so every browser opens the fleet where you left it
+const saveSpots = () => { save(); fetch('/hv-fleet-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spots: ui.spots || {} }) }).catch(() => {}); };
 const saveShips = () => { save(); fetch('/hv-fleet-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ships: ui.ships || {} }) }).catch(() => {}); };
 
 // ---------------------------------------------------------------- helpers
@@ -211,8 +212,17 @@ function renderHeader() {
     ['idle', '💤', 'idle', c.idle], ['compact', '🗜', 'to compact', adv.compact], ['clear', '🧹', 'to clear', adv.clear],
     ...(c.claude_md ? [['claude_md', '⚠', 'CLAUDE.md too long', c.claude_md]] : []),
   ];
+  const PILL_TIP = {
+    blocked: 'Stuck until you answer: a permission prompt or a question on its screen.',
+    working: 'Busy on a task right now.',
+    done: 'Finished its turn and you have not looked at it since: new results to review.',
+    idle: 'Waiting with nothing new, including the ones hivey hibernated to free memory.',
+    compact: 'Its context is large and the work goes on: /compact would make its next replies cheaper.',
+    clear: 'Its task is finished and its context is stale: /clear before giving it new work.',
+    claude_md: 'Its CLAUDE.md is over the 40k-character limit Claude Code reads.',
+  };
   $('#pills').innerHTML = pills.map(([k, e, l, n]) =>
-    `<button class="pill ${k} ${ui.filter === k ? 'on' : ''}" data-f="${k}" title="Show only these">${e} <b>${n || 0}</b> ${l}</button>`).join('');
+    `<button class="pill ${k} ${ui.filter === k ? 'on' : ''}" data-f="${k}" data-tip="${esc((PILL_TIP[k] || '') + ' Click to show only these.')}">${e} <b>${n || 0}</b> ${l}</button>`).join('');
   $('#pills').querySelectorAll('.pill').forEach(p => p.onclick = () => { ui.filter = ui.filter === p.dataset.f ? null : p.dataset.f; save(); renderAll(); });
   tickSub();
 }
@@ -310,9 +320,16 @@ function renderList() {
 let roomPick = null, roomShown = null, roomChat = null, chatTimer = null, voice = null;
 ui.voice ??= true;
 const PARTS = Array.from({ length: 16 }, (_, i) => `<i style="left:${(i * 37) % 100}%;--d:${3 + (i * 7) % 4}s;--w:${(i * 0.53) % 4}s"></i>`).join('');
-const ROOM_TABS = [['running', '⚡ Running'], ['paused', '⏸ Paused'], ['closed', '💤 Closed']];
+// the room's tabs, with the legend shown when you hover each one
+const ROOM_TABS = [
+  ['running', '⚡ Running', 'Working now, waiting for your answer (amber), or done: finished with new results you have not looked at yet (blue).'],
+  ['paused', '⏸ Paused', 'Running in hivey but idle: nothing new and nothing to answer. Send it a message to give it work.'],
+  ['hibernated', '💤 Hibernated', 'Stopped by hivey after sitting idle, to free memory. Its pane and conversation are kept: opening it wakes it with the same conversation.'],
+  ['closed', '⏹ Closed', 'Its whole hivey session is stopped. Opening it starts that session again with its agents.'],
+];
 function roomOf(a) {
   if (a.asleep) return 'closed';
+  if (a.hibernated) return 'hibernated';
   return a.status === 'idle' && !a.summary?.needs_you ? 'paused' : 'running';
 }
 function tone(a) {
@@ -337,10 +354,10 @@ function needLabel(a) {
   return 'Has a question';
 }
 const toneLabel = a => a.hibernated ? '💤 Hibernated' : tone(a) === 'needs' ? needLabel(a) : TONE_LABEL[tone(a)];
-function roomTile(a, sub = false) {
+function roomTile(a, sub = false, pin = '') {
   const t = tone(a);
   const label = sub ? (a.name.split(' · ').slice(1).join(' · ') || a.name) : a.name;
-  return `<button class="tile ${t}${sub ? ' sub' : ''}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
+  return `<button class="tile ${t}${sub ? ' sub' : ''}${roomPick === a.id ? ' picked' : ''}"${pin} data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
     <span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(label)}</span>
     <span class="sl"><i></i>${sub ? '' : toneLabel(a)}</span></button>`;
 }
@@ -352,10 +369,15 @@ function roomGroups(here) {
   here.forEach(a => { const k = baseName(a); if (!m.has(k)) m.set(k, []); m.get(k).push(a); });
   return [...m.values()];  // here is already sorted, so groups and their members keep that order
 }
+// a card you dragged stays in its wall cell (ui.spots, kept on the fleet server); the others fill the free cells
+function pinAttr(g, rows) {
+  const k = baseName(g[0]), sp = ui.spots?.[k];
+  return ` data-group="${esc(k)}" style="${sp ? `grid-column:${sp.c};grid-row:${sp.r} / span ${rows}` : `grid-row:span ${rows}`}"`;
+}
 function roomCluster(g) {
-  if (g.length === 1) return roomTile(g[0]);
+  if (g.length === 1) return roomTile(g[0], false, pinAttr(g, 2));
   const rows = g.length + 1;  // half-height rows: the top tile takes 2, each other session 1
-  return `<div class="cluster ${tone(g[0])}" style="grid-row:span ${rows}">
+  return `<div class="cluster ${tone(g[0])}"${pinAttr(g, rows)}>
     <span class="cnt">×${g.length}</span>${roomTile(g[0])}
     <div class="subs">${g.slice(1).map(a => roomTile(a, true)).join('')}</div></div>`;
 }
@@ -461,6 +483,79 @@ async function sayIt(a, force) {
     voice.play().catch(() => {});
   } catch (e) { if (force) toast('The fleet server is not answering'); }
 }
+let cardDragged = false;
+// the wall cell under the pointer, or the nearest one when it is in a gap between cells (within a card's width)
+function nearCell(x, y) {
+  const hit = document.elementFromPoint(x, y);
+  if (hit?.closest('.cell')) return hit.closest('.cell');
+  if (!hit?.closest('.wall')) return null;
+  let best = null, bd = Infinity;
+  hit.closest('.wall').querySelectorAll('.cell').forEach(c => {
+    const r = c.getBoundingClientRect(), d = Math.hypot(r.x + r.width / 2 - x, r.y + r.height / 2 - y);
+    if (d < bd) { bd = d; best = c; }
+  });
+  return bd < 160 ? best : null;
+}
+// drag a card: a ghost follows the pointer, both walls show their cells, and the card is pinned to the cell
+// you drop it on (a card already there takes the dragged card's old cell, or goes back to automatic)
+function cardDrag(e, el) {
+  if (e.button !== 0) return;
+  e.stopPropagation();
+  const key = el.dataset.group, x0 = e.clientX, y0 = e.clientY;
+  let ghost = null, over = null;
+  const start = () => {
+    const r = el.getBoundingClientRect();
+    ghost = el.cloneNode(true);
+    Object.assign(ghost.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px',
+      margin: 0, pointerEvents: 'none', zIndex: 9999, opacity: 0.9, transform: 'scale(1.06)', gridRow: '', gridColumn: '' });
+    ghost.classList.add('ghost');
+    document.body.appendChild(ghost);
+    el.classList.add('lifted');
+    document.querySelectorAll('#room .wall').forEach(w => {
+      const cs = getComputedStyle(w), cols = cs.gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+      const rows = cs.gridTemplateRows === 'none' ? 0 : cs.gridTemplateRows.split(' ').filter(Boolean).length;
+      const cells = document.createElement('div');
+      cells.className = 'cells';
+      for (let r = 1; r <= rows + 2; r += 2) for (let c = 1; c <= cols; c++)
+        cells.insertAdjacentHTML('beforeend', `<i class="cell" data-w="${w.dataset.wall}" data-c="${c}" data-r="${r}" style="grid-column:${c};grid-row:${r} / span 2"></i>`);
+      w.classList.add('pinning'); w.appendChild(cells);
+    });
+    ghost.dataset.dx = x0 - r.left; ghost.dataset.dy = y0 - r.top;
+  };
+  const move = ev => {
+    if (!ghost) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; start(); }
+    ghost.style.left = ev.clientX - ghost.dataset.dx + 'px'; ghost.style.top = ev.clientY - ghost.dataset.dy + 'px';
+    const hit = nearCell(ev.clientX, ev.clientY);
+    if (hit !== over) { over?.classList.remove('on'); over = hit; over?.classList.add('on'); }
+  };
+  const up = ev => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    if (!ghost) return;  // a click, not a drag
+    if (ev.type === 'pointerup') over = nearCell(ev.clientX, ev.clientY) || over;  // where you let go
+    cardDragged = true; setTimeout(() => { cardDragged = false; }, 0);
+    ghost.remove();
+    if (over) {
+      const spots = { ...(ui.spots || {}) }, to = { w: over.dataset.w, c: +over.dataset.c, r: +over.dataset.r }, from = spots[key];
+      const there = Object.keys(spots).find(k => k !== key && spots[k].w === to.w && spots[k].c === to.c && spots[k].r === to.r);
+      if (there) { if (from) spots[there] = from; else delete spots[there]; }
+      spots[key] = to;
+      ui.spots = spots; saveSpots();
+    }
+    renderRoom();
+  };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}
+// the room's backdrop: the classic grid, or a view behind the walls (rooms/<id>.jpg) with its own accent colour
+const ROOM_THEMES = [['grid', '🟦 Grid', '56 189 248'], ['space', '🪐 Space', '167 139 250'], ['craft', '🚀 Spacecraft', '56 189 248'],
+  ['nature', '🌲 Nature', '134 239 172'], ['office', '🏢 Office', '251 191 36'], ['newyork', '🗽 New York', '96 165 250'],
+  ['sea', '🌊 Sea', '251 146 60'], ['beach', '🏝 Beach', '45 212 191'], ['singularity', '🕳 Singularity', '251 146 60'],
+  ['deepspace', '🌌 Deep space', '129 140 248']];
+const roomTheme = () => ROOM_THEMES.find(t => t[0] === ui.roomTheme) || ROOM_THEMES[0];
+function setRoomTheme(id) {
+  ui.roomTheme = id; save();
+  fetch('/hv-fleet-settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_theme: id }) }).catch(() => {});
+  renderRoom();
+}
 function renderRoom() {
   const list = agents.filter(visible);
   const order = { needs: 0, working: 1, done: 2, idle: 3, closed: 4 };
@@ -470,24 +565,29 @@ function renderRoom() {
   // whole groups go to a wall, nearest the pedestal first, to whichever wall has fewer agents so far
   const left = [], right = [];
   let nl = 0, nr = 0;
-  roomGroups(here).forEach(g => { if (nl <= nr) { left.push(g); nl += g.length; } else { right.push(g); nr += g.length; } });
+  const groups = roomGroups(here), spotOf = g => ui.spots?.[baseName(g[0])];
+  groups.filter(spotOf).forEach(g => { if (spotOf(g).w === 'left') { left.push(g); nl += g.length; } else { right.push(g); nr += g.length; } });
+  groups.filter(g => !spotOf(g)).forEach(g => { if (nl <= nr) { left.push(g); nl += g.length; } else { right.push(g); nr += g.length; } });
   const pick = here.find(a => a.id === roomPick);
   const room = $('#room');
   const typed = $('#chatin')?.value;  // a refresh must not lose what you are typing
   room.querySelector('#chatdock')?.remove();
-  room.innerHTML = `<div class="rtabs">${ROOM_TABS.map(([k, label]) =>
-      `<button data-rtab="${k}" class="${ui.roomTab === k ? 'on' : ''}">${label} <b>${counts[k]}</b></button>`).join('')}
+  room.innerHTML = `<div class="rtabs">${ROOM_TABS.map(([k, label, tip]) =>
+      `<button data-rtab="${k}" class="${ui.roomTab === k ? 'on' : ''}" data-tip="${esc(tip)}">${label} <b>${counts[k]}</b></button>`).join('')}
+      ${Object.keys(ui.spots || {}).length ? '<button data-unpin class="vt" title="Forget where you dragged the cards: every card goes back to its automatic place">↺ Auto layout</button>' : ''}
+      <select data-theme class="vt rtheme" title="The room's backdrop">${ROOM_THEMES.map(([k, label]) => `<option value="${k}"${roomTheme()[0] === k ? ' selected' : ''}>${label}</option>`).join('')}</select>
       <button data-voicetoggle class="vt ${ui.voice ? 'on' : ''}" title="Agents say what they want when you bring them to the middle (local voice)">${ui.voice ? '🔊 Voice on' : '🔇 Voice off'}</button></div>
-    <div class="scene${pick ? ' has' : ''}" style="--rx:${roomTilt.x + roomView.pitch}deg;--ry:${roomTilt.y + roomView.yaw}deg;--rz:${roomView.zoom}px${pick ? `;--fc:${TONE_RGB[tone(pick)]}` : ''}">
+    <div class="scene${pick ? ' has' : ''}${roomTheme()[0] !== 'grid' ? ' themed' : ''}" data-room="${roomTheme()[0]}" style="--acc:${roomTheme()[2]};--rx:${roomTilt.x + roomView.pitch}deg;--ry:${roomTilt.y + roomView.yaw}deg;--rz:${roomView.zoom}px;--rxn:${roomTilt.x + roomView.pitch};--ryn:${roomTilt.y + roomView.yaw};--rzn:${roomView.zoom}${pick ? `;--fc:${TONE_RGB[tone(pick)]}` : ''}">
+      ${roomTheme()[0] !== 'grid' ? `<div class="backdrop" style="background-image:url('rooms/${roomTheme()[0]}.jpg')"></div>` : ''}
       <div class="shell"><div class="ceiling"></div><div class="backwall"></div><div class="floor"></div></div>
       <div class="rig">
-        <div class="wall left">${left.map(roomCluster).join('')}</div>
+        <div class="wall left" data-wall="left">${left.map(roomCluster).join('')}</div>
         <div class="center${pick ? ' ' + tone(pick) : ''}"><div class="beam"></div><div class="parts">${PARTS}</div>
           ${roomStage(pick)}<div class="pedestal"><i></i><i></i><i></i><i></i></div></div>
-        <div class="wall right">${right.map(roomCluster).join('')}</div>
+        <div class="wall right" data-wall="right">${right.map(roomCluster).join('')}</div>
       </div>
       ${here.length ? '' : `<div class="nobody">No ${ui.roomTab} agents</div>`}
-      <div class="rhint">drag to look around · wheel to move closer · double-click the floor to reset</div>
+      <div class="rhint">drag a card to pin it on a wall · drag elsewhere to look around · wheel to move closer · double-click the floor to reset</div>
     </div>`;
   if (pick && roomShown !== pick.id) sayIt(pick);
   if (!pick) voice?.pause();
@@ -502,6 +602,9 @@ function renderRoom() {
     scene.style.setProperty('--rx', (roomTilt.x + roomView.pitch).toFixed(2) + 'deg');
     scene.style.setProperty('--ry', (roomTilt.y + roomView.yaw).toFixed(2) + 'deg');
     scene.style.setProperty('--rz', roomView.zoom + 'px');
+    scene.style.setProperty('--rxn', (roomTilt.x + roomView.pitch).toFixed(2));  // unitless, for the backdrop's shift
+    scene.style.setProperty('--ryn', (roomTilt.y + roomView.yaw).toFixed(2));
+    scene.style.setProperty('--rzn', roomView.zoom);
   };
   let drag = null;
   scene.onpointerdown = e => {  // drag anywhere but a tile or the panel to look around the room
@@ -538,14 +641,17 @@ function renderRoom() {
     if (e.target.closest('.tile, .stage:not(.empty)')) return;
     roomView.yaw = roomView.pitch = roomView.zoom = 0; view();
   };
+  room.querySelector('[data-theme]').onchange = e => setRoomTheme(e.target.value);
+  room.querySelector('[data-unpin]')?.addEventListener('click', () => { ui.spots = {}; saveSpots(); renderRoom(); });
+  room.querySelectorAll('[data-group]').forEach(el => el.addEventListener('pointerdown', e => cardDrag(e, el)));
   room.querySelector('[data-voicetoggle]').onclick = () => { ui.voice = !ui.voice; if (!ui.voice) voice?.pause(); save(); renderRoom(); };
   room.querySelectorAll('[data-rtab]').forEach(b => b.onclick = () => { ui.roomTab = b.dataset.rtab; roomPick = null; save(); renderRoom(); });
   room.querySelectorAll('[data-pick]').forEach(b => {
-    b.onclick = e => { e.stopPropagation(); roomPick = roomPick === b.dataset.pick ? null : b.dataset.pick; renderRoom(); };
+    b.onclick = e => { e.stopPropagation(); if (cardDragged) { cardDragged = false; return; } roomPick = roomPick === b.dataset.pick ? null : b.dataset.pick; renderRoom(); };
     b.ondblclick = e => { e.stopPropagation(); const a = agents.find(x => x.id === b.dataset.pick); if (a) act(a, 'focus'); };
     b.oncontextmenu = e => { e.preventDefault(); const a = agents.find(x => x.id === b.dataset.pick); if (a) openDrawer(a); };
   });
-  room.querySelector('.scene').onclick = e => { if (roomDragged) { roomDragged = false; return; } if (!e.target.closest('.stage:not(.empty)') && roomPick) { roomPick = null; renderRoom(); } };
+  room.querySelector('.scene').onclick = e => { if (cardDragged) return; if (roomDragged) { roomDragged = false; return; } if (!e.target.closest('.stage:not(.empty)') && roomPick) { roomPick = null; renderRoom(); } };
   const stage = room.querySelector('.stage[data-id]');
   if (stage) wireRoomStage(stage);
 }
@@ -1729,6 +1835,11 @@ post('/hv-fleet-refresh', { load: true }).then(j => {
   if (Object.keys(server).length) {  // the server's positions win; rebuild if they differ from this browser's
     if (JSON.stringify(server) !== JSON.stringify(local)) { ui.ships = server; save(); if (data) renderAll(); }
   } else if (Object.keys(local).length) saveShips();  // first time: hand this browser's positions to the server
+  if (j.room_theme && j.room_theme !== ui.roomTheme) { ui.roomTheme = j.room_theme; save(); if (data && ui.view === 'room') renderRoom(); }
+  if (j.spots && JSON.stringify(j.spots) !== JSON.stringify(ui.spots || {})) {  // cards pinned in another browser
+    if (Object.keys(j.spots).length || !Object.keys(ui.spots || {}).length) { ui.spots = j.spots; save(); if (data && ui.view === 'room') renderRoom(); }
+    else saveSpots();  // first time: hand this browser's pins to the server
+  }
   setTimeout(poll, 2500); setTimeout(poll, 8000);
 }).catch(() => {});
 $('#every').onchange = e => post('/hv-fleet-settings', { every: e.target.value })

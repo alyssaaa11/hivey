@@ -628,7 +628,8 @@ def outside_desks(known: set) -> list[dict]:
             pid = int(s["pid"])
         except (OSError, ValueError, KeyError, TypeError):
             continue
-        if str(pid) not in ttys or s.get("kind") != "interactive" or s.get("sessionId") in known:
+        if str(pid) not in ttys or s.get("kind") != "interactive" or s.get("sessionId") in known \
+                or s.get("entrypoint", "cli") != "cli":  # sdk-cli: a helper another program started, not yours
             continue
         folder = s.get("cwd") or ""
         tty = ttys[str(pid)].strip()

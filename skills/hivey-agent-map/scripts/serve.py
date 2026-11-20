@@ -130,6 +130,19 @@ def has_default_token() -> bool:
     return bool(dashboards.default_token())
 
 
+def clean_spots(spots: object) -> dict:
+    """{agent name: {w: "left"|"right", c, r}}: the wall cell you dragged each card to in the fleet room."""
+    out = {}
+    for name, p in (spots.items() if isinstance(spots, dict) else []):
+        try:
+            w, c, r = str(p["w"]), int(p["c"]), int(p["r"])
+        except (TypeError, KeyError, ValueError):
+            continue
+        if w in ("left", "right") and 0 < c <= 40 and 0 < r <= 200 and 0 < len(str(name)) <= 120:
+            out[str(name)] = {"w": w, "c": c, "r": r}
+    return out
+
+
 def clean_ships(ships: object) -> dict:
     """{session: {x, z}} where you dragged each ship on the fleet page (bad entries dropped)."""
     out = {}
@@ -280,6 +293,7 @@ on run argv
   return "none"
 end run
 """
+ROOM_THEMES = ("grid", "space", "craft", "nature", "office", "newyork", "sea", "beach", "singularity", "deepspace")
 SESSION_NAME = re.compile(r"^[\w.-]{1,64}$")
 
 
@@ -843,6 +857,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     cur["track"] = str(req["track"])
                 if "ships" in req:  # the ship positions you dragged on the fleet page
                     cur["ships"] = clean_ships(req["ships"])
+                if "spots" in req:  # where you pinned each card on the room's walls
+                    cur["spots"] = clean_spots(req["spots"])
+                if "room_theme" in req:  # the fleet room's backdrop
+                    if str(req["room_theme"]) not in ROOM_THEMES:
+                        return self.answer(400, b'{"ok":false,"error":"room_theme: unknown theme"}')
+                    cur["room_theme"] = str(req["room_theme"])
                 import dashboards
                 if "dashboards" in req:  # the Dashboards tab's list, replaced whole (bad entries dropped, tokens kept)
                     cur["dashboards"] = dashboards.clean(req["dashboards"], dashboards.clean(cur.get("dashboards")))
@@ -854,6 +874,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 dashboards.write(cur)  # owner-only: it can hold dashboard tokens
                 return self.answer(200, json.dumps({"ok": True, "every": fleet_every(), "space": cur.get("space"), "track": cur.get("track"),
                                                     "ships": cur.get("ships", {}),
+                                                    "spots": clean_spots(cur.get("spots")),
+                                                    "room_theme": cur.get("room_theme"),
                                                     "dashboards": dashboards.public(dashboards.clean(cur.get("dashboards"))),
                                                     "dashboard_folders": dashboards.clean_folders(cur.get("dashboard_folders"),
                                                                                                   dashboards.clean(cur.get("dashboards"))),
@@ -868,6 +890,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
                                                 "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
                                                 "ships": clean_ships(fleet_settings().get("ships")),
+                                                "spots": clean_spots(fleet_settings().get("spots")),
+                                                "room_theme": fleet_settings().get("room_theme"),
                                                 "dashboards": dashboards_public(),
                                                 "dashboard_folders": dashboard_folders(),
                                                 "default_token": has_default_token()}).encode())
