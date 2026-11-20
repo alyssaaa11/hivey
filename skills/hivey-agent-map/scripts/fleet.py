@@ -150,9 +150,13 @@ def desks(hv: str, hs: dict | None = None) -> list[dict]:
             team.setdefault(tok["swarm"], []).append({"name": a.get("name") or tok.get("role"),
                                                       "role": tok.get("role"), "status": a.get("agent_status")})
     out, per_space = [], {}
+    import automode
+    auto_panes = automode.auto_panes() if hs.get("default") else set()
     for a in agents:
         tok = a.get("tokens") or {}
         if tok.get("swarm") and tok.get("role") not in (None, "master"):
+            continue
+        if a.get("pane_id") in auto_panes:  # Auto Mode's supervisor and workers: shown on their agent's card
             continue
         ws = a.get("workspace_id", "")
         room = rooms.get(ws, {"label": ws, "emoji": "🐝", "name": ws, "about": ""})
@@ -647,6 +651,7 @@ def outside_desks(known: set) -> list[dict]:
 
 def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     """Every agent of every running hivey session (one spaceship per session on the page)."""
+    import automode
     people = [d for hs in (sessions or hv_sessions(hv))
               for d in (desks(hv, hs) if hs["running"] else asleep_desks(hs))]
     people += outside_desks({d.get("session") for d in people})
@@ -672,6 +677,7 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
         d["last_prompt"] = log.get("last_prompt", "")
         d["recap"] = log.get("recap", "")
         d["compacted_at"] = log.get("compacted_at")
+        d["auto"] = automode.summary(d["id"])
     return people
 
 

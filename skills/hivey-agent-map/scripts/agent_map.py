@@ -1053,6 +1053,9 @@ def main() -> int:
     if sys.argv[1:2] in (["dashboard"], ["dashboards"]):  # the fleet page's Dashboards list, from the shell
         import dashboards
         return dashboards.main(sys.argv[2:])
+    if sys.argv[1:2] == ["auto"]:  # Auto Mode: an agent works toward a goal for a set time, with a supervisor
+        import automode
+        return automode.main(sys.argv[2:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan")

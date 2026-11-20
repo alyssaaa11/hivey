@@ -396,6 +396,23 @@ td.j{max-width:420px}
 .tile.closed{opacity:.75;filter:saturate(.7)}
 /* one agent's sessions, stacked and joined (walls use half-height rows: a tile spans 2, each extra session 1) */
 .wall>.tile{grid-row:span 2}
+/* Auto Mode on the agent in the middle, and its 🤖 badge on the tile */
+.stage .autob{display:block;margin:8px auto 2px;padding:6px 14px;border-radius:999px;border:1px solid rgba(167,139,250,.6);background:rgba(167,139,250,.12);color:var(--text);font:inherit;font-size:12.5px;cursor:pointer}
+.stage .autob:hover{background:rgba(167,139,250,.25);box-shadow:0 0 14px rgba(167,139,250,.4)}
+.stage .auto{margin:8px 0 2px;padding:9px 11px;border-radius:12px;border:1px solid rgba(167,139,250,.55);background:rgba(167,139,250,.10);font-size:12.5px;text-align:left}
+.stage .auto.on{box-shadow:0 0 18px rgba(167,139,250,.35)}
+.stage .auto .ah{display:flex;align-items:center;gap:8px;font-weight:700}
+.stage .auto .ah button{margin-left:auto}
+.stage .auto .ag{margin-top:5px;color:var(--text)}.stage .auto .aw{margin-top:5px;color:var(--muted);font-size:11.5px}.stage .auto .aw span{opacity:.75}
+.stage .auto .asheet{display:inline-block;margin-top:6px;color:#c4b5fd}
+.stage .auto .hrs{display:flex;gap:6px;margin:7px 0}
+.stage .auto button{padding:4px 11px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
+.stage .auto button.on,.stage .auto [data-auto-go]{border-color:#a78bfa;background:rgba(167,139,250,.3)}
+.stage .auto button.arm{border-color:#fb7185;color:#fb7185}
+.stage .auto textarea{width:100%;box-sizing:border-box;resize:vertical;border-radius:8px;border:1px solid var(--line);background:rgba(5,8,16,.7);color:var(--text);font:inherit;font-size:12px;padding:6px 8px}
+.stage .auto .arow{display:flex;gap:6px;margin-top:6px}.stage .auto .anote{margin-top:6px;font-size:11px;color:var(--muted)}
+.tile .autobadge{position:absolute;top:5px;left:6px;font-size:13px;filter:drop-shadow(0 0 6px rgba(167,139,250,.9));animation:autopulse 2.4s ease-in-out infinite}
+@keyframes autopulse{50%{transform:scale(1.18)}}
 /* pinning a card: every wall cell shows, the one under the pointer lights up */
 .wall.pinning{padding-bottom:calc(var(--tile) + 30px)}
 .wall .cells{position:absolute;top:18px;left:18px;right:18px;display:grid;grid-template-columns:repeat(auto-fill,var(--tile));grid-auto-rows:calc((var(--tile) - 12px) / 2);gap:12px;z-index:5}

@@ -23,6 +23,9 @@ usage: hivey agent-map open              open the latest map (its navbar has Sta
                                  | edit NAME [--name|--url|--agent|--note|--token …] | remove NAME
                                  | token [es_…]   (--token default = your default dashboard token)
                                          the dashboards on the fleet page's 🖥 Dashboards tab
+       hivey agent-map auto start <agent> --hours 1|2|4|10 [--goal \"…\"] | stop <run> | status
+                                         Auto Mode: a supervisor (Fable) keeps the agent working
+                                         toward a goal for that time (fleet page: 🤖 Auto Mode)
        hivey agent-map context [AGENT…] [--set standard|1M]
                                          each agent's context window (list), or set it
        hivey agent-map stats|scan|link|log …   see `hivey agent-map --help-script`

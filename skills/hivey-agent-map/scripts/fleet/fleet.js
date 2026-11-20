@@ -358,7 +358,7 @@ function roomTile(a, sub = false, pin = '') {
   const t = tone(a);
   const label = sub ? (a.name.split(' · ').slice(1).join(' · ') || a.name) : a.name;
   return `<button class="tile ${t}${sub ? ' sub' : ''}${roomPick === a.id ? ' picked' : ''}"${pin} data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
-    <span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(label)}</span>
+    ${a.auto && !sub ? `<span class="autobadge" title="Auto Mode: ${esc(autoLeft(a))} left">🤖</span>` : ''}<span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(label)}</span>
     <span class="sl"><i></i>${sub ? '' : toneLabel(a)}</span></button>`;
 }
 // sessions of the same agent ("ceo", "ceo · session 2", …) stay together: one stack, the most
@@ -381,6 +381,30 @@ function roomCluster(g) {
     <span class="cnt">×${g.length}</span>${roomTile(g[0])}
     <div class="subs">${g.slice(1).map(a => roomTile(a, true)).join('')}</div></div>`;
 }
+// ---- Auto Mode: a supervisor (Fable) keeps the agent working toward a goal for 1, 2, 4 or 10 hours
+let autoOpen = null, autoHours = 2, autoGoal = '';
+const AUTO_HOURS = [1, 2, 4, 10];
+function autoLeft(a) {
+  const s = Math.max(0, Math.round((Date.parse(a.auto.ends) - Date.now()) / 1000));
+  return s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s % 3600 / 60)).padStart(2, '0')} min` : `${Math.ceil(s / 60)} min`;
+}
+function autoBlock(a) {
+  if (a.auto) {
+    const w = a.auto.workers || [];
+    return `<div class="auto on"><div class="ah">🤖 Auto Mode · ${a.auto.status === 'wrapping' ? 'wrapping up' : autoLeft(a) + ' left'}
+        <button data-auto-stop title="End Auto Mode now: its supervisor writes what it achieved first">⏹ Stop</button></div>
+      ${a.auto.goal ? `<div class="ag">🎯 ${esc(a.auto.goal)}</div>` : '<div class="ag">🎯 the supervisor is setting the goal…</div>'}
+      ${w.length ? `<div class="aw">${w.map(x => `${x.kind === 'cloud' ? '☁️' : '💻'} ${esc(x.name)} <span>${esc(x.model)}</span>`).join(' · ')}</div>` : ''}
+      ${a.auto.sheet ? `<a class="asheet" href="${esc(a.auto.sheet)}" target="_blank" rel="noopener">📋 Task list ↗</a>` : ''}</div>`;
+  }
+  if (a.asleep || a.outside || a.cli_id !== 'claude') return '';
+  if (autoOpen !== a.id) return `<button class="autob" data-auto-open title="A supervisor (Fable) keeps it working toward a goal for a set time, answers its questions and checks its work">🤖 Auto Mode</button>`;
+  return `<div class="auto set"><div class="ah">🤖 Auto Mode for</div>
+      <div class="hrs">${AUTO_HOURS.map(h => `<button data-hrs="${h}" class="${autoHours === h ? 'on' : ''}">${h} h</button>`).join('')}</div>
+      <textarea data-goal rows="2" placeholder="Goal (optional: the supervisor proposes one from its mission and missing work)">${esc(autoGoal)}</textarea>
+      <div class="arow"><button data-auto-go>▶ Start</button><button data-auto-cancel>Cancel</button></div>
+      <div class="anote">It answers safe questions itself; publishing, deploying, merging to main, deleting or messaging people wait for you.</div></div>`;
+}
 function roomStage(a) {
   if (!a) return `<div class="stage empty"><div class="hint">Pick an agent on the walls</div></div>`;
   const s = a.summary || {}, t = tone(a), h = hue(a.space);
@@ -399,6 +423,7 @@ function roomStage(a) {
         <button data-say="approve" title="${a.status === 'blocked' ? 'Press Enter on its question (its first option, Yes)' : 'Answer “Yes, go ahead.”'}">✅ Approve</button>
         <button data-say="deny" title="${a.status === 'blocked' ? 'Press Esc on its question (No)' : 'Answer “No, don’t do that.”'}">✋ Deny</button>
         <button data-say="change" title="Tell it what to do instead (opens the chat)">✏️ Change</button></div>` : ''}
+      ${autoBlock(a)}
       ${actionButtons(a)}
       <div class="talk">${a.asleep ? '' : `<button data-chat title="Chat with it: its live terminal and a message box at the bottom">💬 Chat</button>`}
         <button data-voice title="Hear what it wants (local Kokoro voice)">🔊 Say it</button></div>
@@ -557,6 +582,7 @@ function setRoomTheme(id) {
   renderRoom();
 }
 function renderRoom() {
+  if (document.activeElement?.matches?.('#room [data-goal]')) return;  // you are typing an Auto Mode goal
   const list = agents.filter(visible);
   const order = { needs: 0, working: 1, done: 2, idle: 3, closed: 4 };
   const counts = Object.fromEntries(ROOM_TABS.map(([k]) => [k, list.filter(a => roomOf(a) === k).length]));
@@ -658,6 +684,7 @@ function renderRoom() {
 function wireRoomStage(el) {
   const a = agents.find(x => x.id === el.dataset.id);
   if (!a) return;
+  el.querySelector('[data-goal]')?.addEventListener('input', e => { autoGoal = e.target.value; });
   el.addEventListener('click', e => {
     e.stopPropagation();
     if (e.target.closest('[data-open]')) return act(a, 'focus');  // the agent's picture opens its terminal
@@ -665,6 +692,25 @@ function wireRoomStage(el) {
     if (d) return d.dataset.say === 'change' ? openChat(a) : decide(a, d.dataset.say === 'approve', d);
     if (e.target.closest('button[data-chat]')) return roomChat === a.id ? closeChat() : openChat(a);
     if (e.target.closest('button[data-voice]')) return sayIt(a, true);
+    if (e.target.closest('[data-auto-open]')) { autoOpen = a.id; autoGoal = ''; return renderRoom(); }
+    if (e.target.closest('[data-auto-cancel]')) { autoOpen = null; return renderRoom(); }
+    const hb = e.target.closest('button[data-hrs]');
+    if (hb) { autoHours = +hb.dataset.hrs; autoGoal = el.querySelector('[data-goal]')?.value || ''; return renderRoom(); }
+    const go = e.target.closest('[data-auto-go]');
+    if (go) {
+      go.disabled = true; go.textContent = 'Starting…';
+      return fleetCall(a, 'auto-start', { hours: autoHours, goal: el.querySelector('[data-goal]')?.value || '' }).then(j => {
+        toast(`${a.name}: ${j.message}`);
+        if (j.ok) { autoOpen = null; autoGoal = ''; fetch('/hv-fleet-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"quick":true}' }).then(() => setTimeout(poll, 2500)); }
+        else { go.disabled = false; go.textContent = '▶ Start'; }
+      });
+    }
+    const sb = e.target.closest('[data-auto-stop]');
+    if (sb) {
+      if (!sb.classList.contains('arm')) { sb.classList.add('arm'); sb.textContent = 'Stop? click again'; setTimeout(() => { sb.classList.remove('arm'); sb.textContent = '⏹ Stop'; }, 3000); return; }
+      sb.disabled = true;
+      return fleetCall(a, 'auto-stop').then(j => toast(`${a.name}: ${j.message}`));
+    }
     const jl = e.target.closest('button[data-job]');
     if (jl) return openJob(jl.dataset.job);
     const b = e.target.closest('button[data-act]');
@@ -1795,7 +1841,7 @@ let qTimer;
 $('#q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(renderAll, 150); });
 addEventListener('keydown', e => {
   if (e.target.id === 'chatin' && e.key === 'Escape') return closeChat();
-  if (e.target.matches('input')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
+  if (e.target.matches('input, textarea, select')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
   else if (e.key === 'Escape') { if (roomChat) closeChat(); else closeDrawer(); }
   else if (e.key >= '1' && e.key <= '5') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }

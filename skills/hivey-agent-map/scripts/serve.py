@@ -555,7 +555,8 @@ def open_wiki_page(desk: dict, rel: str) -> tuple[bool, str]:
     return True, f"opened (not an Obsidian vault yet: in Obsidian, Open folder as vault → {wiki.get('short')})"
 
 
-def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", text: str = "") -> tuple[bool, str | dict]:
+def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", text: str = "",
+                 extra: dict | None = None) -> tuple[bool, str | dict]:
     if action == "session":
         return session_action(session)
     if action == "stop-session":
@@ -579,6 +580,17 @@ def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", t
     sock = desk.get("sock") or None
     if action == "wiki":  # works for asleep agents too: their wiki is on disk
         return open_wiki_page(desk, path)
+    if action in ("auto-start", "auto-stop"):  # Auto Mode: a supervisor keeps it working toward a goal
+        import automode
+        if action == "auto-stop":
+            run = automode.active_for(desk_id)
+            return automode.stop(run["id"]) if run else (False, "Auto Mode is not on")
+        extra = extra or {}
+        try:
+            hours = float(extra.get("hours") or 0)
+        except (TypeError, ValueError):
+            hours = 0
+        return automode.start(desk_id, hours, str(extra.get("goal") or ""))
     if desk.get("asleep"):  # an agent of a stopped session: start the session (compact/clear wait until then)
         if action == "focus":
             return session_action(desk.get("hv_session") or "")
@@ -917,7 +929,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 req = json.loads(self.rfile.read(length) or b"{}")
                 ok, msg = fleet_action(str(req.get("id") or req.get("pane") or ""), str(req.get("action", "")),
                                         str(req.get("session") or ""), str(req.get("path") or ""),
-                                        str(req.get("text") or ""))
+                                        str(req.get("text") or ""), {k: req.get(k) for k in ("hours", "goal")})
             except (ValueError, OSError, subprocess.SubprocessError) as e:
                 ok, msg = False, str(e)[:200]
             return self.answer(200, json.dumps({"ok": ok, "message": msg}).encode())

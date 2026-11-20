@@ -111,6 +111,20 @@ hivey agent-map nightly [--model sonnet]   # a full report now (also: --no-llm, 
 hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | status
 ```
 
+- **Auto Mode:** on the agent in the middle of the fleet room, 🤖 Auto Mode → 1, 2, 4 or 10 h and an optional goal
+  (or `hivey agent-map auto start <fleet id> --hours 2 --goal "…"`). It opens a 🤖 autopilot tab in the agent's space:
+  Claude on Fable (your subscription) in its own folder `~/.hivey/auto/<agent>/`, briefed by `scripts/autopilot_brief.md`
+  to supervise the agent until the time is up. It sets the goal (`GOAL.md`) and a task list (a Claude spreadsheet
+  artifact, else `TASKS.md`), asks the agent to save its Status, then `/clear`s it and switches it to Fable, and hands
+  out the work: to the agent, to cloud workers (`hivey cloud run`, preferred for code in a GitHub repo) or to local
+  worker panes in `workers/<name>/` (for local files, apps, the browser or secrets), each on the model the task needs.
+  `scripts/automode.py watch` types an `[auto]` event into it whenever the agent or a worker finishes a turn or asks
+  something, checks in after 25 quiet minutes and says TIME UP. It answers safe questions itself (files, tests,
+  commits on branches, pull requests); publishing, deploying, merging to main, deleting, payments and messaging people
+  wait for the user. When the goal is reached or the time is up it writes a report (`reports/`), a wiki page and
+  `log.md` entry, the agent's Status line and its own `MEMORY.md` (read at the next start), then closes the tab. The
+  card shows 🤖 with the time left, the goal, the workers and the task list; ⏹ Stop ends it after the wrap-up.
+  Runs: `hivey agent-map auto status`; state in `~/.hivey/agent-map/auto/`.
 - **Failing jobs, live:** the fleet page asks `/hv-job-health` on load, every 5 minutes and when the Jobs tab opens (a jobs-only scan, ~0.1 s, no model). Jobs whose last run exited non-zero get a red count on the 📊 Jobs tab and a banner over the jobs pages (click a job: its error lines, log path and log tail); jobs not loaded, missed or with errors in an ok run are listed folded under "more to check". A run that exited non-zero keeps its error lines even when it ends with "All done!", and the one-line error is the line naming a cause (an HTTP status, `fatal:`, an exception).
 - **hivey menu → agent fleet → 📊 Jobs tab** (key 4, or `/fleet/?view=jobs`) shows these pages inside the fleet page: the frame loads `/hv-jobs`, which the server redirects to the latest map (else stats, logs, sessions); with no report yet it starts the first build (`agent_map.py open --no-open`) and shows a page that reloads until it is ready. Every jobs page's navbar starts with 🚀 Fleet (hidden inside the frame). `hivey agent-map open` still opens `agent-stats.html`,
   `agent-map.html` and `agent-logs.html` from `~/.hivey/agent-map/reports/latest`.
