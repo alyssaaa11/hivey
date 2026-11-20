@@ -254,6 +254,50 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 include_str!("../../../skills/hivey-agent-map/scripts/dashboards.py"),
             ),
             (
+                "scripts/automode.py",
+                include_str!("../../../skills/hivey-agent-map/scripts/automode.py"),
+            ),
+            (
+                "scripts/autopilot_brief.md",
+                include_str!("../../../skills/hivey-agent-map/scripts/autopilot_brief.md"),
+            ),
+            (
+                "scripts/fleet/rooms/beach.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/beach.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/craft.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/craft.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/deepspace.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/deepspace.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/nature.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/nature.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/newyork.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/newyork.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/office.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/office.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/sea.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/sea.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/singularity.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/singularity.jpg.b64"),
+            ),
+            (
+                "scripts/fleet/rooms/space.jpg.b64",
+                include_str!("../../../skills/hivey-agent-map/scripts/fleet/rooms/space.jpg.b64"),
+            ),
+            (
                 "scripts/fleet/fleet.html",
                 include_str!("../../../skills/hivey-agent-map/scripts/fleet/fleet.html"),
             ),
@@ -757,6 +801,39 @@ mod tests {
                 skill.1.starts_with(&format!("---\nname: {name}\n")),
                 "{name}"
             );
+        }
+    }
+
+    /// Every file in a shipped skill's folder must be in its list, or `hivey update` installs the
+    /// skill without it (a new script the others import breaks the skill on other machines).
+    #[test]
+    fn every_skill_file_is_embedded() {
+        fn walk(dir: &Path, base: &Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).expect("read_dir").flatten() {
+                let path = entry.path();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with('.') || name == "__pycache__" || name == "EXTRA_SKILL.md" {
+                    continue;
+                }
+                if path.is_dir() {
+                    walk(&path, base, out);
+                } else if !name.starts_with("test_") && !name.ends_with(".pyc") {
+                    let rel = path.strip_prefix(base).expect("prefix");
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("skills");
+        let all = std::iter::once(("hivey", FILES)).chain(SKILLS.iter().copied());
+        for (name, files) in all {
+            let mut found = Vec::new();
+            walk(&root.join(name), &root.join(name), &mut found);
+            for rel in found {
+                assert!(
+                    files.iter().any(|(r, _)| *r == rel),
+                    "skills/{name}/{rel} is not embedded in src/cli/swarm/skill.rs"
+                );
+            }
         }
     }
 
