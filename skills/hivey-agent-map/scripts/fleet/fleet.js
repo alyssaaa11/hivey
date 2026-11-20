@@ -260,7 +260,7 @@ function card(a) {
   return `<div class="card ${esc(a.status)}${asks}" data-id="${esc(a.id)}" title="Click: open in hivey · right-click: details">
     <div class="top"><div class="avatar" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}<span class="st" style="background:${S.color}"></span></div>
       <div style="min-width:0"><div class="name">${esc(a.name)}</div>
-      <div class="meta">${S.emoji} ${S.label} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''}${a.team?.length ? ` · 👥 ${a.team.length}` : ''} · ${ago(a.last_activity)}</div></div></div>
+      <div class="meta">${S.emoji} ${a.status === 'blocked' || asks ? needLabel(a) : S.label} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''}${a.team?.length ? ` · 👥 ${a.team.length}` : ''} · ${ago(a.last_activity)}</div></div></div>
     <div class="say">${esc(s.bubble || '…')}</div>
     <div class="job">📌 ${esc(s.job || '')}</div>
     ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
@@ -326,12 +326,22 @@ const roomView = { yaw: 0, pitch: 0, zoom: 0 };
 let roomDragged = false;
 const TONE_RGB = { working: '74 222 128', needs: '250 204 21', done: '56 189 248', idle: '148 163 184', closed: '139 92 246' };
 const TONE_LABEL = { working: 'Running', needs: 'Needs you', done: 'Done', idle: 'Idle', closed: 'Closed' };
+// what an agent that needs you is waiting for, in a few words (instead of a bare "Needs you")
+function needLabel(a) {
+  const t = (a.summary?.needs_you || '').toLowerCase();
+  if (/trust|folder|director/.test(t)) return 'Trust a folder?';
+  if (a.status === 'blocked') return /permission|allow|approve|run|edit|command|access/.test(t) ? 'Approve a step?' : 'Answer its prompt';
+  if (/pick|choose|choice|which|domain/.test(t)) return 'Pick an option';
+  if (/yes|go ahead|deploy|publish|confirm/.test(t)) return 'Say yes or no';
+  return 'Has a question';
+}
+const toneLabel = a => tone(a) === 'needs' ? needLabel(a) : TONE_LABEL[tone(a)];
 function roomTile(a, sub = false) {
   const t = tone(a);
   const label = sub ? (a.name.split(' · ').slice(1).join(' · ') || a.name) : a.name;
   return `<button class="tile ${t}${sub ? ' sub' : ''}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}: ${esc(a.summary?.bubble || '')}">
     <span class="ic">${esc(a.emoji)}</span><span class="nm">${esc(label)}</span>
-    <span class="sl"><i></i>${sub ? '' : TONE_LABEL[t]}</span></button>`;
+    <span class="sl"><i></i>${sub ? '' : toneLabel(a)}</span></button>`;
 }
 // sessions of the same agent ("ceo", "ceo · session 2", …) stay together: one stack, the most
 // urgent on top and the others joined under it as small rows
@@ -355,7 +365,7 @@ function roomStage(a) {
     <div class="holo${roomShown !== a.id ? ' fresh' : ''}">
       <div class="bigav" data-open title="Open its terminal in hivey" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}</div>
       <div class="nm">${esc(a.name)}</div>
-      <div class="sl"><i></i>${TONE_LABEL[t]} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''} · ${ago(a.last_activity)}</div>
+      <div class="sl"><i></i>${toneLabel(a)} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''} · ${ago(a.last_activity)}</div>
       <div class="say">${esc(s.bubble || '…')}</div>
       ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
       ${s.job ? `<div class="job">📌 ${esc(s.job)}</div>` : ''}
@@ -401,7 +411,7 @@ function renderChat() {
     dock = document.createElement('div');
     dock.id = 'chatdock'; dock.dataset.id = a.id; dock.className = tone(a);
     dock.innerHTML = `<div class="console">
-      <div class="chead"><span class="dots"><i></i><i></i><i></i></span><b>${esc(a.emoji)} ${esc(a.name)}</b><span class="cst" id="chatst">${esc(TONE_LABEL[tone(a)])}</span>
+      <div class="chead"><span class="dots"><i></i><i></i><i></i></span><b>${esc(a.emoji)} ${esc(a.name)}</b><span class="cst" id="chatst">${esc(toneLabel(a))}</span>
         ${tone(a) === 'needs' ? '<button class="cyes" data-say="approve" title="Approve what it waits for">✅ Approve</button><button class="cno" data-say="deny" title="Deny it">✋ Deny</button>' : ''}
         <button class="cx" title="Open its terminal in hivey">↗</button><button class="cclose" title="Close the chat (Esc)">✕</button></div>
       <pre class="term" id="chatterm">${esc(a.screen || '')}</pre>

@@ -417,8 +417,11 @@ Return ONLY a JSON array, one object per agent, same ids, with these keys:
   "bubble": one sentence it would say, first person, max 90 characters, may start with one fitting emoji
   "done": up to 3 short things it achieved in this session (max 60 characters each), newest first
   "next": what happens next or what it waits for, max 80 characters ("" if nothing)
-  "needs_you": if it waits for the human (a permission prompt, a question, a choice): what to answer, max 80
-               characters; otherwise ""
+  "needs_you": only if it is stuck until the human answers: a permission prompt on screen, or its last reply
+               ends with a direct question or choice it cannot go on without. Then what to answer, max 80
+               characters. Otherwise "": a finished task is not a need, even when the reply offers optional
+               follow-ups ("set X to Valid if you want it published", "tell me if you want Y") or ends with
+               "DONE:"; put such optional follow-ups in "next" instead
   "advice": "keep", "compact" or "clear" for its conversation. compact = the context is large (over ~60%)
             and the work continues; clear = the task is finished and the next task is unrelated or the
             context is large and stale; keep otherwise. Never clear while it is working or waiting for you.
@@ -506,6 +509,13 @@ def fallback(desk: dict) -> dict:
         "advice_why": f"context at {desk['context_pct']}%" if desk["context_pct"] >= 70 else "",
         "by": "fallback",
     }
+
+
+def finished(desk: dict) -> bool:
+    """Its last reply reports the task done (hivey briefs end a finished turn with a `DONE:` line)."""
+    reply = ((desk.get("_log") or {}).get("replies") or [""])[-1]
+    tail = "\n".join(desk.get("screen", "").splitlines()[-25:])  # replies are cut at 700 characters
+    return any(re.search(r"^[\s●⏺]*DONE:", t, re.M) for t in (reply, tail))
 
 
 def clean_summary(s: dict) -> dict:
@@ -674,6 +684,8 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
                 for d in futures[fut]:
                     if d["id"] in got:
                         d["summary"] = {**clean_summary(got[d["id"]]), "by": model}
+                        if d["status"] != "blocked" and finished(d):  # done work never "needs you"
+                            d["summary"]["needs_you"] = ""
                         d["summarized_at"] = now_iso()
     for d in people:
         if "summary" not in d:
