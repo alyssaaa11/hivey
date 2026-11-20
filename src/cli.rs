@@ -136,6 +136,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "cloud" => swarm::run_cloud_command(&args[2..])?, // hivey
         "pet" => swarm::run_pet_command(&args[2..])?,     // hivey
         "agent-map" => swarm::run_agent_map_command(&args[2..])?, // hivey
+        "evolve" => swarm::run_evolve_command(&args[2..])?, // hivey
         "quiet" => swarm::run_quiet_command(&args[2..])?, // hivey
         "safety" => swarm::run_safety_command(&args[2..])?, // hivey
         "hibernate" => swarm::run_hibernate(&args[2..])?, // hivey

@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hivey self-improve</title>
+<style>
+:root{
+  --bg:#0f1c1b; --panel:#162827; --panel2:#1c3231; --line:#2a4644; --teal:#24403f;
+  --mint:#8ff0cc; --mint2:#5fd3a8; --text:#e8f4f0; --muted:#9bb5ae; --warn:#ffcf70; --bad:#ff8a80;
+  --good:#8ff0cc; --shadow:0 10px 30px rgba(0,0,0,.25); --r:16px;
+}
+@media (prefers-color-scheme: light){
+  :root{--bg:#f3f8f6; --panel:#ffffff; --panel2:#eaf4f0; --line:#d3e4de; --text:#16302e; --muted:#5b7670;
+        --mint2:#1f9e74; --good:#1f9e74; --warn:#b7791f; --bad:#c94a3f; --shadow:0 8px 24px rgba(36,64,63,.10)}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,Segoe UI,sans-serif}
+a{color:var(--mint2)}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 80px}
+header{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.mark{width:44px;height:44px;border-radius:50%;background:var(--teal);display:grid;place-items:center;color:var(--mint);
+      font:700 15px ui-monospace,Menlo,monospace;box-shadow:0 0 0 3px rgba(143,240,204,.15);animation:breathe 4s ease-in-out infinite}
+@keyframes breathe{50%{box-shadow:0 0 0 9px rgba(143,240,204,.06)}}
+h1{font-size:22px;margin:0}
+.sub{color:var(--muted);font-size:13px}
+.grow{flex:1}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;font-weight:600;font-size:13px;background:var(--panel2);border:1px solid var(--line)}
+.pill .dot{width:9px;height:9px;border-radius:50%;background:var(--good);box-shadow:0 0 0 0 var(--good);animation:ping 2s infinite}
+.pill.warn .dot{background:var(--warn)} .pill.bad .dot{background:var(--bad)}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(143,240,204,.6)}100%{box-shadow:0 0 0 10px rgba(143,240,204,0)}}
+nav{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;margin:14px 0 6px;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+nav button{flex:none}
+button{font:inherit;cursor:pointer;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--text);padding:8px 14px;transition:.15s}
+button:hover{border-color:var(--mint2);transform:translateY(-1px)}
+button.primary{background:var(--mint);color:#0f2a25;border-color:var(--mint);font-weight:600}
+button.yes.on{background:var(--mint);color:#0f2a25;border-color:var(--mint)}
+button.no.on{background:var(--bad);color:#2a0f0f;border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:default;transform:none}
+section{margin-top:26px;scroll-margin-top:60px}
+h2{font-size:18px;margin:0 0 4px} .h2sub{color:var(--muted);margin:0 0 14px;font-size:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px;box-shadow:var(--shadow)}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.hero{display:grid;grid-template-columns:minmax(300px,460px) 1fr;gap:18px;align-items:center}
+@media (max-width:820px){.hero{grid-template-columns:1fr}}
+svg text{font-family:inherit}
+.ring-node{cursor:pointer;transition:transform .2s}
+.ring-node:hover{transform:scale(1.06)}
+.stage{padding:18px}
+.stage .big{font-size:28px;font-weight:700;color:var(--mint2)}
+.stage h3{margin:0 0 6px;font-size:19px}
+.kpi{padding:14px}
+.kpi .n{font-size:28px;font-weight:700;letter-spacing:-.5px}
+.kpi .l{color:var(--muted);font-size:13px}
+.kpi .n.good{color:var(--good)} .kpi .n.warn{color:var(--warn)} .kpi .n.bad{color:var(--bad)}
+.check{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--line)}
+.check:last-child{border:0}
+.ic{flex:none;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700}
+.ic.ok{background:rgba(143,240,204,.18);color:var(--good)} .ic.warn{background:rgba(255,207,112,.18);color:var(--warn)}
+.ic.bad{background:rgba(255,138,128,.18);color:var(--bad)} .ic.lock{background:var(--panel2);color:var(--muted)}
+.muted{color:var(--muted)} .small{font-size:13px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.tag.agents{color:#ffb38a} .tag.you{color:#f0a8e0} .tag.hivey{color:var(--mint2)} .tag.fix{color:#ffb38a} .tag.tokens{color:var(--mint2)} .tag.ai{color:#a9b8ff} .tag.manual{color:#f0a8e0}
+.item{display:flex;flex-direction:column;gap:8px}
+.item h4{margin:0;font-size:16px}
+.item .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.evidence{font-size:13px;color:var(--muted);background:var(--panel2);border-radius:10px;padding:8px 10px;white-space:pre-wrap;word-break:break-word}
+details summary{cursor:pointer;color:var(--mint2);font-size:13px}
+.bar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--mint2),var(--mint));border-radius:99px;transition:width 1s}
+.pattern .count{font-size:22px;font-weight:700;color:var(--warn)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;padding:2px 9px;border-radius:999px;background:var(--panel2);border:1px solid var(--line)}
+.timeline{position:relative;padding-left:22px}
+.timeline:before{content:"";position:absolute;left:8px;top:4px;bottom:4px;width:2px;background:var(--line)}
+.tl{position:relative;padding:6px 0 10px;animation:fadein .5s both}
+.tl:before{content:"";position:absolute;left:-18px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--good)}
+.tl.warn:before{background:var(--warn)} .tl.fail:before{background:var(--bad)} .tl.run:before{background:var(--mint);animation:ping 1.5s infinite}
+.tl .when{color:var(--muted);font-size:12px}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}}
+.empty{padding:22px;text-align:center;color:var(--muted)}
+.empty .em{font-size:30px;display:block;margin-bottom:6px}
+.spark{display:flex;align-items:flex-end;gap:5px;height:60px}
+.spark div{flex:1;background:linear-gradient(0deg,var(--mint2),var(--mint));border-radius:5px 5px 2px 2px;min-height:3px;transition:height 1s;position:relative}
+.spark div span{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted)}
+.countdown{font-variant-numeric:tabular-nums;font-weight:700}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--mint);color:#0f2a25;padding:10px 18px;border-radius:999px;font-weight:600;transition:.3s;z-index:20}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.locked{position:relative;opacity:.8}
+.headline{font-size:20px;font-weight:600;line-height:1.35}
+.saver{display:flex;gap:10px;align-items:flex-start}
+.switch{flex:none;width:38px;height:22px;border-radius:99px;background:var(--line);position:relative}
+.switch:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--muted);transition:.3s}
+.switch.on{background:rgba(143,240,204,.35)} .switch.on:after{left:19px;background:var(--mint)}
+code{font:12px ui-monospace,Menlo,monospace;background:var(--panel2);padding:1px 6px;border-radius:6px}
+.alarm{background:#3a1d1d;color:#ffd5d5;border:1px solid #a54a4a;border-radius:14px;padding:12px 16px;margin-top:14px;font-weight:600}
+.ibar{height:8px;border-radius:99px;background:var(--panel2);overflow:hidden;flex:1;min-width:80px}
+.ibar>i{display:block;height:100%;background:var(--mint2)}
+.imp{display:flex;align-items:center;gap:8px;margin:6px 0}
+.ltable{width:100%;border-collapse:collapse;font-size:13px}.ltable th,.ltable td{padding:6px 8px;border-bottom:1px dashed var(--line);text-align:left}
+textarea.missed{width:100%;min-height:60px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:inherit;padding:8px;font:inherit}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">&gt;_</div>
+    <div>
+      <h1>hivey improves itself</h1>
+      <div class="sub">Agents note what goes wrong. Every Wednesday hivey tells you what it found. You decide what gets fixed.</div>
+    </div>
+    <div class="grow"></div>
+    <div id="pill" class="pill"><span class="dot"></span><span id="pillText">Checking…</span></div>
+  </header>
+
+  <div id="alarms"></div>
+  <section id="learning" style="margin-top:18px">
+    <div class="card">
+      <h3 style="margin-top:0">🧠 Is it learning?</h3>
+      <p class="muted small" style="margin-top:-6px">Does hivey get better, and do the suggestions get better? One row per month. The logging test proves the notes still arrive, so a quiet week can't pass for a fix.</p>
+      <div id="learnBody"></div>
+    </div>
+  </section>
+
+  <nav>
+    <button data-go="learning">🧠 Learning</button>
+    <button data-go="loop">🔄 The loop</button>
+    <button data-go="wednesday">📬 Wednesday review</button>
+    <button data-go="patterns">🧩 Patterns</button>
+    <button data-go="hivey">⬢ Token savers</button>
+    <button data-go="reliable">✅ Is it reliable?</button>
+    <button data-go="ai">✨ AI news</button>
+    <button data-go="results">📈 Did fixes work?</button>
+    <button data-go="steps">📜 Every step</button>
+  </nav>
+
+  <section id="loop">
+    <div class="hero">
+      <div class="card" style="padding:8px">
+        <svg id="ring" viewBox="0 0 400 400" width="100%" role="img" aria-label="The self-improvement loop"></svg>
+      </div>
+      <div class="card stage" id="stage"></div>
+    </div>
+  </section>
+
+  <section id="wednesday">
+    <h2>📬 What should change in how we work</h2>
+    <p class="h2sub" id="wedSub">Every Wednesday at the Claude weekly reset, hivey looks for problems that keep coming back and proposes a new rule or habit for the agents, for you or for hivey. Small one-off repairs are handled by the daily check. Nothing changes until you say yes.</p>
+    <div id="wedHead"></div>
+    <div id="items" class="grid g2" style="margin-top:14px"></div>
+    <details class="card" id="smallBox" style="margin-top:14px"><summary><b>🔧 Small fixes</b> <span class="muted small" id="smallCount"></span></summary>
+      <p class="muted small">One-off repairs. They don't change how we work, so they aren't up for a vote: the daily check (09:30) tells you once when a new one appears. If the same kind keeps coming back, Wednesday turns it into a change above.</p>
+      <div id="smallList"></div></details>
+  </section>
+
+  <section id="patterns">
+    <h2>🧩 Problems that keep coming back</h2>
+    <p class="h2sub">A problem has to show up at least 3 times, or in 2 different agents, before it counts as a pattern. One-off errors and harmless misses are left out.</p>
+    <div id="root"></div>
+    <div id="patternList" class="grid g2"></div>
+  </section>
+
+  <section id="hivey">
+    <h2>⬢ Token savers</h2>
+    <p class="h2sub">Tools that keep agents from wasting tokens, and whether each one is on. Running agents, failed jobs and spend are on the agent fleet page (hivey menu → agent fleet), so they aren't repeated here.</p>
+    <div id="savers" class="grid g2"></div>
+  </section>
+
+  <section id="reliable">
+    <h2>✅ Is the loop itself working?</h2>
+    <p class="h2sub">Every part of the loop checks itself. Green means it's working; yellow or red tells you what to look at.</p>
+    <div class="grid g2">
+      <div class="card"><div id="checks"></div></div>
+      <div class="card">
+        <h3 style="margin-top:0">Notes written this week</h3>
+        <p class="muted small" style="margin-top:-6px">How many notes your agents wrote each day. If the bars stop, the notes have stopped.</p>
+        <div id="spark" class="spark" style="margin:18px 0 26px"></div>
+        <div id="agentsWeek" class="chips"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-top:0">🔒 Safety first: what has to exist before hivey can build anything itself</h3>
+      <p class="muted small" style="margin-top:-6px">Agents that change themselves can quietly weaken their own checks. So the builder stays locked until all four of these exist.</p>
+      <div id="safety" class="grid g2"></div>
+      <div id="lockChanges" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section id="ai">
+    <h2>✨ What changed in AI this week</h2>
+    <p class="h2sub">New releases from Anthropic (Claude), OpenAI and Google, and whether each one matters for hivey.</p>
+    <div id="aiList" class="grid g2"></div>
+  </section>
+
+  <section id="results">
+    <h2>📈 Did the fixes work?</h2>
+    <p class="h2sub">Each fix you approved gets three numbers: did the problem go down, did anything else break, and what does it cost. A problem going quiet doesn't count as fixed until the numbers show it.</p>
+    <div id="fixList" class="grid g2"></div>
+    <div class="card" style="margin-top:14px"><h3 style="margin-top:0">🕳️ A problem the review missed?</h3>
+      <p class="muted small" style="margin-top:-6px">Type a problem you hit that no review raised. Next Wednesday hivey looks for it as a known blind spot, and the "Is it learning?" box counts these per month.</p>
+      <textarea class="missed" id="missedText" maxlength="600" placeholder="e.g. the stock-news swarm stopped posting on Monday and nobody noticed"></textarea>
+      <div class="row" style="margin-top:8px;display:flex;gap:8px;align-items:center"><button id="missedBtn">Add it</button><span class="muted small" id="missedNote"></span></div></div>
+    <div class="card" style="margin-top:14px"><h3 style="margin-top:0">🙋 Things you keep doing by hand</h3>
+      <p class="muted small" style="margin-top:-6px">Requests you typed again and again on different days. An agent could take these off your plate.</p>
+      <div id="manual" class="grid g2"></div></div>
+  </section>
+
+  <section id="steps">
+    <h2>📜 Every step the loop took</h2>
+    <p class="h2sub">The full record, newest first, so you can see each step happened and how it went.</p>
+    <div class="grid g2">
+      <div class="card"><div id="timeline" class="timeline"></div></div>
+      <div class="card">
+        <h3 style="margin-top:0">Run it now</h3>
+        <p class="muted small">You don't have to wait for Wednesday. A full review takes a few minutes and uses one Claude call. The quick check uses no AI and costs nothing.</p>
+        <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="primary" id="runFull">Run the full review</button>
+          <button id="runQuick">Quick check (no AI)</button>
+        </div>
+        <p class="muted small" id="runNote"></p>
+        <h3>Past reviews</h3>
+        <div id="pastReviews" class="chips"></div>
+      </div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S = null, viewDate = null, selected = 0, busy = false;
+
+const STAGES = [
+  {key:"learn", icon:"📝", name:"Agents take notes", short:"Learn",
+   text:"Every time a tool fails, a chat gets compacted or a session ends, a small script saves what happened: the problem and the proof. No AI, so it costs nothing."},
+  {key:"filter", icon:"🧹", name:"Clear out the noise", short:"Filter",
+   text:"Harmless misses, like a search that found nothing or a retry after a rate limit, are dropped. Your local model, on this Mac, sorts the unclear ones. Your data never leaves your computer."},
+  {key:"review", icon:"📬", name:"Wednesday review", short:"Review",
+   text:"Every Wednesday at the Claude weekly reset, hivey groups the notes into patterns. It checks your jobs and duplicate agents, reads what's new at Anthropic, OpenAI and Google, and looks for things you keep doing by hand. All of that costs one Claude call a week."},
+  {key:"decide", icon:"👍", name:"You decide", short:"You",
+   text:"Every change says what keeps happening, the new rule, what we stop doing and how we will check it, with Yes/No buttons. Small repairs go to the daily check. Nothing gets built until you say yes."},
+  {key:"build", icon:"🔒", name:"Build (locked)", short:"Build",
+   text:"Later, an agent will build what you approved, and a reviewer from a different AI company will check it. It stays locked until the safety pieces below exist."},
+  {key:"check", icon:"📈", name:"Check it worked", short:"Check",
+   text:"The next Wednesday, hivey counts whether each fixed problem actually went down, whether anything else broke, and what it cost. That count is what makes the loop actually improve things."},
+];
+
+function toast(t){const e=$("#toast");e.textContent=t;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),2200)}
+function ago(ts){ if(!ts) return "never"; const d=(Date.now()-new Date(ts))/1000;
+  if(d<60) return "just now"; if(d<3600) return Math.round(d/60)+" min ago"; if(d<86400) return Math.round(d/3600)+" h ago"; return Math.round(d/86400)+" days ago"; }
+function money(n){return "$"+(+n||0).toFixed(2)}
+function big(n){n=+n||0; return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(0)+"k":String(n)}
+
+function stageNumbers(){
+  const st=S?.status||{}, r=S?.review, c=r?.counts||{};
+  const items=(r?.text?.items||[]).length, dec=Object.keys(S?.decisions||{}).length;
+  return {
+    learn:[st.facts_week??0,"notes written this week by "+(st.agents_week||[]).length+" agents"],
+    filter:[c.noise??0,"harmless entries dropped in the last review"+(c.set_aside?(", "+c.set_aside+" set aside as unclear"):"")],
+    review:[(r?.patterns||[]).length,"patterns in the last review ("+(r?r.date:"none yet")+")"],
+    decide:[items?dec+"/"+items:"–","changes you answered"],
+    build:[st.builder_locked?"🔒":"ready",st.builder_locked?"locked until the safety pieces are in place":"ready to build what you approved"],
+    check:[(r?.fix_checks||[]).length,"approved fixes being tracked"],
+  };
+}
+function activeStage(){
+  const st=S?.status||{}; const r=S?.review;
+  const pending=(r?.text?.items||[]).length - Object.keys(S?.decisions||{}).length;
+  if(pending>0) return 3;
+  if((S?.activity||[])[0]?.status==="run") return 2;
+  return 0;
+}
+
+function drawRing(){
+  const svg=$("#ring"), cx=200, cy=200, R=145, n=STAGES.length, act=activeStage();
+  let h=`<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#5fd3a8"/><stop offset="1" stop-color="#8ff0cc"/></linearGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="var(--line)" stroke-width="10"/>
+  <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="url(#g)" stroke-width="10" stroke-linecap="round"
+     stroke-dasharray="120 ${2*Math.PI*R-120}" opacity=".9"><animateTransform attributeName="transform" type="rotate" from="0 ${cx} ${cy}" to="360 ${cx} ${cy}" dur="9s" repeatCount="indefinite"/></circle>
+  <circle r="7" fill="#8ff0cc" filter="url(#glow)"><animateMotion dur="9s" repeatCount="indefinite" path="M ${cx} ${cy-R} A ${R} ${R} 0 1 1 ${cx-0.01} ${cy-R}"/></circle>
+  <circle cx="${cx}" cy="${cy}" r="62" fill="var(--teal)"/>
+  <text x="${cx}" y="${cy-8}" text-anchor="middle" fill="#8ff0cc" font-size="22" font-weight="700" font-family="ui-monospace,Menlo,monospace">&gt;_</text>
+  <text x="${cx}" y="${cy+16}" text-anchor="middle" fill="#cfeee3" font-size="12">next review</text>
+  <text id="ringCount" x="${cx}" y="${cy+34}" text-anchor="middle" fill="#8ff0cc" font-size="14" font-weight="700"></text>`;
+  STAGES.forEach((s,i)=>{
+    const a=-Math.PI/2+i*2*Math.PI/n, x=cx+R*Math.cos(a), y=cy+R*Math.sin(a);
+    const on=i===selected, live=i===act, locked=s.key==="build"&&S?.status?.builder_locked;
+    h+=`<g class="ring-node" data-i="${i}" style="transform-origin:${x}px ${y}px">
+      ${live?`<circle cx="${x}" cy="${y}" r="34" fill="none" stroke="#8ff0cc" stroke-width="2" opacity=".7"><animate attributeName="r" values="30;40;30" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values=".8;0;.8" dur="2s" repeatCount="indefinite"/></circle>`:""}
+      <circle cx="${x}" cy="${y}" r="30" fill="${on?"#8ff0cc":"var(--panel)"}" stroke="${on?"#8ff0cc":locked?"var(--line)":"#5fd3a8"}" stroke-width="2.5" ${locked?'stroke-dasharray="4 4"':""}/>
+      <text x="${x}" y="${y+7}" text-anchor="middle" font-size="22">${s.icon}</text>
+      <text x="${x}" y="${y+48}" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--text)">${s.short}</text></g>`;
+  });
+  svg.innerHTML=h;
+  svg.querySelectorAll(".ring-node").forEach(g=>g.onclick=()=>{selected=+g.dataset.i;drawRing();drawStage()});
+  tick();
+}
+function drawStage(){
+  const s=STAGES[selected], nums=stageNumbers()[s.key];
+  $("#stage").innerHTML=`<div class="tag">Step ${selected+1} of 6</div>
+    <h3 style="margin-top:10px">${s.icon} ${esc(s.name)}</h3>
+    <p>${esc(s.text)}</p>
+    <div class="big">${esc(nums[0])}</div><div class="muted small">${esc(nums[1])}</div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button id="prevS">← Back</button><button id="nextS" class="primary">Next step →</button></div>`;
+  $("#prevS").onclick=()=>{selected=(selected+5)%6;drawRing();drawStage()};
+  $("#nextS").onclick=()=>{selected=(selected+1)%6;drawRing();drawStage()};
+}
+let autoTimer=setInterval(()=>{ if(document.hidden) return; selected=(selected+1)%6; drawRing(); drawStage(); }, 7000);
+$("#ring").addEventListener("mouseenter",()=>clearInterval(autoTimer));
+$("#stage").addEventListener("mouseenter",()=>clearInterval(autoTimer));
+
+function tick(){
+  const next=S?.status?.schedule?.next, el=$("#ringCount");
+  if(!el) return;
+  if(!next){el.textContent="not scheduled";return}
+  let d=Math.max(0,(new Date(next)-Date.now())/1000);
+  const D=Math.floor(d/86400), H=Math.floor(d%86400/3600), M=Math.floor(d%3600/60);
+  el.textContent=D?`${D}d ${H}h ${M}m`:`${H}h ${M}m`;
+}
+setInterval(tick,30000);
+
+function healthChecks(){
+  const st=S.status, r=S.review, out=[];
+  out.push(st.hooks?["ok","Agents are taking notes","The note-taking hooks are on for every Claude agent."]
+                   :["bad","Agents aren't taking notes","The note-taking hooks are off. Run: hivey evolve hooks install"]);
+  const lf=st.last_fact?(Date.now()-new Date(st.last_fact))/36e5:1e9;
+  out.push(lf<24?["ok","Notes are coming in","Last note "+ago(st.last_fact)+"."]
+          :lf<72?["warn","Notes are slow","Last note "+ago(st.last_fact)+". Agents may just be quiet."]
+          :["bad","No new notes","Last note "+ago(st.last_fact)+". Note-taking may be broken."]);
+  out.push(st.schedule.loaded?["ok","Wednesday review is scheduled",st.schedule.text+"."]
+          :["bad","Wednesday review isn't scheduled","Run: hivey evolve schedule install"]);
+  if(r){
+    const old=(Date.now()-new Date(r.generated))/864e5;
+    out.push(old<8?["ok","Last review ran fine",r.date+" · "+(r.llm==="ok"?"written by Claude":"written without AI ("+r.llm+")")]
+                  :["warn","Last review is old","Last review: "+r.date+". The Wednesday run may have missed."]);
+    if(r.llm!=="ok"&&!String(r.llm).startsWith("skipped")) out.push(["warn","The AI summary failed",String(r.llm)]);
+  } else out.push(["warn","No review yet","The first one runs next Wednesday, or click \"Run the full review\" below."]);
+  const ch=st.locks.changed.length;
+  out.push(!st.locks.initialized?["warn","Safety locks not set","They get set on the first review."]
+          :ch?["bad",ch+" safety file(s) changed","A protected safety file changed. Check it below and approve it if you made the change."]
+          :["ok","Safety files untouched",st.locks.files.length+" protected files match their locked fingerprints."]);
+  const errs=r?.ai?.errors||[]; if(errs.length) out.push(["warn","Some AI news sources failed",errs.join("; ")]);
+  return out;
+}
+
+function render(){
+  const st=S.status, r=S.review, live=S.live||{}, ops=live.operations||r?.operations||{};
+  // pill
+  const checks=healthChecks(); const bad=checks.filter(c=>c[0]==="bad").length, warn=checks.filter(c=>c[0]==="warn").length;
+  $("#pill").className="pill"+(bad?" bad":warn?" warn":"");
+  $("#pillText").textContent=bad?"Needs your attention":warn?"Working, a few notes":"Everything is working";
+  drawRing(); drawStage(); renderLearning();
+
+  // wednesday
+  const pend=(r?.text?.items||[]).length-Object.keys(S.decisions||{}).length;
+  if(!r){ $("#wedHead").innerHTML=`<div class="card empty"><span class="em">📭</span>No review yet. The first one runs next Wednesday after the Claude reset, or start one in <a href="#steps">Every step</a>.</div>`; $("#items").innerHTML=""; }
+  else{
+    const t=r.text||{};
+    $("#wedSub").textContent=`Review from ${r.date} (the last ${r.window_days} days). ${pend>0?pend+" change(s) are waiting for your answer.":"You've answered everything. Thanks!"}`;
+    $("#wedHead").innerHTML=`<div class="card"><div class="headline">${esc(t.headline||"")}</div>
+      <p class="muted" style="margin-bottom:0">${esc(t.health||"")}</p>
+      <div class="grid g4" style="margin-top:14px">
+        ${kpi(r.counts.facts,"notes read")}${kpi(r.counts.noise,"harmless ones dropped")}${kpi((r.patterns||[]).length,"patterns found","warn")}${kpi((t.items||[]).length,"changes to how we work","good")}
+      </div>${r.importance_note?`<p class="muted small" style="margin:10px 0 0">Order: ${esc(r.importance_note)}. ${r.canary?esc(r.canary.plain):""}</p>`:""}</div>`;
+    $("#items").innerHTML=(t.items||[]).map((it,i)=>{const n=i+1,d=(S.decisions||{})[n]?.choice;
+      return `<div class="card item"><div class="row"><span class="tag ${esc(it.section)}">${secName(it.section)}</span>
+        <span class="tag">${esc(it.effort||"")} effort</span>${it.recommendation==="yes"?'<span class="tag" style="color:var(--good)">hivey says yes</span>':""}</div>
+        <h4>${n}. ${esc(it.title)}</h4>${impHtml(it)}
+        ${it.check_first?'<div class="small" style="color:var(--warn)">⚠️ Check first: the cause is a guess.</div>':""}
+        ${it.repeat_of_rejected?`<div class="small" style="color:var(--warn)">↩️ You said no to something like this on ${esc(it.repeat_of_rejected.review)} ("${esc(it.repeat_of_rejected.title)}"). It should only come back with new proof.</div>`:""}
+        ${it.pattern?`<div class="small"><b>Keeps happening:</b> ${esc(it.pattern)}</div>`:""}
+        ${it.change?`<div class="small"><b>The change:</b> ${esc(it.change)}</div>`:""}
+        ${it.replaces?`<div class="small"><b>We stop:</b> ${esc(it.replaces)}</div>`:""}
+        ${it.check?`<div class="small"><b>Next Wednesday we check:</b> ${esc(it.check)}</div>`:""}
+        ${it.prediction&&it.prediction.metric?`<div class="small muted">Prediction if you say yes: ${esc(it.prediction.plain||it.prediction.metric)} → ${esc(it.prediction.expected)}</div>`:""}
+        <div class="muted small">${esc(it.why||"")}</div>
+        <details><summary>Show the proof</summary><div class="evidence">${esc(it.evidence)}</div></details>
+        <div class="row" style="margin-top:4px"><button class="yes ${d==="yes"?"on":""}" data-n="${n}" data-c="yes">👍 Yes, do it</button>
+        <button class="no ${d==="no"?"on":""}" data-n="${n}" data-c="no">👎 No</button>
+        ${d?`<button data-n="${n}" data-c="clear" class="small">undo</button>`:""}</div></div>`}).join("")
+      || `<div class="card empty"><span class="em">🎉</span>Nothing kept coming back this week, so no change to how we work.</div>`;
+    const sf=t.small_fixes||[], dl=Object.values(S.daily||{});
+    $("#smallCount").textContent=`${sf.length} this week · ${dl.length} open today`;
+    $("#smallList").innerHTML=(sf.map(f=>`<div class="check"><div class="ic warn">!</div><div><b>${esc(f.title)}</b><div class="small muted">${esc(f.evidence||"")}</div></div></div>`).join("")
+      +dl.map(d=>`<div class="check"><div class="ic warn">•</div><div><b>${esc(d.title)}</b><div class="small muted">open since ${ago(d.first)}</div></div></div>`).join(""))||'<div class="muted small">None. 🎉</div>';
+    document.querySelectorAll("#items button[data-n]").forEach(b=>b.onclick=()=>decide(+b.dataset.n,b.dataset.c));
+  }
+
+  // patterns
+  const tp=r?.text?.patterns||[], byId=Object.fromEntries(tp.map(p=>[p.id,p]));
+  const rp=r?.text?.root_pattern;
+  $("#root").innerHTML=rp&&rp.plain?`<div class="card" style="border-color:var(--mint2);margin-bottom:14px"><span class="tag" style="color:var(--mint2)">The one cause behind several problems</span>
+     <h3 style="margin:8px 0 4px">${esc(rp.title)}</h3><div>${esc(rp.plain)}</div></div>`:"";
+  const maxc=Math.max(1,...(r?.patterns||[]).map(p=>p.count));
+  $("#patternList").innerHTML=(r?.patterns||[]).map(p=>{const t=byId[p.id]||{};
+    return `<div class="card pattern"><div style="display:flex;justify-content:space-between;gap:10px">
+      <div><span class="tag">${p.id}</span><h4 style="margin:6px 0 2px">${esc(t.title||p.signature.split("|").slice(2).join(" "))}</h4></div>
+      <div style="text-align:right"><div class="count">${p.count}×</div><div class="muted small">${p.agents.length} agent(s)</div></div></div>
+      <div class="bar" style="margin:8px 0"><i style="width:${Math.round(p.count/maxc*100)}%"></i></div>
+      ${t.plain?`<div>${esc(t.plain)}</div>`:""}
+      ${t.cause?`<div class="small" style="margin-top:6px"><b>Probably because:</b> ${esc(t.cause)}</div>`:""}
+      ${t.fix?`<div class="small"><b>What would stop it:</b> ${esc(t.fix)}</div>`:""}
+      <div class="chips" style="margin-top:8px">${p.agents.map(a=>`<span class="chip">${esc(a)}</span>`).join("")}</div>
+      <details style="margin-top:8px"><summary>Show the real errors</summary>${p.examples.map(e=>`<div class="evidence" style="margin-top:6px"><b>${esc(e.agent)}</b> · ${esc(e.tool)} · ${ago(e.ts)}\n$ ${esc(e.command)}\n${esc(e.error)}</div>`).join("")}</details></div>`}).join("")
+    || `<div class="card empty"><span class="em">🌱</span>No repeating problems yet. Once agents have taken notes for a few days, patterns will show up here.</div>`;
+
+  // agents, jobs and spend live on the agent fleet page; only token savers here
+  $("#savers").innerHTML=(live.token_savers||r?.token_savers||[]).map(s=>`<div class="saver"><div class="switch ${s.on?"on":""}"></div>
+     <div><b>${esc(s.name)}</b> <span class="muted small">${esc(s.detail)}</span><div class="small muted">${esc(s.plain)}</div>
+     ${!s.on&&s.fix?`<div class="small">To turn it on: <code>${esc(s.fix)}</code></div>`:""}</div></div>`).join("");
+
+  // reliable
+  $("#checks").innerHTML=checks.map(c=>`<div class="check"><div class="ic ${c[0]}">${c[0]==="ok"?"✓":c[0]==="warn"?"!":"✕"}</div><div><b>${esc(c[1])}</b><div class="small muted">${esc(c[2])}</div></div></div>`).join("");
+  const days=[]; for(let i=6;i>=0;i--){const d=new Date(Date.now()-i*864e5); days.push(d.toISOString().slice(0,10))}
+  const vals=days.map(d=>Object.values(st.facts_by_day[d]||{}).reduce((a,b)=>a+b,0)), mx=Math.max(1,...vals);
+  $("#spark").innerHTML=vals.map((v,i)=>`<div style="height:${Math.max(4,v/mx*100)}%" title="${v} notes"><span>${["Su","Mo","Tu","We","Th","Fr","Sa"][new Date(days[i]+"T12:00").getDay()]}</span></div>`).join("");
+  $("#agentsWeek").innerHTML=(st.agents_week||[]).map(a=>`<span class="chip">${esc(a)}</span>`).join("")||'<span class="muted small">No agent has written notes yet.</span>';
+  $("#safety").innerHTML=st.safety_layer.map(s=>`<div class="check"><div class="ic ${s.done?"ok":"lock"}">${s.done?"✓":"🔒"}</div><div><b>${esc(s.name)}</b> <span class="small ${s.done?"":"muted"}">${s.done?"in place":"not yet"}</span><div class="small muted">${esc(s.plain)}</div></div></div>`).join("");
+  $("#lockChanges").innerHTML=st.locks.changed.map(f=>`<div class="check"><div class="ic bad">!</div><div><b>${esc(f.path)}</b> <span class="small">${f.state==="missing"?"was removed":"was changed"} after it was locked.</span>
+     <div class="small muted">If you or your team made this change on purpose, approve it. If not, something changed a safety file.</div>
+     <button data-lock="${esc(f.path)}" style="margin-top:6px">I made this change, approve it</button></div></div>`).join("");
+  document.querySelectorAll("button[data-lock]").forEach(b=>b.onclick=()=>post("/api/lock-accept",{path:b.dataset.lock}).then(()=>{toast("Approved");load()}));
+
+  // ai
+  const au=r?.text?.ai_updates||[];
+  $("#aiList").innerHTML=au.map(a=>`<div class="card"><span class="tag ai">${esc(a.company)}</span><h4 style="margin:8px 0 4px">${esc(a.title)}</h4>
+     <div>${esc(a.plain)}</div>${a.for_hivey?`<div class="small" style="margin-top:6px;color:${/not relevant/i.test(a.for_hivey)?"var(--muted)":"var(--mint2)"}"><b>For hivey:</b> ${esc(a.for_hivey)}</div>`:""}</div>`).join("")
+     || `<div class="card empty"><span class="em">🛰️</span>AI news will show up after the first review.</div>`;
+
+  // results
+  $("#fixList").innerHTML=(r?.fix_checks||[]).map(f=>`<div class="card"><span class="tag ${esc(f.section)}">${secName(f.section)}</span>
+     <h4 style="margin:8px 0">${esc(f.title)}</h4><div class="grid g3">
+     ${kpi(f.rate_before==null?"–":f.rate_before+" → "+f.rate_now,"failures per 100 sessions, before → now",f.rate_now!=null&&f.rate_now<f.rate_before?"good":"warn")}
+     ${kpi(f.regressions,"new problems elsewhere",f.regressions?"bad":"good")}${kpi(f.cost_per_agent_before!=null?money(f.cost_per_agent_before)+" → "+money(f.cost_per_agent_now):"–","cost per agent per week")}</div>
+     ${f.prediction?`<div class="small" style="margin-top:6px"><b>Prediction:</b> ${esc(f.prediction.plain)} from ${esc(f.prediction.current)} to ${esc(f.prediction.expected)} by ${esc(f.prediction.deadline)}: <b style="color:${f.prediction.status==="kept"?"var(--good)":f.prediction.status==="failed"?"var(--bad)":"inherit"}">${esc({kept:"kept ✓",failed:"failed: roll back or rethink?",pending:"waiting",unverified:"can't tell (logging was broken)"}[f.prediction.status]||f.prediction.status)}</b></div>`:""}
+     <div class="small muted" style="margin-top:6px">Approved ${ago(f.approved_at)} · ${f.built?"built":"waiting to be built"}</div></div>`).join("")
+     || `<div class="card empty"><span class="em">🧪</span>No approved fixes are being tracked yet. When you say yes to a fix, its numbers will show up here.</div>`;
+  const man=r?.text?.manual?.length?r.text.manual:(r?.manual||[]).map(m=>({title:m.examples[0],times:m.times,plain:"",automation:""}));
+  $("#manual").innerHTML=man.map(m=>`<div><b>${esc(m.title)}</b> <span class="chip">${esc(m.times)}×</span><div class="small">${esc(m.plain)}</div>
+     ${m.automation?`<div class="small" style="color:var(--mint2)">💡 ${esc(m.automation)}</div>`:""}</div>`).join("")||'<div class="muted small">Nothing repeated yet.</div>';
+
+  // steps
+  $("#timeline").innerHTML=(S.activity||[]).slice(0,60).map(a=>`<div class="tl ${esc(a.status)}"><div><b>${stepName(a.step)}</b> ${esc(a.detail)}</div><div class="when">${new Date(a.ts).toLocaleString()} · ${ago(a.ts)}</div></div>`).join("")||'<div class="muted">Nothing yet.</div>';
+  $("#pastReviews").innerHTML=(st.reviews||[]).slice().reverse().map(d=>`<button data-date="${d}" class="${d===(r&&r.date)?"primary":""}">${d}</button>`).join("")||'<span class="muted small">None yet.</span>';
+  document.querySelectorAll("button[data-date]").forEach(b=>b.onclick=()=>{viewDate=b.dataset.date;load();toast("Showing the review from "+viewDate)});
+  const running=(S.activity||[])[0]?.status==="run"; $("#runFull").disabled=$("#runQuick").disabled=running||busy;
+  $("#runNote").textContent=running?"⏳ A review is running. Watch the steps appear on the left.":"";
+}
+function kpi(n,l,cls=""){return `<div class="card kpi"><div class="n ${cls}">${esc(n)}</div><div class="l">${esc(l)}</div></div>`}
+function secName(s){return {agents:"🤖 agents change",you:"🙋 you change",hivey:"⬢ hivey changes",fix:"🔧 fix",tokens:"🪙 save tokens",ai:"✨ new AI tool",manual:"🙋 automate"}[s]||esc(s||"")}
+function stepName(s){return {review:"📬 Review",filter:"🧹 Filter",patterns:"🧩 Patterns",health:"⬢ Health check","ai-news":"✨ AI news",manual:"🙋 Manual work",
+  locks:"🔒 Locks",summary:"✍️ Summary",notify:"💬 Slack",decision:"👍 Your answer",hooks:"📝 Hooks",schedule:"🗓️ Schedule"}[s]||esc(s)}
+
+async function post(url,body){const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({})); if(!r.ok||j.ok===false) throw new Error(j.error||r.status); return j}
+function impHtml(it){const m=it.importance; if(!m) return "";
+  const pct=v=>Math.round((+v||0)*100)+"%";
+  return `<div class="imp"><b>${m.score}</b><span class="muted small">importance</span><div class="ibar"><i style="width:${Math.min(100,m.score)}%"></i></div>${it.model_rank?`<span class="muted small">Claude put it #${it.model_rank}</span>`:""}</div>
+  <details class="small"><summary>Why this score</summary><div class="evidence">Can it lose work, money or data? ${pct(m.harm)} likely
+Does it stop work right now? ${pct(m.blocking)} likely
+How many agents or jobs it touches: ${(m.affected||[]).length} → ${pct(m.reach)}
+How often (per 100 sessions): ${pct(m.frequency)} of the top level
+Is the cause proven by a log line? ${pct(m.certainty)} sure
+Score = 35% harm + 25% blocking + 25% reach + 15% how often. Effort is shown apart and never counted.</div></details>`}
+function renderLearning(){const L=S.learning||{rows:[]}, r=S.review;
+  $("#alarms").innerHTML=(r?.alarms||[]).map(a=>`<div class="alarm">🚨 ${esc(a)}</div>`).join("");
+  const can=r?.canary; const pc=x=>x==null?"–":Math.round(x*100)+"%";
+  let h=`<div class="small" style="margin-bottom:8px">Logging test: <b style="color:${can?.state==="ok"?"var(--good)":can?.state==="broken"?"var(--bad)":"var(--warn)"}">${esc(can?.state||"not run")}</b> <span class="muted">${esc(can?.plain||"")}</span></div>`;
+  if(L.too_early) h+=`<div class="muted">⏳ ${esc(L.note)}. Trends show after 3 weekly reviews.</div>`;
+  h+=`<div style="overflow-x:auto"><table class="ltable"><tr><th>Month</th><th>Fixes kept / tried</th><th>Failures per 100 sessions</th><th>New problems</th><th>You said yes</th><th>Top-3 yeses</th><th>No's that came back</th><th>Missed problems</th><th>Logging test</th></tr>`+
+    (L.rows||[]).map(x=>`<tr><td>${esc(x.month)}</td><td>${x.kept} / ${x.tried}</td><td>${x.failures_per_100??"–"}</td><td>${x.regressions}</td><td>${pc(x.approval_rate)}</td><td>${pc(x.ranking_quality)}</td><td>${x.repeats}</td><td>${x.missed}</td><td>${esc(x.canary)}</td></tr>`).join("")+`</table></div>`;
+  $("#learnBody").innerHTML=h;}
+async function addMissed(){const t=$("#missedText").value.trim(); if(!t) return;
+  try{ await post("/api/missed",{text:t}); $("#missedText").value=""; $("#missedNote").textContent="Saved. Next review looks for it."; toast("Saved"); load() }catch(e){toast("Couldn't save: "+e.message)} }
+setTimeout(()=>{const b=document.getElementById("missedBtn"); if(b) b.onclick=addMissed},0);
+async function decide(n,c){ try{ await post("/api/decide",{date:S.review.date,n,choice:c}); toast(c==="yes"?"👍 Saved: yes":c==="no"?"👎 Saved: no":"Undone"); load() }catch(e){toast("Couldn't save: "+e.message)} }
+$("#runFull").onclick=()=>run(false); $("#runQuick").onclick=()=>run(true);
+async function run(q){ busy=true; try{ await post("/api/run-review",{no_llm:q}); toast("Review started"); setTimeout(load,1500) }catch(e){toast(e.message)} busy=false }
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>document.getElementById(b.dataset.go).scrollIntoView());
+
+async function load(){
+  try{ const r=await fetch("/api/state"+(viewDate?"?date="+viewDate:"")); S=await r.json(); if(S.error) throw new Error(S.error); render() }
+  catch(e){ $("#pill").className="pill bad"; $("#pillText").textContent="Page server not reachable"; }
+}
+load(); setInterval(()=>{ if(!document.hidden) load() }, 8000);
+</script>
+</body>
+</html>

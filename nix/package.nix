@@ -42,6 +42,7 @@ rustPlatform.buildRustPackage {
         ../assets
         ../crates
         ../distribution/install.ps1
+        ../distribution/latest.json
         ../docs/next/api/herdr-api.schema.json
         ../src
         ../vendor/libghostty-vt
@@ -50,7 +51,9 @@ rustPlatform.buildRustPackage {
         ../build.rs
         ../Cargo.lock
         ../Cargo.toml
-        ../skills/herdr/SKILL.md
+        ../hooks
+        ../plugins/skills/skills.md
+        ../skills
       ]
     );
   };

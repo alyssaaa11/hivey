@@ -8,6 +8,8 @@ trigger them:
   GET  /hv-jobs             the agent jobs pages for the fleet page's Jobs tab: a redirect to the latest
                             map (else stats, logs, sessions); with no report yet it starts the first build
                             (`agent_map.py open --no-open`) and answers a page that reloads until it is ready
+  GET  /hv-evolve           the fleet page's Self-improve tab: starts the hivey-evolve page server if it isn't
+                            running (it stops after an hour unused) and redirects to it
   GET  /hv-job-health       scheduled jobs whose latest run failed (non-zero exit) or needs a check (not
                             loaded, missed its run, errors in its log), from a jobs-only scan (~0.1 s, no
                             model), with each one's error lines and log tail: the Jobs tab's warnings
@@ -752,6 +754,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             Handler.fleet_polled = time.time()
         if self.path.split("?")[0] == "/hv-jobs":
             return self.jobs()
+        if path == "/hv-evolve":
+            return self.evolve()
         if path == "/hv-job-health":
             return self.job_health()
         if path == "/hv-dashboard-status":
@@ -813,6 +817,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
         return None
+
+    def evolve(self) -> None:
+        """The fleet page's Self-improve tab: the hivey-evolve page, started first when it isn't running."""
+        script = Path.home() / ".claude" / "skills" / "hivey-evolve" / "scripts" / "evolve.py"
+        url = ""
+        if script.is_file():
+            try:
+                out = subprocess.run([sys.executable, "-I", str(script), "open", "--no-open"], capture_output=True,
+                                     text=True, timeout=15, stdin=subprocess.DEVNULL).stdout
+                url = next((ln.strip() for ln in out.splitlines() if ln.startswith("http://127.0.0.1:")), "")
+            except (OSError, subprocess.SubprocessError):
+                url = ""
+        if url:
+            self.send_response(302)
+            self.send_header("Location", url)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return None
+        body = ("<!doctype html><meta charset=utf-8><body style=\"font:15px system-ui;background:#0b0e15;color:#cbd5e1;"
+                "display:grid;place-items:center;height:90vh;margin:0\"><div style=\"text-align:center\">"
+                "<div style=\"font-size:34px\">🔁</div><p><b>The self-improve page didn't start.</b></p>"
+                "<p style=\"opacity:.7\">Run <code>hivey evolve open</code> in a terminal, or see "
+                "~/.hivey/evolve/server.log.</p></div></body>")
+        return self.answer(200, body.encode(), "text/html; charset=utf-8")
 
     def jobs(self) -> None:
         """The fleet page's Jobs tab: the latest agent jobs page, or the first report being built."""

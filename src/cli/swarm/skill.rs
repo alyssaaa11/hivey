@@ -208,6 +208,25 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
             ),
         ],
     ),
+    // hivey's self-improvement loop: learning-log hooks, the Wednesday review and its page.
+    (
+        "hivey-evolve",
+        &[
+            ("SKILL.md", include_str!("../../../skills/hivey-evolve/SKILL.md")),
+            (
+                "scripts/evolve.py",
+                include_str!("../../../skills/hivey-evolve/scripts/evolve.py"),
+            ),
+            (
+                "scripts/page.html",
+                include_str!("../../../skills/hivey-evolve/scripts/page.html"),
+            ),
+            (
+                "references/blockers.md",
+                include_str!("../../../skills/hivey-evolve/references/blockers.md"),
+            ),
+        ],
+    ),
     // What runs on this Mac (jobs, agents), its token cost, and how agents feed each other;
     // hivey_spend.py is the spend log scripts call after each direct API call.
     (
