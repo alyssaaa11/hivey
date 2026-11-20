@@ -203,7 +203,7 @@ function wireActions(root) {
   });
 }
 
-// ---------------------------------------------------------------- header, inbox
+// ---------------------------------------------------------------- header
 function renderHeader() {
   const c = data.counts || {}, adv = data.advice || {};
   const pills = [
@@ -234,22 +234,6 @@ function tickSub() {
   const all = $('#showall');
   if (all) all.onclick = () => { ui.filter = null; $('#q').value = ''; save(); renderAll(); };
 }
-function renderInbox() {
-  const blocked = agents.filter(a => a.status === 'blocked' && !a.asleep);
-  const asked = agents.filter(a => !a.asleep && a.status !== 'blocked' && a.status !== 'working' && a.summary?.needs_you);
-  const need = [...blocked, ...asked];
-  const lead = [blocked.length ? `✋ ${blocked.length} blocked` : '', asked.length ? `<span style="color:var(--honey)">💬 ${asked.length} asked you</span>` : ''].filter(Boolean).join('<br>');
-  const failed = health?.failed || [];
-  const jobs = failed.length ? `<div class="ask job" id="jobchip" title="Open the Jobs tab: what failed and its log"><span class="em">❌</span>
-     <div class="t"><b>${failed.length} scheduled job${failed.length === 1 ? '' : 's'} failing</b>${esc(failed.slice(0, 3).map(j => j.name).join(', ') + (failed.length > 3 ? '…' : ''))}</div><span class="go">jobs ↗</span></div>` : '';
-  $('#inbox').innerHTML = (need.length ? `<span class="lead">${lead}</span>` + need.map(a =>
-    `<div class="ask ${a.status === 'blocked' ? '' : 'soft'}" data-id="${esc(a.id)}" title="Click: open in hivey · right-click: details"><span class="em">${esc(a.emoji)}</span>
-     <div class="t"><b>${esc(a.name)}</b>${esc(a.summary?.needs_you || a.summary?.bubble || 'waiting in its terminal')}</div><span class="go">open ↗</span></div>`).join('') : '') + jobs;
-  wireActions($('#inbox'));
-  const chip = $('#jobchip');
-  if (chip) chip.onclick = () => { ui.view = 'jobs'; save(); renderAll(); };
-}
-
 // ---------------------------------------------------------------- board & list
 // the jobs an agent coordinates or works in (hivey-job-creator): progress and a link to the job board
 function jobRows(a) {
@@ -1240,7 +1224,6 @@ function renderAll() {
   if (!data) return;
   agents = data.agents || [];
   renderHeader();
-  renderInbox();
   document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
   $('#fleet').style.display = ui.view === 'fleet' ? '' : 'none';
   $('#room').style.display = ui.view === 'room' ? 'block' : 'none';
@@ -1558,7 +1541,7 @@ function wireDashForm(list) {
   };
 }
 // scheduled jobs that failed (non-zero exit) or need a check, live from the page server: a count on the
-// Jobs tab, a chip in the top strip and a banner over the jobs pages (the nightly report is a day old)
+// Jobs tab and a banner over the jobs pages (the nightly report is a day old)
 async function pollHealth() {
   healthAt = Date.now();
   try {
@@ -1567,7 +1550,6 @@ async function pollHealth() {
     health = await r.json();
   } catch { return; }
   renderHealth();
-  renderInbox();
 }
 function healthRow(j, soft) {
   const err = j.error || j.words || j.status;

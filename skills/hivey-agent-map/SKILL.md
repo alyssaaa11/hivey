@@ -111,7 +111,7 @@ hivey agent-map nightly [--model sonnet]   # a full report now (also: --no-llm, 
 hivey agent-map schedule install [--at 06:30] [--model sonnet]   # | remove | status
 ```
 
-- **Failing jobs, live:** the fleet page asks `/hv-job-health` on load, every 5 minutes and when the Jobs tab opens (a jobs-only scan, ~0.1 s, no model). Jobs whose last run exited non-zero get a red count on the 📊 Jobs tab, a "N scheduled jobs failing" chip in the top strip and a banner over the jobs pages (click a job: its error lines, log path and log tail); jobs not loaded, missed or with errors in an ok run are listed folded under "more to check". A run that exited non-zero keeps its error lines even when it ends with "All done!", and the one-line error is the line naming a cause (an HTTP status, `fatal:`, an exception).
+- **Failing jobs, live:** the fleet page asks `/hv-job-health` on load, every 5 minutes and when the Jobs tab opens (a jobs-only scan, ~0.1 s, no model). Jobs whose last run exited non-zero get a red count on the 📊 Jobs tab and a banner over the jobs pages (click a job: its error lines, log path and log tail); jobs not loaded, missed or with errors in an ok run are listed folded under "more to check". A run that exited non-zero keeps its error lines even when it ends with "All done!", and the one-line error is the line naming a cause (an HTTP status, `fatal:`, an exception).
 - **hivey menu → agent fleet → 📊 Jobs tab** (key 4, or `/fleet/?view=jobs`) shows these pages inside the fleet page: the frame loads `/hv-jobs`, which the server redirects to the latest map (else stats, logs, sessions); with no report yet it starts the first build (`agent_map.py open --no-open`) and shows a page that reloads until it is ready. Every jobs page's navbar starts with 🚀 Fleet (hidden inside the frame). `hivey agent-map open` still opens `agent-stats.html`,
   `agent-map.html` and `agent-logs.html` from `~/.hivey/agent-map/reports/latest`.
 - **hivey's layer on the archify pages** (`enhance.py`, after finalize; `agent_map.py enhance [folder]`
@@ -208,7 +208,7 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   light strips, an observation lounge with a holotable, galley, server racks, plant pods; the crew are mini robots,
   one per desk, glass visor eyes in the status colour, team-coloured ear pods; ✨ HD (bloom) or 🎨 comic, `t`; only working agents move, a blocked one waves, labels
   give way by urgency so hundreds stay readable), Board (cards by what needs you), List (sortable rows).
-  The top strip lists who is blocked or asked you something. Click an agent: `hivey agent focus` plus
+  No strip of blocked agents over the page (the agent cards already show who needs you). Click an agent: `hivey agent focus` plus
   the exact Terminal/iTerm tab running hivey comes forward. Right-click or ⓘ: details (context gauge,
   terminal tail). Compact / Clear type `/compact` or `/clear` into an agent that is not working (two
   clicks).

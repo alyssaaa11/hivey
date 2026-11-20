@@ -53,18 +53,6 @@ header{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:
 #gear.on{border-color:var(--honey)}
 .spin{display:inline-block;animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* ---------- needs-you inbox ---------- */
-#inbox{display:flex;gap:10px;overflow-x:auto;padding:10px 18px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(251,113,133,.08),transparent 60%)}
-#inbox:empty{display:none}
-#inbox .lead{flex:none;align-self:center;font-weight:600;color:var(--block);padding-right:4px;white-space:nowrap}
-.ask{flex:none;display:flex;gap:10px;align-items:center;max-width:430px;padding:8px 10px;border-radius:12px;
-  background:var(--panel);border:1px solid rgba(251,113,133,.45);cursor:pointer}
-.ask:hover{background:var(--panel2)}
-.ask.soft{border-color:rgba(245,184,61,.35)}
-.ask .em{font-size:20px}
-.ask .t{font-size:12.5px;color:var(--muted)}
-.ask .t b{color:var(--text);display:block;font-size:13px}
-.ask .go{margin-left:auto;font-size:12px;color:var(--honey);white-space:nowrap}
 /* ---------- views ---------- */
 main{position:relative}
 #fleet{position:relative;height:calc(100vh - 118px);min-height:420px;overflow:hidden;
@@ -195,13 +183,11 @@ body.v-jobs .search{visibility:hidden}
   white-space:pre-wrap;max-height:220px;overflow:auto;color:#c9d4e3;margin:6px 0 0}
 #views .jbad{margin-left:5px;padding:0 6px;border-radius:999px;background:var(--block);color:#1b0b10;font-size:11px;font-weight:700}
 #views .jbad.soft{background:var(--honey)}
-.ask.job{border-color:rgba(251,113,133,.5);cursor:pointer}
 #list{display:none;padding:12px 18px 40px}
 /* ---------- dashboards: the list on the left, the one you pick in a frame on the right ---------- */
 #dash{display:none;height:calc(100vh - 58px)}
 #dash.on{display:flex}
 body.v-dash .search{visibility:hidden}
-body.v-dash #inbox{display:none}
 /* the list folds away (☰ brings it back) and ⛶ gives the dashboard the whole window */
 #dash.fold .dside{display:none}
 #dash.max{position:fixed;inset:0;z-index:45;height:100vh!important}
@@ -529,7 +515,6 @@ td.j{max-width:420px}
   </label>
   <div class="note">Saved for every browser. 🔇 in the header mutes the music; ⟳ updates now.</div>
 </div>
-<div id="inbox"></div>
 <main>
   <section id="fleet">
     <div id="labels"></div>

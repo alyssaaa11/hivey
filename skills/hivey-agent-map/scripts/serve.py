@@ -343,6 +343,15 @@ def hv(exe: str, sock: str | None, *args: str, timeout: int = 10) -> subprocess.
     return subprocess.run([exe, *args], capture_output=True, text=True, timeout=timeout, env=env)
 
 
+def focus_pane_tab(exe: str, sock: str | None, pane: str) -> bool:
+    """Show a pane by focusing its tab (`hivey agent focus` refuses a pane whose agent has exited)."""
+    try:
+        tab = json.loads(hv(exe, sock, "pane", "get", pane, timeout=5).stdout)["result"]["pane"]["tab_id"]
+        return hv(exe, sock, "tab", "focus", tab).returncode == 0
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        return False
+
+
 def live_status(exe: str, sock: str | None, pane: str) -> str | None:
     try:
         return json.loads(hv(exe, sock, "pane", "get", pane, timeout=5).stdout)["result"]["pane"].get("agent_status")
@@ -538,7 +547,7 @@ def fleet_action(desk_id: str, action: str, session: str = "", path: str = "", t
         return False, f"session {desk.get('hv_session')} is stopped; open it first"
     if action == "focus":
         p = hv(exe, sock, "agent", "focus", pane)
-        if p.returncode != 0:
+        if p.returncode != 0 and not focus_pane_tab(exe, sock, pane):  # the agent exited: its pane is a shell now
             return False, (p.stderr or p.stdout).strip()[-200:] or "focus failed"
         how = raise_terminal(desk.get("hv_session"))
         where = desk.get("hv_session") or "default"
