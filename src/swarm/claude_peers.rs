@@ -132,7 +132,8 @@ pub(crate) fn command_line(_pid: u32) -> Option<String> {
     None
 }
 
-/// The JSON line Claude Code's inbox reads: one user message.
+/// The JSON line Claude Code's inbox reads: one user message (posted over a Unix socket).
+#[cfg(any(unix, test))]
 pub(crate) fn wire_line(from: &str, text: &str) -> String {
     let line = serde_json::json!({
         "type": "user",

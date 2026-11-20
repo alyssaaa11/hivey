@@ -720,6 +720,9 @@ pub(super) struct ClientConfirmCloseOverlay {
     pub(super) detail: String,
 }
 
+// hivey: its settings tabs made `Settings` large. One overlay at a time, rarely moved, so the
+// size gap costs nothing; boxing it would change every herdr site that builds or matches it.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(super) enum ClientShellOverlay {
     Onboarding,

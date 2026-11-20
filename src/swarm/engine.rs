@@ -107,6 +107,11 @@ struct State {
 }
 
 pub(crate) fn start(api_tx: ApiRequestSender) {
+    // Unit tests build API servers too: no background swarm threads there. The call stays compiled
+    // in tests so the engine is not dead code under clippy's -D warnings.
+    if cfg!(test) {
+        return;
+    }
     super::autoname::start(api_tx.clone());
     super::hibernate::start(api_tx.clone());
     let (wake, wake_rx) = mpsc::channel();
@@ -2469,7 +2474,7 @@ mod tests {
         assert!(text.contains("vault       /v/swarm-inf-wiki/"), "{text}");
         let long = vec![format!(
             "agents      {}",
-            vec!["● agent-name claude/sonnet idle"; 6].join(", ")
+            ["● agent-name claude/sonnet idle"; 6].join(", ")
         )];
         let wrapped = info_token_lines(&long);
         assert!(

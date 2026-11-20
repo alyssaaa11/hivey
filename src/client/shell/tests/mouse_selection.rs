@@ -1194,7 +1194,7 @@ fn double_click_zooms_a_pane_whose_app_takes_the_mouse() {
     state.set_pane_surface(pane_surface);
     state.compose(106, 20).expect("composed frame");
     let pane = state.hits.panes[0].clone();
-    let mut press = |state: &mut ClientShellState, kind| {
+    let press = |state: &mut ClientShellState, kind| {
         state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
             kind,
             column: pane.inner_rect.x + 2,

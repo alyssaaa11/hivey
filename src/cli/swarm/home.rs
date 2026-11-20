@@ -96,11 +96,13 @@ fn setup(rest: &mut Vec<String>) -> Result<(), String> {
         println!("kept {} (--force rewrites it)", brief.display());
     }
     // ~/.hivey/config → hivey's own config folder, so everything is reachable from ~/.hivey.
-    let link = dir.join("config");
-    if let Some(config_dir) = crate::config::config_path().parent() {
-        if std::fs::symlink_metadata(&link).is_err() {
-            #[cfg(unix)]
-            let _ = std::os::unix::fs::symlink(config_dir, &link);
+    #[cfg(unix)]
+    {
+        let link = dir.join("config");
+        if let Some(config_dir) = crate::config::config_path().parent() {
+            if std::fs::symlink_metadata(&link).is_err() {
+                let _ = std::os::unix::fs::symlink(config_dir, &link);
+            }
         }
     }
 

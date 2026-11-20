@@ -737,7 +737,7 @@ fn render_plugins(
         hits,
     );
     let row_gap = u16::from(labels.len() > 2);
-    let mut y = area.y + 3 + labels.len() as u16 * (1 + row_gap);
+    let top = area.y + 3 + labels.len() as u16 * (1 + row_gap);
     let mut lines = Vec::new();
     if let Some(message) = &settings.creator_message {
         lines.push((message.clone(), palette.accent));
@@ -747,7 +747,7 @@ fn render_plugins(
             .to_string(),
         palette.overlay1,
     ));
-    for (text, color) in lines {
+    for (y, (text, color)) in (top..).zip(lines) {
         if y >= area.bottom() {
             break;
         }
@@ -759,7 +759,6 @@ fn render_plugins(
             &format!(" {text}"),
             Style::default().fg(color).bg(palette.panel_bg),
         );
-        y += 1;
     }
 }
 
@@ -909,7 +908,7 @@ fn render_skills(
         hits,
     );
     let row_gap = u16::from(labels.len() > 2);
-    let mut y = area.y + 3 + labels.len() as u16 * (1 + row_gap);
+    let top = area.y + 3 + labels.len() as u16 * (1 + row_gap);
     let mut lines = Vec::new();
     if let Some(message) = &settings.skills_message {
         lines.push((message.clone(), palette.accent));
@@ -925,7 +924,7 @@ fn render_skills(
             palette.accent,
         )
     });
-    for (text, color) in lines {
+    for (y, (text, color)) in (top..).zip(lines) {
         if y >= area.bottom() {
             break;
         }
@@ -937,7 +936,6 @@ fn render_skills(
             &format!(" {text}"),
             Style::default().fg(color).bg(palette.panel_bg),
         );
-        y += 1;
     }
 }
 

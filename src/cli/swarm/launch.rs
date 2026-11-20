@@ -1305,7 +1305,7 @@ fn add_addons(slug: &str, addons: &[Addon]) -> Result<usize, String> {
         .flatten()
         .filter(|agent| agent["status"] != "gone" && agent["role"] != "script")
         .filter_map(|agent| agent["pane_id"].as_str())
-        .last()
+        .next_back()
         .map(str::to_string)
         .ok_or_else(|| format!("swarm {slug:?} has no running pane to open addons beside"))?;
     let mut manifest: Value = std::fs::read_to_string(manifest_path(&root))

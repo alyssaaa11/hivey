@@ -118,8 +118,7 @@ fn start_server_inner(
     }
 
     let running = Arc::new(AtomicBool::new(true));
-    #[cfg(not(test))]
-    crate::swarm::start(api_tx.clone()); // hivey
+    crate::swarm::start(api_tx.clone()); // hivey (a no-op in unit tests)
     let listener_running = Arc::clone(&running);
     let spawned = crate::thread_spawn::spawn_named("herdr-api-accept", move || {
         run_accept_loop(
