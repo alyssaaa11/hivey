@@ -119,6 +119,18 @@ class Mirror(unittest.TestCase):
                                     self.roles, "ideas")
         self.assertIn("🧭 *coordinator → tonight/coordinator*", other)
 
+    def test_the_masters_replies_to_the_human_are_plain_when_the_bot_is_known(self):
+        reply = self.msg("ideas/coordinator", "human", text="all done")
+        self.assertEqual(relay.format_mirror(reply, self.roles, "ideas", plain=True), "all done")
+        urgent = self.msg("ideas/coordinator", "human", text="stop", kind="urgent")
+        self.assertEqual(relay.format_mirror(urgent, self.roles, "ideas", plain=True), "*(urgent)* stop")
+        # Without the bot id the label is the loop guard, so it stays.
+        self.assertIn("*coordinator → human*", relay.format_mirror(reply, self.roles, "ideas"))
+        # Other agents, the human's own messages and other swarms keep their label.
+        for msg in (self.msg("ideas/scout", "human"), self.msg("human", "coordinator"),
+                    self.msg("tonight/coordinator", "human", swarm="tonight")):
+            self.assertIn(" → ", relay.format_mirror(msg, self.roles, "ideas", plain=True))
+
 
 class FakeSlack:
     def __init__(self):
@@ -340,3 +352,67 @@ class Failures(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BotSlack(FakeSlack):
+    """Slack with a bot token: the relay's posts come back carrying its bot id."""
+
+    def __init__(self, bot_id="B1", user_id="U_BOT"):
+        super().__init__()
+        self.me = (bot_id, user_id)
+
+    def identity(self):
+        return self.me
+
+    def post(self, channel, text):
+        ts = super().post(channel, text)
+        if self.me[0]:
+            self.inbox[-1]["bot_id"] = self.me[0]
+        return ts
+
+
+class PlainReplies(unittest.TestCase):
+    def run_relay(self, slack):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".swarm").mkdir()
+            (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
+            bus = root / ".swarm" / "bus.jsonl"
+            bus.write_text("")
+            hivey = FakeHivey(bus)
+            r = relay.Relay(root, slack, hivey, "C1", "human")
+            r.state["last_ts"] = "0"
+            with open(bus, "a") as f:
+                f.write(json.dumps({"ev": "msg", "id": "a1", "from": "ideas/coordinator",
+                                    "to": "human", "swarm": "ideas", "text": "found 3"}) + "\n")
+            r.step()
+            r.state["posted"] = []  # the ts guard is lost (restart, second relay)
+            r.step()
+            r.step()
+            return slack.posted, hivey.sent
+
+    def test_plain_reply_is_not_read_back_as_the_human(self):
+        posted, sent = self.run_relay(BotSlack())
+        self.assertEqual(posted, ["found 3"])
+        self.assertEqual(sent, [], "the relay's own plain post never reaches the bus")
+
+    def test_a_user_token_keeps_the_label(self):
+        posted, sent = self.run_relay(BotSlack(bot_id=None, user_id="U_ME"))
+        self.assertEqual(len(posted), 1)
+        self.assertIn("*coordinator → human*: found 3", posted[0])
+        self.assertEqual(sent, [])
+
+    def test_the_humans_messages_still_reach_the_bus(self):
+        slack = BotSlack()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".swarm").mkdir()
+            (root / ".swarm" / "agents.json").write_text(json.dumps(MANIFEST))
+            bus = root / ".swarm" / "bus.jsonl"
+            bus.write_text("")
+            hivey = FakeHivey(bus)
+            r = relay.Relay(root, slack, hivey, "C1", "human")
+            r.state["last_ts"] = "0"
+            slack.inbox.append({"ts": "1.000000", "user": "U_HUMAN", "text": "how is it going?"})
+            r.step()
+            self.assertEqual(hivey.sent, [("coordinator", "how is it going?", "human")])

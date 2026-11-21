@@ -9,7 +9,9 @@ Slack → bus   Human messages in the channel become bus messages from `human`:
               Posts agents make in the channel ("*[agent]* text") are for the human and
               are never forwarded to other agents.
 bus → Slack   Messages to or from the human (and hivey's own notices) are mirrored into
-              the channel; agent↔agent messages never are. The swarm's own `comms.slack`
+              the channel; agent↔agent messages never are. The master's own replies to the
+              human go out as plain text (it's the channel's own voice); everything else keeps
+              its "🦊 *scout → human*:" label. The swarm's own `comms.slack`
               (`hivey swarm comms <slug> --slack human|off`, read live), else config
               "mirror", can turn it "off". Messages that came from Slack are never echoed.
 Quiet mode    While ~/.hivey/quiet exists (hivey menu → quiet mode, `hivey quiet on`), bus →
@@ -158,13 +160,18 @@ def emoji(label, roles):
     return PALETTE[sum(map(ord, key)) % len(PALETTE)]
 
 
-def format_mirror(message, roles, slug):
+def format_mirror(message, roles, slug, plain=False):
+    """The Slack text for one bus message. With `plain` (the relay can tell its own posts by
+    its bot id), the master's replies to the human in its own channel are just the text."""
     def short(label):
         return label[len(slug) + 1:] if label.startswith(f"{slug}/") else label
     target = message.get("to", "?")
     if message.get("swarm") and message["swarm"] != slug:
         target = f"{message['swarm']}/{target}"
     kind = {"fyi": " _(fyi)_", "urgent": " *(urgent)*"}.get(message.get("kind"), "")
+    if (plain and target == "human" and message.get("from", "").startswith(f"{slug}/")
+            and short(message["from"]) == master_key(roles)):
+        return f"{kind.strip()} {message.get('text', '')}".strip()
     return (f"{emoji(message.get('from', '?'), roles)} *{short(message.get('from', '?'))} → "
             f"{short(target)}*{kind}: {message.get('text', '')}")
 
@@ -235,6 +242,12 @@ class Slack:
 
     def post(self, channel, text):
         return self.call("chat.postMessage", channel=channel, text=text)["ts"]
+
+    def identity(self):
+        """(bot id, bot user id) of the token; bot id is None for a user (xoxp-) token,
+        whose posts look like the person's own."""
+        data = self.call("auth.test")
+        return data.get("bot_id"), data.get("user_id")
 
 
 class SocketHub:
@@ -371,6 +384,26 @@ class Relay:
                           "bus_offset": self.bus_path.stat().st_size if self.bus_path.exists() else 0,
                           "injected": [], "posted": []}
         self.state.setdefault("held", [])
+        self.me = None  # (bot id, bot user id), from Slack once
+
+    def own_bot(self):
+        """The relay's bot identity, or None (a user token, or not known yet). With it the
+        relay tells its own posts apart by bot id, so its mirrors can drop their label."""
+        if self.me is None:
+            identity = getattr(self.slack, "identity", None)
+            if identity is None:
+                return None
+            try:
+                self.me = identity()
+            except Exception as err:  # retried next round; labels keep loops away meanwhile
+                log(f"auth.test failed: {err}")
+                return None
+        return self.me if self.me[0] else None
+
+    def is_own_post(self, msg):
+        me = self.own_bot()
+        return bool(me) and ((msg.get("bot_id") and msg.get("bot_id") == me[0])
+                             or (me[1] and msg.get("user") == me[1]))
 
     def manifest(self):
         return json.loads((self.root / ".swarm" / "agents.json").read_text())
@@ -412,7 +445,7 @@ class Relay:
             self.state["last_ts"] = msg["ts"]
             if msg["ts"] in self.state["posted"] or msg.get("subtype") in ("channel_join", "bot_add"):
                 continue
-            if is_relay_post(msg.get("text", "")):
+            if is_relay_post(msg.get("text", "")) or self.is_own_post(msg):
                 continue
             sender, body, targets = parse_slack(msg.get("text", ""), manifest)
             if sender == "human" and targets:
@@ -441,7 +474,8 @@ class Relay:
         for message in messages:
             if not should_mirror(message, scope, roles, set(self.state["injected"])):
                 continue
-            text = format_mirror(message, roles, manifest.get("slug", ""))
+            text = format_mirror(message, roles, manifest.get("slug", ""),
+                                 plain=self.own_bot() is not None)
             if quiet:
                 self.state["held"].append(text)
                 log(f"bus → held   {message.get('from')} → {message.get('to')} (quiet mode)")
