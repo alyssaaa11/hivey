@@ -119,16 +119,19 @@ class Mirror(unittest.TestCase):
                                     self.roles, "ideas")
         self.assertIn("🧭 *coordinator → tonight/coordinator*", other)
 
-    def test_the_masters_replies_to_the_human_are_plain_when_the_bot_is_known(self):
+    def test_agents_messages_to_the_human_are_plain_when_the_bot_is_known(self):
         reply = self.msg("ideas/coordinator", "human", text="all done")
         self.assertEqual(relay.format_mirror(reply, self.roles, "ideas", plain=True), "all done")
         urgent = self.msg("ideas/coordinator", "human", text="stop", kind="urgent")
         self.assertEqual(relay.format_mirror(urgent, self.roles, "ideas", plain=True), "*(urgent)* stop")
         # Without the bot id the label is the loop guard, so it stays.
         self.assertIn("*coordinator → human*", relay.format_mirror(reply, self.roles, "ideas"))
-        # Other agents, the human's own messages and other swarms keep their label.
-        for msg in (self.msg("ideas/scout", "human"), self.msg("human", "coordinator"),
+        # Every agent, in this swarm or another, is plain too.
+        for msg in (self.msg("ideas/scout", "human"),
                     self.msg("tonight/coordinator", "human", swarm="tonight")):
+            self.assertEqual(relay.format_mirror(msg, self.roles, "ideas", plain=True), "t")
+        # The human's own messages and hivey's notices keep their label.
+        for msg in (self.msg("human", "coordinator"), self.msg("hivey", "coordinator")):
             self.assertIn(" → ", relay.format_mirror(msg, self.roles, "ideas", plain=True))
 
 

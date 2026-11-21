@@ -9,9 +9,8 @@ Slack → bus   Human messages in the channel become bus messages from `human`:
               Posts agents make in the channel ("*[agent]* text") are for the human and
               are never forwarded to other agents.
 bus → Slack   Messages to or from the human (and hivey's own notices) are mirrored into
-              the channel; agent↔agent messages never are. The master's own replies to the
-              human go out as plain text (it's the channel's own voice); everything else keeps
-              its "🦊 *scout → human*:" label. The swarm's own `comms.slack`
+              the channel; agent↔agent messages never are. Agents' messages to the human go
+              out as plain text; the human's and hivey's keep their "👤 *human → master*:" label. The swarm's own `comms.slack`
               (`hivey swarm comms <slug> --slack human|off`, read live), else config
               "mirror", can turn it "off". Messages that came from Slack are never echoed.
 Quiet mode    While ~/.hivey/quiet exists (hivey menu → quiet mode, `hivey quiet on`), bus →
@@ -162,15 +161,14 @@ def emoji(label, roles):
 
 def format_mirror(message, roles, slug, plain=False):
     """The Slack text for one bus message. With `plain` (the relay can tell its own posts by
-    its bot id), the master's replies to the human in its own channel are just the text."""
+    its bot id), any agent's message to the human is just the text."""
     def short(label):
         return label[len(slug) + 1:] if label.startswith(f"{slug}/") else label
     target = message.get("to", "?")
     if message.get("swarm") and message["swarm"] != slug:
         target = f"{message['swarm']}/{target}"
     kind = {"fyi": " _(fyi)_", "urgent": " *(urgent)*"}.get(message.get("kind"), "")
-    if (plain and target == "human" and message.get("from", "").startswith(f"{slug}/")
-            and short(message["from"]) == master_key(roles)):
+    if plain and message.get("to") == "human" and message.get("from") not in FIXED_EMOJI:
         return f"{kind.strip()} {message.get('text', '')}".strip()
     return (f"{emoji(message.get('from', '?'), roles)} *{short(message.get('from', '?'))} → "
             f"{short(target)}*{kind}: {message.get('text', '')}")
