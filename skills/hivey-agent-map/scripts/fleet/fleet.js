@@ -25,7 +25,7 @@ let data = null, agents = [], selected = null;
 // settings saved before the rename (the page was the agent office) carry over
 const ui = JSON.parse(localStorage.getItem('hv-fleet-ship') || localStorage.getItem('hv-' + 'off' + 'ice-ship') || '{}');
 // the 3D spaceship view is switched off: its code stays, but no tab or key opens it
-const VIEWS = ['room', 'board', 'list', 'jobs', 'dash', 'evolve'];
+const VIEWS = ['room', 'board', 'list', 'jobs', 'dash', 'evolve', 'tasks'];
 if (!VIEWS.includes(ui.view)) ui.view = 'room';
 ui.roomTab ||= 'running';
 let health = null, healthAt = 0;  // failing scheduled jobs (pollHealth)
@@ -79,7 +79,7 @@ function visible(a) {
   const q = $('#q').value.trim().toLowerCase();
   if (!q) return true;
   const s = a.summary || {};
-  return [a.name, a.space, a.cli, a.model, s.job, s.bubble, s.next, s.needs_you, ...(s.done || [])].join(' ').toLowerCase().includes(q);
+  return [a.name, a.space, a.cli, a.model, s.job, s.bubble, s.next, s.needs_you, a.you_said, ...(s.done || [])].join(' ').toLowerCase().includes(q);
 }
 
 // ---------------------------------------------------------------- actions
@@ -292,6 +292,94 @@ function renderBoard() {
     : '<div class="empty">No agent matches.</div>';
   wireActions($('#board'));
 }
+// ---------------------------------------------------------------- tasks: what you started
+// One row per agent you typed to in the last 1, 3 or 7 days (fleet.py's you_at: your own prompts, not bus
+// messages or scheduled checks), grouped by where it stands; paused and stopped ones stay on the list.
+const TASK_DAYS = [1, 3, 7];
+const TASK_STAGES = [['needs', '✋ Needs you', 'var(--block)'], ['working', '⚡ Working now', 'var(--work)'],
+  ['review', '✅ Ready for your review', 'var(--done)'], ['paused', '⏸ Paused', 'var(--idle)']];
+const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { } };
+let taskDays = +lsGet('hv-fleet-task-days', '1'); if (!TASK_DAYS.includes(taskDays)) taskDays = 1;
+let taskAuto = lsGet('hv-fleet-task-auto', '0') === '1';
+function taskStage(a) {
+  if (a.asleep || a.hibernated) return 'paused';
+  if (a.status === 'blocked' || (a.status !== 'working' && a.summary?.needs_you)) return 'needs';
+  return a.status === 'working' ? 'working' : a.status === 'done' ? 'review' : 'paused';
+}
+function taskWhen(iso) {
+  const d = new Date(iso), now = new Date();
+  if (isNaN(d)) return '';
+  const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return hm;
+  if (now - d < 6 * 86400e3) return d.toLocaleDateString([], { weekday: 'short' }) + ' ' + hm;
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+function myTasks(days = taskDays, auto = taskAuto) {
+  const since = Date.now() - days * 86400e3, order = Object.fromEntries(TASK_STAGES.map(([k], i) => [k, i]));
+  return agents.filter(visible).map(a => {
+    const mine = Date.parse(a.you_at || '') >= since;
+    const at = mine ? a.you_at : a.last_activity;
+    return (mine || (auto && Date.parse(at || '') >= since)) ? { a, mine, at, stage: taskStage(a) } : null;
+  }).filter(Boolean).sort((x, y) => order[x.stage] - order[y.stage] || Date.parse(y.at) - Date.parse(x.at));
+}
+const saidText = t => { const x = String(t || '').replace(/\[Image #\d+\]\s*/g, '🖼 ').replace(/\s+/g, ' ').trim(); return /^(🖼\s*)+$/.test(x) ? '🖼 an image' : x; };
+function taskRow(t) {
+  const { a } = t, s = a.summary || {}, S = st(a.status);
+  const state = a.asleep ? '💤 session stopped' : a.hibernated ? '💤 hibernated' : `${S.emoji} ${S.label}`;
+  return `<div class="trow${t.mine ? '' : ' auto'}" data-id="${esc(a.id)}" style="--c:${TASK_STAGES.find(x => x[0] === t.stage)[2]}" title="Click: open it in hivey · right-click: details">
+    <div class="tav">${esc(a.emoji || '🤖')}</div>
+    <div style="min-width:0"><div class="tjob">${esc(s.job || a.name)}</div>
+      <div class="twho">${esc(a.name)}${a.space && !a.name.startsWith(a.space) ? ' · ' + esc(a.space) : ''} · ${state} · ${esc(a.cli)}${a.team?.length ? ` · 👥 ${a.team.length}` : ''}</div>
+      ${t.mine ? `<div class="tasked" title="${esc(a.you_said)}"><b>You asked:</b> ${esc(saidText(a.you_said))}</div>` : '<div class="tasked"><b>Automatic run</b> (a schedule or another agent started it)</div>'}
+      ${s.needs_you ? `<div class="tneed">✋ ${esc(s.needs_you)}</div>` : s.next ? `<div class="tnext">→ ${esc(s.next)}</div>` : ''}</div>
+    <div class="tright"><span class="twhen" title="${t.mine ? 'You last wrote to it' : 'Last activity'}: ${esc(new Date(t.at).toLocaleString())}">${esc(taskWhen(t.at))}</span>
+      <span><button data-act="focus" title="${a.asleep ? 'Start its hivey session and open it' : 'Open its terminal in hivey'}">${a.asleep ? '▶ Start' : '↗ Open'}</button>
+      <button data-act="info" title="Everything about it">ⓘ</button></span></div></div>`;
+}
+function renderTasks() {
+  const list = myTasks(), mine = list.filter(t => t.mine).length;
+  const span = taskDays === 1 ? 'the last 24 hours' : `the last ${taskDays} days`;
+  $('#tasks').innerHTML = `<div class="tbar"><h2>📋 What you're working on</h2>
+      <span class="tsub">${mine} task${mine === 1 ? '' : 's'} you started in ${span}${list.length > mine ? ` · ${list.length - mine} automatic` : ''}</span>
+      <div class="tseg" title="How far back to look">${TASK_DAYS.map(d => `<button data-days="${d}" class="${d === taskDays ? 'on' : ''}">${d} day${d > 1 ? 's' : ''}</button>`).join('')}</div>
+      <label title="Also list agents that ran on their own (schedules, messages from other agents)"><input type="checkbox" data-auto ${taskAuto ? 'checked' : ''}> automatic runs</label></div>` +
+    (list.length ? TASK_STAGES.map(([k, title]) => {
+      const g = list.filter(t => t.stage === k);
+      return g.length ? `<div class="section"><h2>${title} <span>· ${g.length}</span></h2>${g.map(taskRow).join('')}</div>` : '';
+    }).join('') : `<div class="empty">Nothing you started in ${span}${$('#q').value.trim() || ui.filter ? ' matches' : ''}. Try 3 or 7 days.</div>`);
+  $('#tasks').querySelectorAll('[data-days]').forEach(b => b.onclick = () => { taskDays = +b.dataset.days; lsSet('hv-fleet-task-days', String(taskDays)); renderTasks(); });
+  $('#tasks [data-auto]').onchange = e => { taskAuto = e.target.checked; lsSet('hv-fleet-task-auto', taskAuto ? '1' : '0'); renderTasks(); };
+  wireActions($('#tasks'));
+}
+// the floating card in the Room: the top few of the Tasks tab (needs you and working first)
+function nowCard() {
+  const list = myTasks(taskDays, false);
+  if (!list.length) return '';
+  const fold = lsGet('hv-fleet-now-fold', '0') === '1';
+  return `<div class="nowcard${fold ? ' fold' : ''}"><div class="nh" data-nowtasks title="Open the Tasks tab"><span>📋 Working on · ${list.length}</span>
+      <button data-nowfold title="${fold ? 'Show the list' : 'Fold it'}">${fold ? '▸' : '▾'}</button></div>
+    ${list.slice(0, 5).map(t => `<div class="ni" data-nowid="${esc(t.a.id)}" style="--c:${TASK_STAGES.find(x => x[0] === t.stage)[2]}" title="${esc(t.a.name)}: click to open it in hivey${t.a.you_said ? ' · you asked: ' + esc(saidText(t.a.you_said)) : ''}">
+      <i></i><span class="nt">${esc(t.a.summary?.job || t.a.name)} <small>· ${esc(t.a.name)}</small></span><em>${esc(taskWhen(t.at))}</em></div>`).join('')}
+    <div class="nf" data-nowtasks>${list.length > 5 ? `+${list.length - 5} more · ` : ''}all tasks →</div></div>`;
+}
+function wireNowCard(root) {
+  const card = root.querySelector('.nowcard');
+  if (!card) return;
+  ['pointerdown', 'click', 'dblclick', 'wheel'].forEach(ev => card.addEventListener(ev, e => e.stopPropagation()));
+  card.querySelectorAll('[data-nowtasks]').forEach(el => el.onclick = e => {
+    e.stopPropagation();
+    if (e.target.closest('[data-nowfold]')) { lsSet('hv-fleet-now-fold', card.classList.toggle('fold') ? '1' : '0'); return renderRoom(); }
+    ui.view = 'tasks'; save(); renderAll();
+  });
+  card.querySelectorAll('[data-nowid]').forEach(el => {
+    const a = agents.find(x => x.id === el.dataset.nowid);
+    if (!a) return;
+    el.onclick = e => { e.stopPropagation(); act(a, 'focus'); };
+    el.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); openDrawer(a); };
+  });
+}
+
 let sortKey = 'status', sortDir = 1;
 function renderList() {
   const order = { blocked: 0, working: 1, done: 2, idle: 3 };
@@ -613,6 +701,7 @@ function renderRoom() {
         <div class="wall right" data-wall="right">${right.map(roomCluster).join('')}</div>
       </div>
       ${here.length ? '' : `<div class="nobody">No ${ui.roomTab} agents</div>`}
+      ${nowCard()}
       <div class="rhint">drag a card to pin it on a wall · drag elsewhere to look around · wheel to move closer · double-click the floor to reset</div>
     </div>`;
   if (pick && roomShown !== pick.id) sayIt(pick);
@@ -678,6 +767,7 @@ function renderRoom() {
     b.oncontextmenu = e => { e.preventDefault(); const a = agents.find(x => x.id === b.dataset.pick); if (a) openDrawer(a); };
   });
   room.querySelector('.scene').onclick = e => { if (cardDragged) return; if (roomDragged) { roomDragged = false; return; } if (!e.target.closest('.stage:not(.empty)') && roomPick) { roomPick = null; renderRoom(); } };
+  wireNowCard(room);
   const stage = room.querySelector('.stage[data-id]');
   if (stage) wireRoomStage(stage);
 }
@@ -1391,6 +1481,7 @@ function renderAll() {
   $('#fleet').style.display = ui.view === 'fleet' ? '' : 'none';
   $('#room').style.display = ui.view === 'room' ? 'block' : 'none';
   $('#board').style.display = ui.view === 'board' ? 'block' : 'none';
+  $('#tasks').style.display = ui.view === 'tasks' ? 'block' : 'none';
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
   showJobs();
   showDash();
@@ -1398,6 +1489,7 @@ function renderAll() {
   if (ui.view === 'fleet') { fleet.build(agents.filter(visible), data.sessions); fleet.resize(); }
   if (ui.view === 'room') renderRoom();
   if (ui.view === 'board') renderBoard();
+  if (ui.view === 'tasks') renderTasks();
   if (ui.view === 'list') renderList();
   if (selected) { const a = agents.find(x => x.id === selected); if (a && $('#drawer').classList.contains('open')) openDrawer(a); }
 }
@@ -1861,7 +1953,7 @@ addEventListener('keydown', e => {
   if (e.target.matches('input, textarea, select')) { if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); renderAll(); } return; }
   if (e.key === '/') { e.preventDefault(); $('#q').focus(); }
   else if (e.key === 'Escape') { if (roomChat) closeChat(); else closeDrawer(); }
-  else if (e.key >= '1' && e.key <= '6') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
+  else if (e.key >= '1' && e.key <= '7') { ui.view = VIEWS[+e.key - 1]; save(); renderAll(); }
   else if (e.key === 'r') refreshNow();
   else if (e.key === 'f') fleet.fit();
   else if (e.key === 't') toggleStyle();

@@ -361,6 +361,17 @@ def tool_line(c: dict) -> str:
     return f"{c.get('name')}: {str(arg)[:110]}"
 
 
+def typed_by_you(text: str) -> str:
+    """The prompt you wrote (in its terminal, or from Slack through the bus), or "" for a bus message from
+    another agent, a scheduled check or an interrupt marker."""
+    if text.startswith("[Request interrupted"):
+        return ""
+    if not text.startswith("[hivey"):
+        return text
+    m = re.search(r"(?:^\[hivey\] |\n\d+\. )from human\b[^:]*:\s*(.+)", text)  # one message, or a digest
+    return m.group(1).split("\n")[0].strip() if m else ""
+
+
 def session_log(path: Path | None) -> dict:
     """Context size, model, last prompt, recap, last replies and tools from the tail of a transcript."""
     if not path:
@@ -373,7 +384,8 @@ def session_log(path: Path | None) -> dict:
     except OSError:
         return {}
     info = {"log": short(str(path)), "context": 0, "model": "", "last_prompt": "", "recap": "", "replies": [],
-            "tools": [], "prompts": [], "last_activity": None, "started": None, "uuid": ""}
+            "tools": [], "prompts": [], "last_activity": None, "started": None, "uuid": "",
+            "you_at": None, "you_said": "", "you_first_at": None}
     for line in tail:
         try:
             d = json.loads(line)
@@ -412,10 +424,18 @@ def session_log(path: Path | None) -> dict:
             t = text_of(msg.get("content")).strip()
             if t and not t.startswith("<") and "tool_result" not in t:
                 info["prompts"].append(t[:300])
+                said = typed_by_you(t) if ts and not d.get("isCompactSummary") else ""
+                if said:  # the Tasks tab: what you asked, and when
+                    info["you_at"], info["you_said"] = ts, said[:300]
+                    info["you_first_at"] = info["you_first_at"] or ts
         if kind in ("assistant", "user") and ts:
             info["last_activity"] = ts
             info["started"] = info["started"] or ts
             info["uuid"] = d.get("uuid", "")
+    if not info["you_at"] and info["last_prompt"] and typed_by_you(info["last_prompt"]):
+        # your prompt is older than the tail read here (a pasted image can fill it): its last activity stands in
+        info["you_at"] = info["you_first_at"] = info["last_activity"]
+        info["you_said"] = typed_by_you(info["last_prompt"])[:300]
     info["replies"] = info["replies"][-4:]
     info["tools"] = info["tools"][-8:]
     info["prompts"] = info["prompts"][-3:]
@@ -675,6 +695,9 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
         d["session_started"] = log.get("started")
         d["log"] = log.get("log", "")
         d["last_prompt"] = log.get("last_prompt", "")
+        d["you_at"] = log.get("you_at")  # the last prompt you typed to it (not bus or scheduled messages)
+        d["you_said"] = log.get("you_said", "")
+        d["you_first_at"] = log.get("you_first_at")
         d["recap"] = log.get("recap", "")
         d["compacted_at"] = log.get("compacted_at")
         d["auto"] = automode.summary(d["id"])
