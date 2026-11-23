@@ -385,7 +385,7 @@ def session_log(path: Path | None) -> dict:
         return {}
     info = {"log": short(str(path)), "context": 0, "model": "", "last_prompt": "", "recap": "", "replies": [],
             "tools": [], "prompts": [], "last_activity": None, "started": None, "uuid": "",
-            "you_at": None, "you_said": "", "you_first_at": None}
+            "you_at": None, "you_said": "", "you_first_at": None, "you_prompts": []}
     for line in tail:
         try:
             d = json.loads(line)
@@ -427,6 +427,7 @@ def session_log(path: Path | None) -> dict:
                 said = typed_by_you(t) if ts and not d.get("isCompactSummary") else ""
                 if said:  # the Tasks tab: what you asked, and when
                     info["you_at"], info["you_said"] = ts, said[:300]
+                    info["you_prompts"] = (info["you_prompts"] + [said[:200]])[-6:]
                     info["you_first_at"] = info["you_first_at"] or ts
         if kind in ("assistant", "user") and ts:
             info["last_activity"] = ts
@@ -460,8 +461,10 @@ log. Write what a busy manager needs at a glance. Plain words, no jargon, no mar
 Return ONLY a JSON array, one object per agent, same ids, with these keys:
   "id": the agent id as given
   "job": its current job in 3-9 words (what it is working on now, or the last thing if idle)
-  "task": the task the human gave it, as a short title of 2-6 words, from the human's own request
-          (e.g. "Fix last night's failing jobs", "Viral tweet recipe"); "" when no human request is given
+  "task": the task the human is doing with it, as a title of 2-6 words naming its subject, read from all of
+          the human's requests and the recap (e.g. "Fix last night's failing jobs", "Delete old Baserow
+          databases"). Name the thing being worked on: never echo a short reply such as "yes", "queue them",
+          "check again" or "push it". "" when no human request is given
   "bubble": one sentence it would say, first person, max 90 characters, may start with one fitting emoji
   "done": up to 3 short things it achieved in this session (max 60 characters each), newest first
   "next": what happens next or what it waits for, max 80 characters ("" if nothing)
@@ -496,8 +499,8 @@ def brief(desk: dict) -> str:
         parts.append(f"session recap: {log['recap']}")
     if log.get("last_prompt"):
         parts.append(f"human's last prompt: {log['last_prompt']}")
-    if log.get("you_said") and log.get("you_said") != log.get("last_prompt"):
-        parts.append(f"human's own last request: {log['you_said']}")
+    if log.get("you_prompts"):
+        parts.append("human's own requests, oldest first: " + " || ".join(log["you_prompts"]))
     for r in log.get("replies", [])[-2:]:
         parts.append(f"agent said: {r[:400]}")
     if log.get("tools"):
@@ -541,12 +544,6 @@ def first_sentence(text: str, limit: int) -> str:
     return s if len(s) <= limit else s[: limit - 1].rstrip() + "…"
 
 
-def short_task(text: str, words: int = 6) -> str:
-    """A task title without a model: the first words of your request."""
-    w = re.sub(r"\[Image #\d+\]|\s+", " ", first_sentence(text, 200)).split()
-    return " ".join(w[:words]).rstrip(".,;:!?") + ("…" if len(w) > words else "")
-
-
 def fallback(desk: dict) -> dict:
     """A summary without a model: the recap, the last prompt and the last reply."""
     log = desk.get("_log") or {}
@@ -559,7 +556,7 @@ def fallback(desk: dict) -> dict:
     lines = [ln.strip() for ln in scr.splitlines() if len(ln.strip()) > 20]
     return {
         "job": first_sentence(log.get("last_prompt") or (lines[-1] if lines else desk["name"]), 60),
-        "task": short_task(log.get("you_said") or ""),
+        "task": "",  # _run keeps the last title the model wrote; your raw words make a poor title
         "bubble": first_sentence(log.get("recap") or reply or (lines[-1] if lines else "…"), 90),
         "done": [], "next": "", "needs_you": needs,
         "advice": "compact" if desk["context_pct"] >= 70 and desk["status"] not in ("working", "blocked") else "keep",
@@ -762,11 +759,11 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
                             "advice": "keep", "advice_why": "its session is stopped", "by": "stopped"}
             d["summarized_at"] = d["stopped_at"]
         elif hit and hit.get("fp") == d["fp"] and (hit.get("by") != "fallback" or not use_llm) \
-                and ("task" in hit.get("summary", {}) or not d.get("you_at") or not use_llm):  # older ones lack a task title
+                and (hit.get("you_at") == d.get("you_at") or not use_llm):  # a new prompt of yours: a new task title
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
         elif quick and hit and hit.get("status", d["status"]) == d["status"] and hit.get("by") != "fallback" \
-                and ("task" in hit.get("summary", {}) or not d.get("you_at")):
+                and hit.get("you_at") == d.get("you_at"):
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
             stale[d["id"]] = hit  # keep its old fingerprint so the next full pass re-summarizes it
@@ -792,6 +789,8 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
         if "summary" not in d:
             d["summary"] = fallback(d)
             d["summarized_at"] = now_iso()
+        if not d["summary"].get("task") and d.get("you_at"):  # keep the last title until the model writes a new one
+            d["summary"]["task"] = ((cache.get(d["id"]) or {}).get("summary") or {}).get("task", "")
         s = d["summary"]
         if d["context_pct"] >= 85 and s.get("advice") == "keep":  # a model can be too gentle
             s["advice"], s["advice_why"] = "compact", f"context at {d['context_pct']}%"
@@ -802,7 +801,7 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
             s["advice"] = "keep"
     CACHE.write_text(json.dumps({d["id"]: stale.get(d["id"]) or {
         "fp": d["fp"], "summary": d["summary"], "at": d["summarized_at"], "by": d["summary"].get("by"),
-        "status": d["status"]} for d in people}))
+        "status": d["status"], "you_at": d.get("you_at")} for d in people}))
     for d in people:
         log = d.pop("_log", {})
         d["tools"] = log.get("tools", [])[-5:]

@@ -324,9 +324,8 @@ function myTasks(days = taskDays, auto = taskAuto) {
   }).filter(Boolean).sort((x, y) => order[x.stage] - order[y.stage] || Date.parse(y.at) - Date.parse(x.at));
 }
 const saidText = t => { const x = String(t || '').replace(/\[Image #\d+\]\s*/g, '🖼 ').replace(/\s+/g, ' ').trim(); return /^(🖼\s*)+$/.test(x) ? '🖼 an image' : x; };
-const shortTask = (t, n = 6) => { const w = t.split(' ').filter(Boolean); return w.slice(0, n).join(' ').replace(/[.,;:!?]+$/, '') + (w.length > n ? '…' : ''); };
-// the task in a few words: the summary's title of your request, else the first words of it, else its current job
-const taskTitle = t => (t.mine && (t.a.summary?.task || shortTask(saidText(t.a.you_said)))) || t.a.summary?.job || t.a.name;
+// the task in a few words: the title the model wrote from your requests, else its current job (never your raw words)
+const taskTitle = t => (t.mine && t.a.summary?.task) || t.a.summary?.job || t.a.name;
 function taskTile(t) {
   const a = t.a;
   return `<button class="tile task ${tone(a)}${t.mine ? '' : ' auto'}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}${t.mine ? ' · you asked: ' + esc(saidText(a.you_said)) : ' · ran on its own'}">
