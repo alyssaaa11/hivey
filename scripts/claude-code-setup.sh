@@ -45,9 +45,10 @@ done
 # Keep CLAUDE.local.md out of git without changing herdr's .gitignore.
 EXCLUDE=$(git rev-parse --git-path info/exclude 2>/dev/null || true)
 case "$EXCLUDE" in ''|/*) ;; *) EXCLUDE="$ROOT/$EXCLUDE" ;; esac
-if [ -n "$EXCLUDE" ] && ! grep -qx 'CLAUDE.local.md' "$EXCLUDE" 2>/dev/null; then
+# Root only (leading slash): assets/claude-code/CLAUDE.local.md is a tracked template.
+if [ -n "$EXCLUDE" ] && ! grep -qx '/CLAUDE.local.md' "$EXCLUDE" 2>/dev/null; then
   mkdir -p "$(dirname "$EXCLUDE")"
-  printf '\n# hivey: the Claude Code digest of AGENTS.md (scripts/claude-code-setup.sh)\nCLAUDE.local.md\n' >>"$EXCLUDE"
+  printf '\n# hivey: the Claude Code digest of AGENTS.md (scripts/claude-code-setup.sh)\n/CLAUDE.local.md\n' >>"$EXCLUDE"
   echo "  updated   $EXCLUDE (ignores CLAUDE.local.md)"
 fi
 
