@@ -324,60 +324,21 @@ function myTasks(days = taskDays, auto = taskAuto) {
   }).filter(Boolean).sort((x, y) => order[x.stage] - order[y.stage] || Date.parse(y.at) - Date.parse(x.at));
 }
 const saidText = t => { const x = String(t || '').replace(/\[Image #\d+\]\s*/g, '🖼 ').replace(/\s+/g, ' ').trim(); return /^(🖼\s*)+$/.test(x) ? '🖼 an image' : x; };
-function taskRow(t) {
-  const { a } = t, s = a.summary || {}, S = st(a.status);
-  const state = a.asleep ? '💤 session stopped' : a.hibernated ? '💤 hibernated' : `${S.emoji} ${S.label}`;
-  return `<div class="trow${t.mine ? '' : ' auto'}" data-id="${esc(a.id)}" style="--c:${TASK_STAGES.find(x => x[0] === t.stage)[2]}" title="Click: open it in hivey · right-click: details">
-    <div class="tav">${esc(a.emoji || '🤖')}</div>
-    <div style="min-width:0"><div class="tjob">${esc(s.job || a.name)}</div>
-      <div class="twho">${esc(a.name)}${a.space && !a.name.startsWith(a.space) ? ' · ' + esc(a.space) : ''} · ${state} · ${esc(a.cli)}${a.team?.length ? ` · 👥 ${a.team.length}` : ''}</div>
-      ${t.mine ? `<div class="tasked" title="${esc(a.you_said)}"><b>You asked:</b> ${esc(saidText(a.you_said))}</div>` : '<div class="tasked"><b>Automatic run</b> (a schedule or another agent started it)</div>'}
-      ${s.needs_you ? `<div class="tneed">✋ ${esc(s.needs_you)}</div>` : s.next ? `<div class="tnext">→ ${esc(s.next)}</div>` : ''}</div>
-    <div class="tright"><span class="twhen" title="${t.mine ? 'You last wrote to it' : 'Last activity'}: ${esc(new Date(t.at).toLocaleString())}">${esc(taskWhen(t.at))}</span>
-      <span><button data-act="focus" title="${a.asleep ? 'Start its hivey session and open it' : 'Open its terminal in hivey'}">${a.asleep ? '▶ Start' : '↗ Open'}</button>
-      <button data-act="info" title="Everything about it">ⓘ</button></span></div></div>`;
+const shortTask = (t, n = 6) => { const w = t.split(' ').filter(Boolean); return w.slice(0, n).join(' ').replace(/[.,;:!?]+$/, '') + (w.length > n ? '…' : ''); };
+// the task in a few words: the summary's title of your request, else the first words of it, else its current job
+const taskTitle = t => (t.mine && (t.a.summary?.task || shortTask(saidText(t.a.you_said)))) || t.a.summary?.job || t.a.name;
+function taskTile(t) {
+  const a = t.a;
+  return `<button class="tile task ${tone(a)}${t.mine ? '' : ' auto'}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}${t.mine ? ' · you asked: ' + esc(saidText(a.you_said)) : ' · ran on its own'}">
+    <span class="tw">${esc(a.emoji)} ${esc(a.name)}</span><span class="tt">${esc(taskTitle(t))}</span>
+    <span class="sl"><i></i>${toneLabel(a)} · ${esc(taskWhen(t.at))}</span></button>`;
 }
-function renderTasks() {
-  const list = myTasks(), mine = list.filter(t => t.mine).length;
-  const span = taskDays === 1 ? 'the last 24 hours' : `the last ${taskDays} days`;
-  $('#tasks').innerHTML = `<div class="tbar"><h2>📋 What you're working on</h2>
-      <span class="tsub">${mine} task${mine === 1 ? '' : 's'} you started in ${span}${list.length > mine ? ` · ${list.length - mine} automatic` : ''}</span>
-      <div class="tseg" title="How far back to look">${TASK_DAYS.map(d => `<button data-days="${d}" class="${d === taskDays ? 'on' : ''}">${d} day${d > 1 ? 's' : ''}</button>`).join('')}</div>
-      <label title="Also list agents that ran on their own (schedules, messages from other agents)"><input type="checkbox" data-auto ${taskAuto ? 'checked' : ''}> automatic runs</label></div>` +
-    (list.length ? TASK_STAGES.map(([k, title]) => {
-      const g = list.filter(t => t.stage === k);
-      return g.length ? `<div class="section"><h2>${title} <span>· ${g.length}</span></h2>${g.map(taskRow).join('')}</div>` : '';
-    }).join('') : `<div class="empty">Nothing you started in ${span}${$('#q').value.trim() || ui.filter ? ' matches' : ''}. Try 3 or 7 days.</div>`);
-  $('#tasks').querySelectorAll('[data-days]').forEach(b => b.onclick = () => { taskDays = +b.dataset.days; lsSet('hv-fleet-task-days', String(taskDays)); renderTasks(); });
-  $('#tasks [data-auto]').onchange = e => { taskAuto = e.target.checked; lsSet('hv-fleet-task-auto', taskAuto ? '1' : '0'); renderTasks(); };
-  wireActions($('#tasks'));
-}
-// the floating card in the Room: the top few of the Tasks tab (needs you and working first)
-function nowCard() {
-  const list = myTasks(taskDays, false);
-  if (!list.length) return '';
-  const fold = lsGet('hv-fleet-now-fold', '0') === '1';
-  return `<div class="nowcard${fold ? ' fold' : ''}"><div class="nh" data-nowtasks title="Open the Tasks tab"><span>📋 Working on · ${list.length}</span>
-      <button data-nowfold title="${fold ? 'Show the list' : 'Fold it'}">${fold ? '▸' : '▾'}</button></div>
-    ${list.slice(0, 5).map(t => `<div class="ni" data-nowid="${esc(t.a.id)}" style="--c:${TASK_STAGES.find(x => x[0] === t.stage)[2]}" title="${esc(t.a.name)}: click to open it in hivey${t.a.you_said ? ' · you asked: ' + esc(saidText(t.a.you_said)) : ''}">
-      <i></i><span class="nt">${esc(t.a.summary?.job || t.a.name)} <small>· ${esc(t.a.name)}</small></span><em>${esc(taskWhen(t.at))}</em></div>`).join('')}
-    <div class="nf" data-nowtasks>${list.length > 5 ? `+${list.length - 5} more · ` : ''}all tasks →</div></div>`;
-}
-function wireNowCard(root) {
-  const card = root.querySelector('.nowcard');
-  if (!card) return;
-  ['pointerdown', 'click', 'dblclick', 'wheel'].forEach(ev => card.addEventListener(ev, e => e.stopPropagation()));
-  card.querySelectorAll('[data-nowtasks]').forEach(el => el.onclick = e => {
-    e.stopPropagation();
-    if (e.target.closest('[data-nowfold]')) { lsSet('hv-fleet-now-fold', card.classList.toggle('fold') ? '1' : '0'); return renderRoom(); }
-    ui.view = 'tasks'; save(); renderAll();
-  });
-  card.querySelectorAll('[data-nowid]').forEach(el => {
-    const a = agents.find(x => x.id === el.dataset.nowid);
-    if (!a) return;
-    el.onclick = e => { e.stopPropagation(); act(a, 'focus'); };
-    el.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); openDrawer(a); };
-  });
+// the Tasks room's tabs: how far back to look, and whether agents that ran on their own count
+function taskTabs(list) {
+  const mine = list.filter(t => t.mine).length;
+  return `<span class="tcount" data-tip="Tasks are the agents you typed a prompt to (in its terminal or from Slack); a schedule or another agent's message does not count.">📋 <b>${mine}</b> task${mine === 1 ? '' : 's'} you started</span>
+    ${TASK_DAYS.map(d => `<button data-days="${d}" class="${d === taskDays ? 'on' : ''}" title="Tasks you started in the last ${d === 1 ? '24 hours' : d + ' days'}">${d} day${d > 1 ? 's' : ''}</button>`).join('')}
+    <button data-auto class="vt ${taskAuto ? 'on' : ''}" title="Also show agents that ran on their own: schedules, messages from other agents">${taskAuto ? '☑' : '☐'} automatic runs${list.length > mine ? ` <b>${list.length - mine}</b>` : ''}</button>`;
 }
 
 let sortKey = 'status', sortDir = 1;
@@ -493,14 +454,15 @@ function autoBlock(a) {
       <div class="arow"><button data-auto-go>▶ Start</button><button data-auto-cancel>Cancel</button></div>
       <div class="anote">It answers safe questions itself; publishing, deploying, merging to main, deleting or messaging people wait for you.</div></div>`;
 }
-function roomStage(a) {
-  if (!a) return `<div class="stage empty"><div class="hint">Pick an agent on the walls</div></div>`;
+function roomStage(a, task = null) {
+  if (!a) return `<div class="stage empty"><div class="hint">Pick ${task ? 'a task' : 'an agent'} on the walls</div></div>`;
   const s = a.summary || {}, t = tone(a), h = hue(a.space);
   return `<div class="stage ${t}" data-id="${esc(a.id)}">
     <div class="holo${roomShown !== a.id ? ' fresh' : ''}">
       <div class="bigav" data-open title="Open its terminal in hivey" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}</div>
       <div class="nm">${esc(a.name)}</div>
       <div class="sl"><i></i>${toneLabel(a)} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''} · ${ago(a.last_activity)}</div>
+      ${task?.a ? `<div class="tk">📋 ${esc(taskTitle(task))}</div>${task.mine ? `<div class="asked"><b>You asked · ${esc(taskWhen(task.at))}</b>${esc(saidText(a.you_said))}</div>` : ''}` : ''}
       <div class="say">${esc(s.bubble || '…')}</div>
       ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
       ${s.job ? `<div class="job">📌 ${esc(s.job)}</div>` : ''}
@@ -537,11 +499,12 @@ function openChat(a) {
   setTimeout(() => $('#chatin')?.focus(), 50);
 }
 function closeChat() { roomChat = null; clearInterval(chatTimer); chatTimer = null; renderChat(); }
+const roomish = () => ui.view === 'room' || ui.view === 'tasks';  // both draw the 3D room
 function renderChat() {
   let dock = $('#chatdock');
   const a = agents.find(x => x.id === roomChat);
-  $('#room').classList.toggle('chatting', !!a && ui.view === 'room');
-  if (!a || ui.view !== 'room') { dock?.remove(); clearInterval(chatTimer); chatTimer = null; return; }
+  $('#room').classList.toggle('chatting', !!a && roomish());
+  if (!a || !roomish()) { dock?.remove(); clearInterval(chatTimer); chatTimer = null; return; }
   if (!dock || dock.dataset.id !== a.id) {
     dock?.remove();
     dock = document.createElement('div');
@@ -671,38 +634,40 @@ function setRoomTheme(id) {
 }
 function renderRoom() {
   if (document.activeElement?.matches?.('#room [data-goal]')) return;  // you are typing an Auto Mode goal
-  const list = agents.filter(visible);
+  const tasksMode = ui.view === 'tasks';  // 📋 Tasks: the same room, one card per task you started
+  const list = agents.filter(visible), tasks = tasksMode ? myTasks() : [];
+  const taskOf = new Map(tasks.map(t => [t.a.id, t]));
   const order = { needs: 0, working: 1, done: 2, idle: 3, closed: 4 };
   const counts = Object.fromEntries(ROOM_TABS.map(([k]) => [k, list.filter(a => roomOf(a) === k).length]));
-  const here = list.filter(a => roomOf(a) === ui.roomTab).sort((x, y) => order[tone(x)] - order[tone(y)] || x.name.localeCompare(y.name));
+  const here = tasksMode ? tasks.map(t => t.a) : list.filter(a => roomOf(a) === ui.roomTab).sort((x, y) => order[tone(x)] - order[tone(y)] || x.name.localeCompare(y.name));
   if (roomPick && !here.some(a => a.id === roomPick)) roomPick = null;
   // whole groups go to a wall, nearest the pedestal first, to whichever wall has fewer agents so far
   const left = [], right = [];
   let nl = 0, nr = 0;
-  const groups = roomGroups(here), spotOf = g => ui.spots?.[baseName(g[0])];
+  const groups = tasksMode ? here.map(a => [a]) : roomGroups(here), spotOf = g => !tasksMode && ui.spots?.[baseName(g[0])];
+  const cluster = tasksMode ? g => taskTile(taskOf.get(g[0].id)) : roomCluster;
   groups.filter(spotOf).forEach(g => { if (spotOf(g).w === 'left') { left.push(g); nl += g.length; } else { right.push(g); nr += g.length; } });
   groups.filter(g => !spotOf(g)).forEach(g => { if (nl <= nr) { left.push(g); nl += g.length; } else { right.push(g); nr += g.length; } });
   const pick = here.find(a => a.id === roomPick);
   const room = $('#room');
   const typed = $('#chatin')?.value;  // a refresh must not lose what you are typing
   room.querySelector('#chatdock')?.remove();
-  room.innerHTML = `<div class="rtabs">${ROOM_TABS.map(([k, label, tip]) =>
+  room.innerHTML = `<div class="rtabs">${tasksMode ? taskTabs(tasks) : ROOM_TABS.map(([k, label, tip]) =>
       `<button data-rtab="${k}" class="${ui.roomTab === k ? 'on' : ''}" data-tip="${esc(tip)}">${label} <b>${counts[k]}</b></button>`).join('')}
-      ${Object.keys(ui.spots || {}).length ? '<button data-unpin class="vt" title="Forget where you dragged the cards: every card goes back to its automatic place">↺ Auto layout</button>' : ''}
+      ${!tasksMode && Object.keys(ui.spots || {}).length ? '<button data-unpin class="vt" title="Forget where you dragged the cards: every card goes back to its automatic place">↺ Auto layout</button>' : ''}
       <select data-theme class="vt rtheme" title="The room's backdrop">${ROOM_THEMES.map(([k, label]) => `<option value="${k}"${roomTheme()[0] === k ? ' selected' : ''}>${label}</option>`).join('')}</select>
       <button data-voicetoggle class="vt ${ui.voice ? 'on' : ''}" title="Agents say what they want when you bring them to the middle (local voice)">${ui.voice ? '🔊 Voice on' : '🔇 Voice off'}</button></div>
     <div class="scene${pick ? ' has' : ''}${roomTheme()[0] !== 'grid' ? ' themed' : ''}" data-room="${roomTheme()[0]}" style="--acc:${roomTheme()[2]};--rx:${roomTilt.x + roomView.pitch}deg;--ry:${roomTilt.y + roomView.yaw}deg;--rz:${roomView.zoom}px;--rxn:${roomTilt.x + roomView.pitch};--ryn:${roomTilt.y + roomView.yaw};--rzn:${roomView.zoom}${pick ? `;--fc:${TONE_RGB[tone(pick)]}` : ''}">
       ${roomTheme()[0] !== 'grid' ? `<div class="backdrop" style="background-image:url('rooms/${roomTheme()[0]}.jpg')"></div>` : ''}
       <div class="shell"><div class="ceiling"></div><div class="backwall"></div><div class="floor"></div></div>
       <div class="rig">
-        <div class="wall left" data-wall="left">${left.map(roomCluster).join('')}</div>
+        <div class="wall left" data-wall="left">${left.map(cluster).join('')}</div>
         <div class="center${pick ? ' ' + tone(pick) : ''}"><div class="beam"></div><div class="parts">${PARTS}</div>
-          ${roomStage(pick)}<div class="pedestal"><i></i><i></i><i></i><i></i></div></div>
-        <div class="wall right" data-wall="right">${right.map(roomCluster).join('')}</div>
+          ${roomStage(pick, tasksMode ? taskOf.get(pick?.id) || 'tasks' : null)}<div class="pedestal"><i></i><i></i><i></i><i></i></div></div>
+        <div class="wall right" data-wall="right">${right.map(cluster).join('')}</div>
       </div>
-      ${here.length ? '' : `<div class="nobody">No ${ui.roomTab} agents</div>`}
-      ${nowCard()}
-      <div class="rhint">drag a card to pin it on a wall · drag elsewhere to look around · wheel to move closer · double-click the floor to reset</div>
+      ${here.length ? '' : `<div class="nobody">${tasksMode ? `Nothing you started in the last ${taskDays === 1 ? '24 hours' : taskDays + ' days'}. Try 3 or 7 days.` : `No ${ui.roomTab} agents`}</div>`}
+      <div class="rhint">${tasksMode ? 'click a task to see it in the middle · double-click to open its agent in hivey · drag' : 'drag a card to pin it on a wall · drag'} elsewhere to look around · wheel to move closer · double-click the floor to reset</div>
     </div>`;
   if (pick && roomShown !== pick.id) sayIt(pick);
   if (!pick) voice?.pause();
@@ -761,13 +726,14 @@ function renderRoom() {
   room.querySelectorAll('[data-group]').forEach(el => el.addEventListener('pointerdown', e => cardDrag(e, el)));
   room.querySelector('[data-voicetoggle]').onclick = () => { ui.voice = !ui.voice; if (!ui.voice) voice?.pause(); save(); renderRoom(); };
   room.querySelectorAll('[data-rtab]').forEach(b => b.onclick = () => { ui.roomTab = b.dataset.rtab; roomPick = null; save(); renderRoom(); });
+  room.querySelectorAll('[data-days]').forEach(b => b.onclick = () => { taskDays = +b.dataset.days; lsSet('hv-fleet-task-days', String(taskDays)); renderRoom(); });
+  room.querySelector('[data-auto]')?.addEventListener('click', () => { taskAuto = !taskAuto; lsSet('hv-fleet-task-auto', taskAuto ? '1' : '0'); renderRoom(); });
   room.querySelectorAll('[data-pick]').forEach(b => {
     b.onclick = e => { e.stopPropagation(); if (cardDragged) { cardDragged = false; return; } roomPick = roomPick === b.dataset.pick ? null : b.dataset.pick; renderRoom(); };
     b.ondblclick = e => { e.stopPropagation(); const a = agents.find(x => x.id === b.dataset.pick); if (a) act(a, 'focus'); };
     b.oncontextmenu = e => { e.preventDefault(); const a = agents.find(x => x.id === b.dataset.pick); if (a) openDrawer(a); };
   });
   room.querySelector('.scene').onclick = e => { if (cardDragged) return; if (roomDragged) { roomDragged = false; return; } if (!e.target.closest('.stage:not(.empty)') && roomPick) { roomPick = null; renderRoom(); } };
-  wireNowCard(room);
   const stage = room.querySelector('.stage[data-id]');
   if (stage) wireRoomStage(stage);
 }
@@ -1479,17 +1445,15 @@ function renderAll() {
   renderHeader();
   document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.v === ui.view));
   $('#fleet').style.display = ui.view === 'fleet' ? '' : 'none';
-  $('#room').style.display = ui.view === 'room' ? 'block' : 'none';
+  $('#room').style.display = roomish() ? 'block' : 'none';
   $('#board').style.display = ui.view === 'board' ? 'block' : 'none';
-  $('#tasks').style.display = ui.view === 'tasks' ? 'block' : 'none';
   $('#list').style.display = ui.view === 'list' ? 'block' : 'none';
   showJobs();
   showDash();
   showEvolve();
   if (ui.view === 'fleet') { fleet.build(agents.filter(visible), data.sessions); fleet.resize(); }
-  if (ui.view === 'room') renderRoom();
+  if (roomish()) renderRoom();
   if (ui.view === 'board') renderBoard();
-  if (ui.view === 'tasks') renderTasks();
   if (ui.view === 'list') renderList();
   if (selected) { const a = agents.find(x => x.id === selected); if (a && $('#drawer').classList.contains('open')) openDrawer(a); }
 }
@@ -1990,9 +1954,9 @@ post('/hv-fleet-refresh', { load: true }).then(j => {
   if (Object.keys(server).length) {  // the server's positions win; rebuild if they differ from this browser's
     if (JSON.stringify(server) !== JSON.stringify(local)) { ui.ships = server; save(); if (data) renderAll(); }
   } else if (Object.keys(local).length) saveShips();  // first time: hand this browser's positions to the server
-  if (j.room_theme && j.room_theme !== ui.roomTheme) { ui.roomTheme = j.room_theme; save(); if (data && ui.view === 'room') renderRoom(); }
+  if (j.room_theme && j.room_theme !== ui.roomTheme) { ui.roomTheme = j.room_theme; save(); if (data && roomish()) renderRoom(); }
   if (j.spots && JSON.stringify(j.spots) !== JSON.stringify(ui.spots || {})) {  // cards pinned in another browser
-    if (Object.keys(j.spots).length || !Object.keys(ui.spots || {}).length) { ui.spots = j.spots; save(); if (data && ui.view === 'room') renderRoom(); }
+    if (Object.keys(j.spots).length || !Object.keys(ui.spots || {}).length) { ui.spots = j.spots; save(); if (data && roomish()) renderRoom(); }
     else saveSpots();  // first time: hand this browser's pins to the server
   }
   setTimeout(poll, 2500); setTimeout(poll, 8000);

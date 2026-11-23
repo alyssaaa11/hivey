@@ -460,6 +460,8 @@ log. Write what a busy manager needs at a glance. Plain words, no jargon, no mar
 Return ONLY a JSON array, one object per agent, same ids, with these keys:
   "id": the agent id as given
   "job": its current job in 3-9 words (what it is working on now, or the last thing if idle)
+  "task": the task the human gave it, as a short title of 2-6 words, from the human's own request
+          (e.g. "Fix last night's failing jobs", "Viral tweet recipe"); "" when no human request is given
   "bubble": one sentence it would say, first person, max 90 characters, may start with one fitting emoji
   "done": up to 3 short things it achieved in this session (max 60 characters each), newest first
   "next": what happens next or what it waits for, max 80 characters ("" if nothing)
@@ -494,6 +496,8 @@ def brief(desk: dict) -> str:
         parts.append(f"session recap: {log['recap']}")
     if log.get("last_prompt"):
         parts.append(f"human's last prompt: {log['last_prompt']}")
+    if log.get("you_said") and log.get("you_said") != log.get("last_prompt"):
+        parts.append(f"human's own last request: {log['you_said']}")
     for r in log.get("replies", [])[-2:]:
         parts.append(f"agent said: {r[:400]}")
     if log.get("tools"):
@@ -537,6 +541,12 @@ def first_sentence(text: str, limit: int) -> str:
     return s if len(s) <= limit else s[: limit - 1].rstrip() + "…"
 
 
+def short_task(text: str, words: int = 6) -> str:
+    """A task title without a model: the first words of your request."""
+    w = re.sub(r"\[Image #\d+\]|\s+", " ", first_sentence(text, 200)).split()
+    return " ".join(w[:words]).rstrip(".,;:!?") + ("…" if len(w) > words else "")
+
+
 def fallback(desk: dict) -> dict:
     """A summary without a model: the recap, the last prompt and the last reply."""
     log = desk.get("_log") or {}
@@ -549,6 +559,7 @@ def fallback(desk: dict) -> dict:
     lines = [ln.strip() for ln in scr.splitlines() if len(ln.strip()) > 20]
     return {
         "job": first_sentence(log.get("last_prompt") or (lines[-1] if lines else desk["name"]), 60),
+        "task": short_task(log.get("you_said") or ""),
         "bubble": first_sentence(log.get("recap") or reply or (lines[-1] if lines else "…"), 90),
         "done": [], "next": "", "needs_you": needs,
         "advice": "compact" if desk["context_pct"] >= 70 and desk["status"] not in ("working", "blocked") else "keep",
@@ -566,7 +577,7 @@ def finished(desk: dict) -> bool:
 
 def clean_summary(s: dict) -> dict:
     out = {k: str(s.get(k) or "")[:limit] for k, limit in
-           (("job", 80), ("bubble", 110), ("next", 100), ("needs_you", 100), ("advice_why", 90))}
+           (("job", 80), ("task", 60), ("bubble", 110), ("next", 100), ("needs_you", 100), ("advice_why", 90))}
     out["done"] = [str(x)[:80] for x in (s.get("done") or []) if x][:3]
     out["advice"] = s.get("advice") if s.get("advice") in ("keep", "compact", "clear") else "keep"
     return out
@@ -750,10 +761,12 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
                             "next": f"Start session {d['hv_session']} to wake it", "needs_you": "", "done": [],
                             "advice": "keep", "advice_why": "its session is stopped", "by": "stopped"}
             d["summarized_at"] = d["stopped_at"]
-        elif hit and hit.get("fp") == d["fp"] and (hit.get("by") != "fallback" or not use_llm):
+        elif hit and hit.get("fp") == d["fp"] and (hit.get("by") != "fallback" or not use_llm) \
+                and ("task" in hit.get("summary", {}) or not d.get("you_at") or not use_llm):  # older ones lack a task title
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
-        elif quick and hit and hit.get("status", d["status"]) == d["status"] and hit.get("by") != "fallback":
+        elif quick and hit and hit.get("status", d["status"]) == d["status"] and hit.get("by") != "fallback" \
+                and ("task" in hit.get("summary", {}) or not d.get("you_at")):
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
             stale[d["id"]] = hit  # keep its old fingerprint so the next full pass re-summarizes it

@@ -329,46 +329,16 @@ td.j{max-width:420px}
 @media (max-width:820px){#chatdock .console{transform:none}#room.chatting .rig{--ty:0px;--sc:1}#room.chatting{padding-bottom:560px}}
 /* ---------- 3D command room ---------- */
 #room{display:none;padding:10px 16px 18px}
-/* 📋 Tasks: what you started, by agent */
-#tasks{display:none;padding:14px 18px 40px;max-width:1100px;margin:0 auto}
-.tbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 14px}
-.tbar h2{margin:0;font-size:17px;font-weight:650}
-.tbar .tsub{color:var(--muted);font-size:12.5px}
-.tbar .tseg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;margin-left:auto}
-.tbar .tseg button{background:var(--panel);border:0;color:var(--muted);padding:5px 13px;font:inherit;font-size:12.5px;cursor:pointer}
-.tbar .tseg button.on{background:var(--honey);color:#1a1405;font-weight:650}
-.tbar label{color:var(--muted);font-size:12.5px;display:flex;gap:5px;align-items:center;cursor:pointer}
-.trow{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:start;padding:11px 13px;margin:0 0 8px;border-radius:12px;
-  background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c,var(--idle));cursor:pointer;transition:border-color .12s,transform .12s}
-.trow:hover{transform:translateX(2px);border-color:#3b4a64;border-left-color:var(--c,var(--idle))}
-.trow .tav{font-size:21px;line-height:1;padding-top:2px}
-.trow .tjob{font-weight:650;font-size:14px}
-.trow .twho{color:var(--muted);font-size:12px;margin-top:1px}
-.trow .tasked{font-size:12.5px;color:#cbd5e1;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.trow .tasked b{color:var(--muted);font-weight:500}
-.trow .tneed{font-size:12.5px;color:#fde68a;margin-top:4px}
-.trow .tnext{font-size:12.5px;color:var(--muted);margin-top:3px}
-.trow .tright{text-align:right;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
-.trow .twhen{color:var(--muted);font-size:12px;white-space:nowrap}
-.trow .tright button{background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:4px 10px;font:inherit;font-size:12px;cursor:pointer}
-.trow .tright button:hover{border-color:var(--honey)}
-.trow.auto{opacity:.72}
-/* the floating "working on" card in the Room */
-.nowcard{position:absolute;left:14px;bottom:14px;z-index:30;width:min(330px,calc(100% - 28px));background:rgba(13,17,25,.86);backdrop-filter:blur(8px);
-  border:1px solid #2a3858;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.45);cursor:auto;font-size:12.5px}
-.nowcard .nh{display:flex;align-items:center;gap:6px;padding:8px 11px;cursor:pointer;font-weight:650}
-.nowcard .nh span{flex:1}
-.nowcard .nh button{background:none;border:0;color:var(--muted);font:inherit;cursor:pointer;padding:0 3px}
-.nowcard .nh button:hover{color:var(--text)}
-.nowcard .ni{display:flex;gap:8px;align-items:center;padding:6px 11px;border-top:1px solid #1e2738;cursor:pointer}
-.nowcard .ni:hover{background:rgba(255,255,255,.04)}
-.nowcard .ni i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--c)}
-.nowcard .ni .nt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.nowcard .ni .nt small{color:var(--muted)}
-.nowcard .ni em{color:var(--muted);font-style:normal;font-size:11.5px}
-.nowcard .nf{padding:6px 11px 8px;border-top:1px solid #1e2738;color:var(--honey);cursor:pointer}
-.nowcard.fold .ni,.nowcard.fold .nf{display:none}
-@media (max-width:640px){.trow{grid-template-columns:auto 1fr}.trow .tright{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center}.nowcard{display:none}}
+/* 📋 Tasks: the same room, one wide card per task you started */
+.wall>.tile.task{grid-column:span 2;grid-row:span 2;align-items:flex-start;justify-content:space-between;text-align:left;padding:10px 13px;gap:4px}
+.tile.task .tw{font-size:11.5px;color:var(--muted);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile.task .tt{font-size:14.5px;font-weight:750;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-shadow:0 0 8px rgba(var(--c)/.45)}
+.tile.task.auto{opacity:.7}
+.rtabs .tcount{color:var(--muted);font-size:13px;align-self:center;margin-right:4px}
+.rtabs .tcount b{color:var(--text)}
+.stage .tk{font-size:15px;font-weight:750;margin:8px 0 4px}
+.stage .asked{font-size:12.5px;color:#cbd5e1;background:rgba(255,255,255,.05);border-radius:9px;padding:7px 9px;margin:0 0 6px;max-height:5.6em;overflow:auto}
+.stage .asked b{display:block;color:var(--muted);font-weight:600;font-size:11.5px;margin-bottom:2px}
 .rtabs{display:flex;gap:6px;justify-content:center;margin:2px 0 10px;flex-wrap:wrap}
 /* the legend: what each tab or pill means, shown on hover (or keyboard focus) */
 [data-tip]{position:relative}
@@ -552,7 +522,7 @@ td.j{max-width:420px}
   <input class="search" id="q" placeholder="Search agents, jobs…  ( / )" autocomplete="off">
   <div class="seg" id="views">
     <button data-v="room" title="3D command room: agents on the walls, the one you pick in the middle (1)">🛸 Room</button>
-    <button data-v="tasks" title="What you started: each task, the agent doing it, and where it stands, even paused ones (7)">📋 Tasks</button>
+    <button data-v="tasks" title="The tasks you started, as cards in the room: what each is about, which agent does it, and where it stands, paused ones too (7)">📋 Tasks</button>
     <button data-v="board" title="Cards by what needs you (2)">▦ Board</button>
     <button data-v="list" title="One row per agent, for hundreds (3)">☰ List</button>
     <button data-v="jobs" title="Agent jobs: scheduled and background jobs, their map, spend, logs and sessions (4)">📊 Jobs</button>
@@ -608,7 +578,6 @@ td.j{max-width:420px}
     <div id="hud"><button id="fit" title="Show everyone (f)">⤢ fit</button><button id="style" title="Comic or realistic look (t)">🎨 comic</button><span>drag to move · scroll to zoom · click an agent to open it in hivey · right-click for details</span></div>
   </section>
   <section id="room"></section>
-  <section id="tasks"></section>
   <section id="board"></section>
   <section id="list"></section>
   <section id="dash"></section>
