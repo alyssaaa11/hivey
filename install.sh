@@ -104,6 +104,9 @@ else
   echo "  git remotes: as they are"
 fi
 
+# Claude Code in this checkout loads a short digest of AGENTS.md (CLAUDE.local.md) instead of all of it.
+tracked bash scripts/claude-code-setup.sh || echo "  could not set up the Claude Code digest (later: bash scripts/claude-code-setup.sh)"
+
 say "build (the first build takes a few minutes)"
 BUILD_LOG="$LOG_DIR/hivey-install-build.log"
 if ! cargo build --release >"$BUILD_LOG" 2>&1; then

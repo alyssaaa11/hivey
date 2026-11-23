@@ -59,6 +59,8 @@ install_and_handoff() {
   else
     "$BIN" skill install --no-migrate | grep -v "up to date" || true
   fi
+  # Claude Code in the checkout: the AGENTS.md digest, its skills and rules, kept current.
+  bash "$ROOT/scripts/claude-code-setup.sh" || echo "  could not refresh the Claude Code digest (bash scripts/claude-code-setup.sh)"
   # Asked once, the first update that has it: nightly agent monitoring (silent without a terminal).
   "$BIN" agent-map schedule offer || true
   local sessions

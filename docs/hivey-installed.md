@@ -137,11 +137,28 @@ connectors, their own) are not hivey's and are never touched.
 | `~/.local/state/hivey/` | which version is installed |
 | `<agent or swarm folder>/<name>-wiki/` | each agent's or swarm's wiki, made when it is created |
 
+## Claude Code in the hivey checkout
+
+herdr's `AGENTS.md` (which `CLAUDE.md` links to) is over 300 lines, mostly herdr's maintainer and
+release process. Claude Code's docs say to keep CLAUDE.md under 200 lines, so `install.sh` and
+`hivey update` run `scripts/claude-code-setup.sh`, which sets up the checkout to load a short
+digest instead. herdr's file stays unchanged. The templates are in `assets/claude-code/`.
+
+| File (in the checkout, all git-ignored) | What |
+|---|---|
+| `CLAUDE.local.md` | the digest of `AGENTS.md` (git-ignored through `.git/info/exclude`); it imports `EXTRA_AGENTS.md` |
+| `.claude/settings.local.json` | `claudeMdExcludes` for `CLAUDE.md` and `AGENTS.md`, added only when the digest is hivey's; other keys kept |
+| `.claude/skills/hivey-agent-detection/` | the agent-detection procedure, loaded only when used |
+| `.claude/rules/hivey-libghostty-vendor.md`, `hivey-herdr-docs.md` | rules loaded only when `vendor/` or the docs trees are touched |
+
+Generated files carry a `hivey: generated` marker. A `CLAUDE.local.md` without it is the
+user's own and is kept, and then `AGENTS.md` keeps loading.
+
 ## Machine-specific additions (never touched by updates)
 
 | File | Read by | For |
 |---|---|---|
-| `EXTRA_AGENTS.md` in the hivey repo (git-ignored, created empty by `install.sh`) | every agent working on hivey, via `AGENTS.md` / `CLAUDE.md` | this machine's own instructions |
+| `EXTRA_AGENTS.md` in the hivey repo (git-ignored, created empty by `install.sh`) | every agent working on hivey, via `AGENTS.md` / `CLAUDE.md` (Claude Code: imported by `CLAUDE.local.md`) | this machine's own instructions |
 | `EXTRA_SKILL.md` in a hivey skill's folder | that skill, via its `SKILL.md` | this machine's own additions to the skill |
 
 hivey updates rewrite `AGENTS.md`, the skills and the commands; put local changes in these
