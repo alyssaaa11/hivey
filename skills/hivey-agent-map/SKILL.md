@@ -211,11 +211,12 @@ each swarm's coordinator get a desk; a swarm's workers and critics stand beside 
   batches of 10, only the desks whose terminal or log changed (`~/.hivey/agent-map/fleet-cache.json`):
   current job, a speech-bubble line, up to 3 achievements, next step, what to answer when it waits
   for you, and keep / compact / clear advice. `--no-llm` (or a failed call) falls back to the recap.
-- **Refreshes** while the page is open (the server's fleet clock; the page polls every 15 s): a live
-  pass every minute and when the page loads (`run --quick`: status, context and terminal are fresh,
-  only desks whose status changed go to the model) and a full pass every 5 minutes (every desk whose
-  terminal changed), or a full pass now with ⟳ / `r`. The page's ⏱ setting picks every minute (that),
-  every 5 min, 15 min or hour (full passes only) or on reload only (no clock: a full pass when the page loads or on ⟳),
+- **Refreshes** while the page is open (the server's fleet clock; the page polls every 5 s): a pass
+  without the model every 10 seconds (`run --quick --no-llm`: status, context, terminals and the task log
+  are fresh, no tokens, each desk keeps its last summary). The model (Haiku) only runs when the page is
+  opened or reloaded and on ⟳ / `r`: a full pass that rewrites the page in about a second and then adds
+  the new summaries of the desks whose terminal changed. The page's ⏱ setting picks every 10 seconds
+  (that; stored as `minute`), every 5 min, 15 min or hour (the same passes, less often) or on reload only (no clock),
   saved in `~/.hivey/agent-map/fleet-settings.json`. The header shows the time of the last update, of
   the last full summary pass and of the next update.
 - **Page** (titled "hivey fleet", with the hivey logo; the ⚙ button holds the 🎵 music, ⏱ updates and 🌌 background settings): Fleet (Three.js r160, MIT, vendored in `scripts/fleet/` with RoomEnvironment, OutlineEffect and the bloom

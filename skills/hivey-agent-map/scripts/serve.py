@@ -40,12 +40,13 @@ trigger them:
                             the background (Opus shortens its CLAUDE.md, then the agent restarts; log in
                             ~/.hivey/agent-map/claude-md-<pane>.log)
 
-While a fleet page is open (it polls /fleet/fleet.json), a live pass runs every minute (status,
-context, screen; only desks whose status changed go to the model) and a full re-summary every 5 minutes.
+While a fleet page is open (it polls /fleet/fleet.json), a pass without the model runs every 10 seconds
+(status, context, screens, the task log; no tokens, each desk keeps its last summary). The model (Haiku) only
+runs when the page is opened or reloaded and on ⟳: a full pass that writes the page first, then the summaries.
 The fleet page's ⏱ setting (POST /hv-fleet-settings {"every": "minute" | "5min" | "15min" | "1h" | "reload"}, saved in
-~/.hivey/agent-map/fleet-settings.json) picks every minute (above), every 5 / 15 minutes or every hour (full passes only)
-or on reload only (no clock). POST /hv-fleet-refresh: {} a full pass now (⟳), {"load": true} when a page
-opens (a quick pass in minute mode, a full one otherwise), {"quick": true} a quick pass.
+~/.hivey/agent-map/fleet-settings.json) picks every 10 seconds ("minute", above), every 5 / 15 minutes or every hour (the same passes, less often)
+or on reload only (no clock). POST /hv-fleet-refresh: {} (⟳) or {"load": true} (a page opens) a full pass with
+the model; {"quick": true} (after an action) a pass without it.
 It stops after 2 hours unused. Python standard library only.
 """
 from __future__ import annotations
@@ -95,7 +96,7 @@ def code_stamp() -> str:
 STAMP = code_stamp()
 VERSION = b"fleet-19-" + STAMP.encode()
 FLEET_EVERY = 300  # seconds between full fleet refreshes (every terminal re-summarized) while its page is open
-FLEET_LIVE = 60  # seconds between live passes (status, context, screen; only changed statuses summarized)
+FLEET_LIVE = 10  # seconds between live passes (status, context, screen, task log; no model, no tokens)
 FLEET_WATCHED = 600  # the page counts as open for this long after its last poll
 FLEET_JSON = REPORTS / "fleet" / "fleet.json"
 PANE = re.compile(r"^[\w-]{1,24}:[\w-]{1,24}$")
@@ -921,12 +922,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                                                                                   dashboards.clean(cur.get("dashboards"))),
                                                     "default_token": bool(dashboards.default_token())}).encode())
             every = fleet_every()
-            # a page load: a quick pass when updating every minute, a full one otherwise; ⟳: always full
-            quick = bool(req.get("quick")) or (bool(req.get("load")) and every == "minute")
+            # a page load or ⟳: a full pass with the model (the page is written first, the summaries follow);
+            # {"quick": true} (after an action such as Approve): a pass without the model
+            quick = bool(req.get("quick"))
             Handler.fleet_polled = time.time()
             if not quick:
                 Handler.fleet_full = time.time()
-            start_fleet_refresh(quick=quick)
+            start_fleet_refresh(llm=not quick, quick=quick)
             return self.answer(200, json.dumps({"ok": True, "started": True, "every": every,
                                                 "space": fleet_settings().get("space"), "track": fleet_settings().get("track"),
                                                 "ships": clean_ships(fleet_settings().get("ships")),
@@ -1019,9 +1021,11 @@ def serve() -> int:
                 return
 
     def fleet_clock() -> None:
-        """While a fleet page is open: a live pass every minute, a full re-summary every 5 minutes."""
+        """While a fleet page is open: a pass without the model (no tokens: status, context, screens, the
+        task log) every 10 seconds ("minute" mode, the default), or every 5 / 15 / 60 minutes as the ⏱
+        setting says. The model only runs when the page is opened or reloaded and on ⟳."""
         while True:
-            time.sleep(10)
+            time.sleep(2)
             every = fleet_every()
             if every == "reload" or time.time() - Handler.fleet_polled > FLEET_WATCHED:
                 continue
@@ -1029,13 +1033,9 @@ def serve() -> int:
                 age = time.time() - FLEET_JSON.stat().st_mtime
             except OSError:
                 age = FLEET_EVERY
-            if time.time() - Handler.fleet_full >= FULL_EVERY.get(every, FLEET_EVERY):
-                Handler.fleet_full = time.time()
-                start_fleet_refresh()
-                time.sleep(30)  # give it time to write before checking the age again
-            elif every == "minute" and age >= FLEET_LIVE:
-                start_fleet_refresh(quick=True)
-                time.sleep(20)
+            if age >= (FLEET_LIVE if every == "minute" else FULL_EVERY.get(every, FLEET_EVERY)):
+                start_fleet_refresh(llm=False, quick=True)
+                time.sleep(3)  # a pass takes about a second
 
     threading.Thread(target=watchdog, daemon=True).start()
     threading.Thread(target=fleet_clock, daemon=True).start()

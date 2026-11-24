@@ -1,5 +1,5 @@
-// hivey fleet: every live agent at a desk. Data: ./fleet.json (fleet.py, refreshed every 5 min by
-// serve.py while this page is open). Three.js draws the fleet; the board and the list are plain HTML.
+// hivey fleet: every live agent at a desk. Data: ./fleet.json (fleet.py, rewritten every 10 s, without
+// the model, by serve.py while this page is open; Haiku summaries on load and ⟳). Three.js draws the fleet; the board and the list are plain HTML.
 // Click an agent: open its terminal in hivey. Right-click (or ⓘ): details. Only working agents move.
 import * as THREE from './three.module.min.js';
 import { RoomEnvironment } from './RoomEnvironment.js';
@@ -227,7 +227,7 @@ function renderHeader() {
   tickSub();
 }
 let every = 'minute';  // the refresh setting, kept by the fleet server (shared by every open page)
-const EVERY_S = { minute: 60, '5min': 300, '15min': 900, '1h': 3600 };
+const EVERY_S = { minute: 10, '5min': 300, '15min': 900, '1h': 3600 };  // minute: every 10 s now (no model), id kept
 function tickSub() {
   if (!data) return;
   const next = Date.parse(data.generated) / 1000 + (EVERY_S[every] || 0) - Date.now() / 1000;
@@ -1832,17 +1832,21 @@ async function poll() {
     }
   } catch (e) { console.error('hivey fleet:', e); $('#sub').textContent = 'cannot read fleet.json: is the fleet server running? (hivey menu → agent fleet)'; }
 }
+// ⟳ (or r), like opening the page: the page is rewritten in about a second (status, screens, context, task log),
+// then the model's (Haiku) summaries of the agents whose terminal changed follow. The clock never uses the model.
 async function refreshNow() {
   if (refreshing) return;
   refreshing = Date.now();
+  const started = refreshing, wait = 60000;
   $('#refresh').innerHTML = '<span class="spin">⟳</span>';
   tickSub();
   try { await fetch('/hv-fleet-refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
-  catch (e) { toast('The fleet server is not answering'); refreshing = false; $('#refresh').innerHTML = '⟳'; }
-  setTimeout(() => { if (refreshing) { refreshing = false; $('#refresh').innerHTML = '⟳'; } }, 180000);
+  catch (e) { toast('The fleet server is not answering'); refreshing = false; $('#refresh').innerHTML = '⟳'; return; }
+  const again = () => { if (refreshing !== started) return; if (Date.now() - started > wait) { refreshing = false; $('#refresh').innerHTML = '⟳'; return; } poll().then(() => setTimeout(again, 1500)); };
+  setTimeout(again, 1500);
 }
 document.querySelectorAll('#views button').forEach(b => b.onclick = () => { ui.view = b.dataset.v; save(); renderAll(); });
-$('#refresh').onclick = refreshNow;
+$('#refresh').onclick = () => refreshNow();
 // ⚙ settings panel (music, updates, background): opens under the gear, closes on a click outside or Escape
 const gear = $('#gear'), panel = $('#settings');
 const showSettings = on => { panel.hidden = !on; gear.classList.toggle('on', on); };
@@ -1924,11 +1928,11 @@ addEventListener('keydown', e => {
   else if (e.key === 't') toggleStyle();
   else if (e.key === 'm') setMusic(!ui.music);
 });
-setInterval(poll, 15000);
+setInterval(poll, 5000);  // fleet.json is rewritten every 10 s
 setInterval(tickSub, 1000);
 poll();
 // opening or reloading the page reads every terminal again right away; the server answers with the
-// refresh setting (every minute: a quick pass, the model only for changed statuses; otherwise a full pass)
+// refresh setting; the page load itself is a full pass with the model (the clock's passes never use it)
 const post = (path, body) => fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
 function showEvery(m) { if (EVERY_S[m] || m === 'reload') { every = m; $('#every').value = m; tickSub(); } }
 // 🌌 background: a new scene on every load (random) or always the one you pick
@@ -1963,5 +1967,5 @@ post('/hv-fleet-refresh', { load: true }).then(j => {
   setTimeout(poll, 2500); setTimeout(poll, 8000);
 }).catch(() => {});
 $('#every').onchange = e => post('/hv-fleet-settings', { every: e.target.value })
-  .then(j => { showEvery(j.every); toast({ minute: 'Updates every minute (summaries only for agents that changed)', '5min': 'Updates every 5 minutes', '15min': 'Updates every 15 minutes', '1h': 'Updates every hour', reload: 'Updates only when you reload or press ⟳' }[j.every]); })
+  .then(j => { showEvery(j.every); toast({ minute: 'Updates every 10 seconds, no tokens (Haiku summaries when you reload or press ⟳)', '5min': 'Updates every 5 minutes', '15min': 'Updates every 15 minutes', '1h': 'Updates every hour', reload: 'Updates only when you reload or press ⟳' }[j.every]); })
   .catch(() => toast('The fleet server is not answering'));

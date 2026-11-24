@@ -13,13 +13,14 @@ For each desk it reads two things:
 Haiku (`claude -p --model haiku`, no tools, no session saved) turns them into a short summary per
 desk: the current job, a speech-bubble line, what it achieved, what it waits for and whether to keep,
 /compact or /clear the conversation. Only desks whose terminal or log changed since the last run are
-sent again, in batches, so 100 agents cost a few calls per refresh. Without a model (--no-llm, or the
-call fails) the summary comes from the recap and the last prompt.
+sent again, in batches, so 100 agents cost a few calls per refresh. Without a model (--no-llm: the
+10-second clock passes) each desk keeps its last summary; a new desk, or a failed call, gets one from
+the recap and the last prompt.
 
 Output: ~/.hivey/agent-map/reports/fleet/fleet.json, read by fleet.html (Three.js, vendored), served
 by serve.py, which reruns this every 5 minutes while the page is open. Python standard library only.
 
-  fleet.py run [--no-llm] [--quick] [--model haiku]    one refresh (--quick: the 1-minute live pass)
+  fleet.py run [--no-llm] [--quick] [--model haiku]    one refresh (--quick --no-llm: the 10-second live pass)
   fleet.py open                               start the server, refresh if stale, open the page
 """
 from __future__ import annotations
@@ -782,6 +783,9 @@ def run(model: str = "haiku", use_llm: bool = True, quick: bool = False) -> int:
         os.write(fd, str(os.getpid()).encode())
         os.close(fd)
     except FileExistsError:
+        if use_llm and not quick and time.time() - LOCK.stat().st_mtime < 15:  # a clock pass: done in a second
+            time.sleep(1)
+            return run(model, use_llm, quick)
         if time.time() - LOCK.stat().st_mtime < 600:
             print("fleet: a refresh is already running")
             return 0
@@ -794,7 +798,7 @@ def run(model: str = "haiku", use_llm: bool = True, quick: bool = False) -> int:
 
 
 def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
-    """quick: the 1-minute live pass. Status, context and screen are fresh; a desk whose terminal moved
+    """quick: the live pass (every 10 s, without the model). Status, context and screen are fresh; a desk whose terminal moved
     but whose status did not keeps its last summary (re-summarized at the next full pass), and only
     desks whose status changed (blocked -> working, working -> done...) are sent to the model now."""
     start = time.time()
@@ -819,6 +823,10 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
                 and (hit.get("you_at") == d.get("you_at") or not use_llm):  # a new prompt of yours: a new task title
             d["summary"] = hit["summary"]
             d["summarized_at"] = hit.get("at")
+        elif not use_llm and hit and hit.get("summary"):  # no model this pass (the clock, or the write before the model's): keep its last summary
+            d["summary"] = hit["summary"]
+            d["summarized_at"] = hit.get("at")
+            stale[d["id"]] = hit
         elif quick and hit and hit.get("status", d["status"]) == d["status"] and hit.get("by") != "fallback" \
                 and hit.get("you_at") == d.get("you_at"):
             d["summary"] = hit["summary"]
@@ -827,6 +835,9 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
         else:
             todo.append(d)
     if todo and use_llm:
+        # the page gets fresh status, screens, context and tasks now (under a second, no model); the
+        # model's summaries of the changed desks follow in a second write when its calls return
+        _run(hv, model, False, quick)
         token = claude_token()
         batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
         with cf.ThreadPoolExecutor(max_workers=4) as pool:
