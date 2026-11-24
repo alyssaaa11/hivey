@@ -4,6 +4,8 @@
 //!   default; `hivey safety off` unregisters them (the files stay). The choice lives in
 //!   `~/.hivey/safety.json` and updates keep it.
 //! - `hivey-agent-stop.py` (Stop): speaks each agent's `DONE:` line with `hivey voice say`.
+//! - `hivey-task-log.py` (UserPromptSubmit, Stop): writes each prompt and turn end to the task
+//!   log (`~/.hivey/tasks.jsonl`, see `crate::swarm::tasks`) for the agent fleet's Tasks board.
 //! - `hivey-swarm-guard.py` (PreToolUse): keeps swarm workers out of each other's folders, so
 //!   they don't anchor on their teammates' plans. Always registered; it does nothing outside a
 //!   swarm worker's folder, and a swarm turns it off with `"isolation": false` in its manifest.
@@ -53,6 +55,10 @@ const HOOKS: &[(&str, &str)] = &[
     (
         "hivey-wiki-guard.py",
         include_str!("../../../hooks/hivey-wiki-guard.py"),
+    ),
+    (
+        "hivey-task-log.py",
+        include_str!("../../../hooks/hivey-task-log.py"),
     ),
 ];
 
@@ -272,7 +278,8 @@ fn register(content: &str, hooks_dir: &Path, safety_on: bool) -> io::Result<Stri
     }
     add("PreToolUse", Some(GUARD_TOOLS), &["hivey-swarm-guard.py"]);
     add("PreToolUse", Some(WIKI_TOOLS), &["hivey-wiki-guard.py"]);
-    add("Stop", None, &["hivey-agent-stop.py"]);
+    add("UserPromptSubmit", None, &["hivey-task-log.py"]);
+    add("Stop", None, &["hivey-agent-stop.py", "hivey-task-log.py"]);
     let after = root.to_serde_value();
     if after == before && !content.trim().is_empty() {
         return Ok(content.to_string());
@@ -350,7 +357,14 @@ mod tests {
         );
         assert_eq!(
             commands(&settings, "Stop"),
-            vec![r#"python3 "/h/.claude/hooks/hivey-agent-stop.py""#.to_string()]
+            vec![
+                r#"python3 "/h/.claude/hooks/hivey-agent-stop.py""#.to_string(),
+                r#"python3 "/h/.claude/hooks/hivey-task-log.py""#.to_string()
+            ]
+        );
+        assert_eq!(
+            commands(&settings, "UserPromptSubmit"),
+            vec![r#"python3 "/h/.claude/hooks/hivey-task-log.py""#.to_string()]
         );
         assert_eq!(settings["model"], "sonnet");
         assert!(commands(&settings, "SessionStart")[0].contains("herdr-agent-state.sh"));
@@ -375,7 +389,8 @@ mod tests {
                 r#"python3 "/h/.claude/hooks/hivey-wiki-guard.py""#.to_string()
             ]
         );
-        assert_eq!(commands(&off, "Stop").len(), 1);
+        assert_eq!(commands(&off, "Stop").len(), 2);
+        assert_eq!(commands(&off, "UserPromptSubmit").len(), 1);
     }
 
     #[test]

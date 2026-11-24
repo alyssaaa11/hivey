@@ -25,6 +25,7 @@ mod session;
 mod skill;
 mod skills;
 mod slack;
+mod task;
 mod voice;
 pub(super) use agent_map::run as run_agent_map_command;
 pub(super) use agent_settings::{run_agent_settings, run_hibernate};
@@ -40,6 +41,7 @@ pub(super) use safety::run as run_safety_command;
 pub(super) use skill::run_skill_command;
 pub(super) use skills::run as run_skills_command;
 pub(super) use slack::run as run_slack_command;
+pub(super) use task::run as run_task_command;
 pub(super) use voice::run as run_voice_command;
 
 const SWARM_HELP: &str = "\

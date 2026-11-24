@@ -30,6 +30,8 @@ that genuinely don't apply (e.g. the wiki when the user said no); don't leave pl
 ## House rules
 - End every final response with `DONE: <3 words max>` on its own line (e.g. `DONE: wrote
   market report`).
+- Master only: when a user request starts new work, first run `hivey task start "<2-6 word
+  title>"`; when it is finished, `hivey task done "<one-line result>"` (the fleet's Tasks board).
 - **Reports stay in files:** never print a report or its contents in your reply or the terminal.
   Write it to its file, then reply (and message the master) with only its path, at most 3 one-line
   highlights and `DONE:`. Every printed word is paid for and stays in your context.

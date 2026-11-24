@@ -5,6 +5,10 @@ Always end your final response with `DONE: <3 words max>` on its own line (e.g. 
 stop hooks`). hivey's Stop hook reads it as the run's summary and speaks it for masters and solo
 agents; swarm workers stay silent.
 
+The master only (workers and critics skip this): when a request from the user starts new work (not
+a reply like "yes" or "push it"), first run `hivey task start "<2-6 word title>"`, and when that work
+is finished run `hivey task done "<one-line result>"`. The agent fleet's Tasks board shows these.
+
 Reports stay in files: never print a report or its contents in your reply or the terminal. Write it
 to its file and reply with only its path, at most 3 one-line highlights and `DONE:`. Every printed word
 is paid for and stays in your context, re-read on every later turn.

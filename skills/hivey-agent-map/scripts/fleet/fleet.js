@@ -324,11 +324,13 @@ function myTasks(days = taskDays, auto = taskAuto) {
   }).filter(Boolean).sort((x, y) => order[x.stage] - order[y.stage] || Date.parse(y.at) - Date.parse(x.at));
 }
 const saidText = t => { const x = String(t || '').replace(/\[Image #\d+\]\s*/g, '🖼 ').replace(/\s+/g, ' ').trim(); return /^(🖼\s*)+$/.test(x) ? '🖼 an image' : x; };
-// the task in a few words: the title the model wrote from your requests, else its current job (never your raw words)
-const taskTitle = t => (t.mine && t.a.summary?.task) || t.a.summary?.job || t.a.name;
+// the task in a few words: the title the agent wrote in the task log (`hivey task start`), else the one the model
+// wrote from your requests, else its current job (never your raw words)
+const taskTitle = t => t.a.task_log?.title || (t.mine && t.a.summary?.task) || t.a.summary?.job || t.a.name;
+const taskDone = t => t?.a?.task_log?.done_at ? `<div class="asked"><b>✅ Finished · ${esc(taskWhen(t.a.task_log.done_at))}</b>${esc(t.a.task_log.done || '')}</div>` : '';
 function taskTile(t) {
   const a = t.a;
-  return `<button class="tile task ${tone(a)}${t.mine ? '' : ' auto'}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}${t.mine ? ' · you asked: ' + esc(saidText(a.you_said)) : ' · ran on its own'}">
+  return `<button class="tile task ${tone(a)}${t.mine ? '' : ' auto'}${roomPick === a.id ? ' picked' : ''}" data-pick="${esc(a.id)}" title="${esc(a.name)}${t.mine ? ' · you asked: ' + esc(saidText(a.you_said)) : ' · ran on its own'}${a.task_log?.title ? ' · title written by the agent' : ''}">
     <span class="tw">${esc(a.emoji)} ${esc(a.name)}</span><span class="tt">${esc(taskTitle(t))}</span>
     <span class="sl"><i></i>${toneLabel(a)} · ${esc(taskWhen(t.at))}</span></button>`;
 }
@@ -461,7 +463,7 @@ function roomStage(a, task = null) {
       <div class="bigav" data-open title="Open its terminal in hivey" style="--hue1:hsl(${h} 70% 62%);--hue2:hsl(${h} 55% 32%)">${esc(a.emoji)}</div>
       <div class="nm">${esc(a.name)}</div>
       <div class="sl"><i></i>${toneLabel(a)} · ${esc(a.cli)}${a.model ? ' · ' + esc(model(a.model)) : ''} · ${ago(a.last_activity)}</div>
-      ${task?.a ? `<div class="tk">📋 ${esc(taskTitle(task))}</div>${task.mine ? `<div class="asked"><b>You asked · ${esc(taskWhen(task.at))}</b>${esc(saidText(a.you_said))}</div>` : ''}` : ''}
+      ${task?.a ? `<div class="tk">📋 ${esc(taskTitle(task))}</div>${task.mine ? `<div class="asked"><b>You asked · ${esc(taskWhen(task.at))}</b>${esc(saidText(a.you_said))}</div>` : ''}${taskDone(task)}` : ''}
       <div class="say">${esc(s.bubble || '…')}</div>
       ${s.needs_you ? `<div class="need">✋ ${esc(s.needs_you)}</div>` : ''}
       ${s.job ? `<div class="job">📌 ${esc(s.job)}</div>` : ''}

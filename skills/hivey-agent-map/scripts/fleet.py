@@ -47,6 +47,7 @@ HOME = Path.home()
 STATE = HOME / ".hivey" / "agent-map"
 OUT = STATE / "reports" / "fleet"
 CACHE = STATE / "fleet-cache.json"
+TASK_LOG = HOME / ".hivey" / "tasks.jsonl"  # `hivey task start/done` and the hivey-task-log.py hook
 LOCK = STATE / "fleet.lock"
 RUN_DIR = STATE / "fleet-run"  # neutral cwd for the model calls (no CLAUDE.md, no project)
 
@@ -677,6 +678,60 @@ def outside_desks(known: set) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- the task log
+
+def task_log(limit_bytes: int = 600_000) -> list[dict]:
+    """The newest lines of ~/.hivey/tasks.jsonl, oldest first: agents' `hivey task start "<title>"` and
+    `hivey task done` lines, and the hook's `prompt` and `stop` lines."""
+    try:
+        size = TASK_LOG.stat().st_size
+        with open(TASK_LOG, "rb") as fh:
+            fh.seek(max(0, size - limit_bytes))
+            lines = fh.read().decode("utf-8", "replace").splitlines()[1 if size > limit_bytes else 0:]
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get("ts") and e.get("event"):
+            out.append(e)
+    return out
+
+
+def task_of(desk: dict, entries: list[dict]) -> dict:
+    """The task this desk's agent named in the log, if it still stands: {title, started, done_at, done}.
+    Lines match by Claude session; lines without one (Codex, Grok, agy) by pane within the same hivey
+    session. A title stops standing once the agent said done and you then asked something new: that new
+    work has no title yet, so the model's guess is used until the agent names it."""
+    sess, pane = desk.get("session"), desk.get("pane")
+    hvs = "" if desk.get("hv_session") in (None, "default") else desk["hv_session"]
+
+    def mine(e: dict) -> bool:
+        if e.get("session"):
+            return bool(sess) and e["session"] == sess
+        return bool(pane) and e.get("pane") == pane and (e.get("hv_session") or "") in ("", hvs)
+
+    title = done = None
+    you_after_done = False
+    for e in entries:
+        if not mine(e):
+            continue
+        ev = e["event"]
+        if ev == "title":
+            title, done, you_after_done = e, None, False
+        elif ev == "done" and title:
+            done, you_after_done = e, False
+        elif ev == "prompt" and done and e.get("from") == "you":
+            you_after_done = True
+    if not title or you_after_done:
+        return {}
+    return {"title": title.get("title", ""), "started": title["ts"],
+            "done_at": done["ts"] if done else None, "done": (done or {}).get("note", "")}
+
+
 def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
     """Every agent of every running hivey session (one spaceship per session on the page)."""
     import automode
@@ -687,6 +742,7 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
         screens = list(pool.map(lambda d: "" if d.get("asleep") or d.get("outside") else screen(hv, d["pane"], d.get("sock")), people))
     vaults = obsidian_vaults()
     jobs = job_files()
+    tasks = task_log()
     for d, scr in zip(people, screens):
         d["screen"] = scr
         d["jobs"] = jobs_for(d.get("folder"), jobs)
@@ -709,6 +765,7 @@ def collect(hv: str, sessions: list[dict] | None = None) -> list[dict]:
         d["recap"] = log.get("recap", "")
         d["compacted_at"] = log.get("compacted_at")
         d["auto"] = automode.summary(d["id"])
+        d["task_log"] = task_of(d, tasks)
     return people
 
 
@@ -791,6 +848,8 @@ def _run(hv: str, model: str, use_llm: bool, quick: bool = False) -> int:
             d["summarized_at"] = now_iso()
         if not d["summary"].get("task") and d.get("you_at"):  # keep the last title until the model writes a new one
             d["summary"]["task"] = ((cache.get(d["id"]) or {}).get("summary") or {}).get("task", "")
+        if d["task_log"].get("title"):  # the agent named its task itself: that beats the model's guess
+            d["summary"] = {**d["summary"], "task": d["task_log"]["title"], "task_by": "agent"}
         s = d["summary"]
         if d["context_pct"] >= 85 and s.get("advice") == "keep":  # a model can be too gentle
             s["advice"], s["advice_why"] = "compact", f"context at {d['context_pct']}%"

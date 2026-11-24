@@ -144,6 +144,7 @@ pub fn maybe_run(args: &[String]) -> std::io::Result<CommandOutcome> {
         "claude-md" => swarm::run_claude_md_command(&args[2..])?, // hivey
         "skills" => swarm::run_skills_command(&args[2..])?, // hivey
         "voice" => swarm::run_voice_command(&args[2..])?, // hivey
+        "task" => swarm::run_task_command(&args[2..])?,   // hivey
         "terminal" => run_terminal_command(&args[2..])?,
         "pane" => pane::run_pane_command(&args[2..])?,
         "plugin" => plugin::run_plugin_command(&args[2..])?,

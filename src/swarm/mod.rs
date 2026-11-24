@@ -20,6 +20,7 @@ pub(crate) mod safety;
 pub(crate) mod schedule;
 pub(crate) mod skills_library;
 pub(crate) mod slack_pane;
+pub(crate) mod tasks; // hivey: the shared task log (`hivey task`)
 pub(crate) mod voice;
 
 pub(crate) use engine::{handle_request, start};
