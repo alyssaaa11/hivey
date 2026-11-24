@@ -251,6 +251,14 @@ def asleep_desks(hs: dict) -> list[dict]:
 
 WIKI_SKIP = {"raw", ".obsidian", ".trash", ".git", "node_modules", "assets", "attachments", "templates", "_templates"}
 WIKI_META = {"log.md", "index.md", "claude.md", "agents.md", "ingest-ledger.md", "readme.md"}
+# raw/ holds sources, but also the final reports of research runs (the research skill's merged.md):
+# those count as reports, the drafts and inputs next to them don't.
+RAW_REPORT = re.compile(r"(^merged\.md$|report)", re.I)
+RAW_DRAFT = {"claude-report.md"}
+
+
+def is_raw_report(name: str) -> bool:
+    return bool(RAW_REPORT.search(name)) and name.lower() not in RAW_DRAFT
 
 
 def obsidian_vaults() -> list[str]:
@@ -282,29 +290,38 @@ def wiki_info(folder: str | None, vaults: list[str], space: str = "") -> dict | 
     root = wiki_dir(folder, space)
     if not root:
         return None
-    pages, seen = [], 0
+    pages, reports, seen = [], [], 0
+    raw = root / "raw"
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d.lower() not in WIKI_SKIP and not d.startswith(".")]
+        in_raw = dirpath == str(raw) or dirpath.startswith(str(raw) + os.sep)
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")
+                       and (d.lower() not in WIKI_SKIP or (d == "raw" and dirpath == str(root)))]
         for f in filenames:
             if not f.endswith(".md") or f.lower() in WIKI_META or f.endswith(".excalidraw.md"):
+                continue
+            if in_raw and not is_raw_report(f):
                 continue
             seen += 1
             p = os.path.join(dirpath, f)
             try:
-                pages.append((os.path.getmtime(p), p))
+                (reports if in_raw else pages).append((os.path.getmtime(p), p))
             except OSError:
                 pass
         if seen > 20000:
             break
     recent = []
-    for mtime, p in sorted(pages, reverse=True)[:8]:
+    for mtime, p in sorted(pages + reports, reverse=True)[:8]:
         title = Path(p).stem.replace("-", " ")
+        if title.lower() == "merged":
+            title = Path(p).parent.name.replace("-", " ")
         try:
             with open(p, encoding="utf-8", errors="replace") as fh:
-                for line in fh.read(4000).splitlines():
-                    if line.startswith("# "):
-                        title = line[2:].strip()
-                        break
+                head = fh.read(4000)
+            h1 = re.search(r"^# (.+)$", head, re.M)
+            fm = re.match(r"---\n(.*?)\n---", head, re.S)
+            tm = fm and re.search(r"^title:\s*[\"']?(.+?)[\"']?\s*$", fm.group(1), re.M)
+            if h1 or tm:
+                title = (h1 or tm).group(1).strip()
         except OSError:
             pass
         rel = os.path.relpath(p, root)

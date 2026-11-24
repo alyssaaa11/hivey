@@ -806,7 +806,7 @@ function openDrawer(a) {
       ${a.wiki ? `<dt>📚 Wiki</dt><dd class="wiki">
         <div class="wiki-head"><a href="#" data-wiki="" title="Open its index in Obsidian">${esc(a.wiki.short)}</a> <span class="meta">${a.wiki.pages} pages${a.wiki.vault ? '' : ' · not an Obsidian vault yet'}</span></div>
         ${(a.wiki.recent || []).length ? `<div class="meta wiki-sub">Newest pages and reports</div>` + a.wiki.recent.map(r => `<a href="#" class="wiki-page" data-wiki="${esc(r.path)}" title="${esc(r.path)}: open in Obsidian">
-          <span class="wt">${/report|daily|brief/i.test(r.path) ? '📊' : '📄'} ${esc(r.title)}</span><span class="meta">${esc(r.folder || '')}${r.folder ? ' · ' : ''}${ago(r.at)}</span></a>`).join('') : ''}
+          <span class="wt">${/report|daily|brief|merged\.md$/i.test(r.path) ? '📊' : '📄'} ${esc(r.title)}</span><span class="meta">${esc(r.folder || '')}${r.folder ? ' · ' : ''}${ago(r.at)}</span></a>`).join('') : ''}
         ${(a.wiki.log || []).length ? `<div class="meta wiki-sub">Latest log entries</div>` + a.wiki.log.map(l => `<div class="wiki-log"><span class="meta">${esc(l.date)}</span> ${esc(l.what)}</div>`).join('') : ''}
       </dd>` : ''}
       ${a.team?.length ? `<dt>Swarm team</dt><dd>${a.team.map(m => `${st(m.status).emoji} ${esc(m.name)} <span class="meta">${esc(m.role)}</span>`).join('<br>')}</dd>` : ''}
