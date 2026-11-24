@@ -92,8 +92,10 @@ add <name> …` command or run it with their yes.
 Your channel is `#<name>`. hivey's Slack relay links it to your inbox:
 - The user's messages in the channel arrive as messages from `human`. Answer them with
   `hivey msg send human "…"`; the relay posts that in the channel.
-- After every run, send a 2–4 line summary plus the path of what you produced the same way.
-- When you're blocked and need the user, say so there too.
+- Don't post a summary after every run: your pane, Status and the agent fleet page already show
+  it, and each post costs tokens. Message the user only when they wrote to you from Slack, when
+  you're blocked and need them, or when they asked for a specific report (keep exactly the reports
+  they asked for, nothing more).
 - Keep posts short; never put secrets or large file contents in them.
 
 ## Where you work
@@ -142,7 +144,7 @@ run; it has the full method.">
 4. **Check**: run `<check command>` yourself. It must exit 0.
 5. **Commit** this folder only, never push: `git add -A . && git commit -m "<name>: <what
    changed>"`. The git log is part of your memory.
-6. Update Status (and memory, Slack), then finish. The gate clears the run flag when the check
+6. Update Status (and memory), then finish. The gate clears the run flag when the check
    passes; without a gate, `rm .agent/state/run_active` yourself.
 <For builder agents, add: "Work from `tasks.json`: pick the first task with "passes": false, do
 only that task, verify it end to end, then set "passes": true. Never delete or reword tasks;
@@ -186,7 +188,6 @@ does, its skills and tools, and whether it is busy or idle.
 - [ ] Every deliverable's Check passes
 - [ ] Fresh review APPROVED <or, with critics 0: self-review done against The ask>
 - [ ] <memory: wiki ingested>
-- [ ] <if Slack: run summary sent>
 - [ ] Committed, not pushed
 - [ ] Status updated
 <Ongoing agents: define done per run, since the role itself doesn't end.>
