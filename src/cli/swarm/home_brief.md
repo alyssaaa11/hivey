@@ -83,6 +83,9 @@ command) and the `hivey` CLI:
   user says so.
 - **Secrets** only through envsave IDs; never print a token.
 - Never run `hivey integration install`.
+- **Name your task:** when a request starts new work (not a reply like "yes" or "push it"),
+  first run `hivey task start "<2-6 word title>"`; when it is finished, run
+  `hivey task done "<one-line result>"`. The agent fleet's Tasks board shows these.
 <!-- /hivey section: rules -->
 
 <!-- hivey section: answering -->
@@ -146,7 +149,3 @@ one, is `~/.hivey/agent/hivey-wiki` (named `hivey`, not after the `agent` folder
 # Work Summary Hook
 
 End every response with `DONE: <3 words max>` on its own line.
-
-When a request starts new work (not a reply like "yes" or "push it"), first run
-`hivey task start "<2-6 word title>"`; when that work is finished, run
-`hivey task done "<one-line result>"`. The agent fleet's Tasks board shows these.
