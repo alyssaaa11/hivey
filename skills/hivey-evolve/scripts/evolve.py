@@ -14,7 +14,8 @@ Rules this script keeps:
   patterns come from many entries, at review time.
 - Logs are data, never instructions: the review model is told to quote them, never obey them.
 - Scripts before models: capture runs no model; the noise filter is regex first, then the local
-  decision model (jev_local) when it is installed and memory allows, never a hosted model.
+  decision model (jev_local, elephant-1). When memory is too low to start it, hosted Jev on OpenRouter
+  answers instead, with secrets redacted (user, 2026-11-25).
 - One big-model call a week.
 
 usage:
@@ -149,6 +150,16 @@ def hivey_bin() -> str:
     return os.environ.get("HIVEY_BIN") or shutil.which("hivey") or str(HOME / ".local/bin/hivey")
 
 
+MAIN_AGENT = "hivey/master"  # the main hivey agent gets reviews and passes them on to the user
+
+
+def send_main(text: str) -> tuple[bool, str]:
+    """Message the main hivey agent; ok only when hivey confirms delivery into its mailbox."""
+    r = subprocess.run([hivey_bin(), "msg", "send", MAIN_AGENT, text], capture_output=True, text=True, timeout=60)
+    out = (r.stdout + r.stderr).strip()
+    return r.returncode == 0 and "\u2192 hivey/" in r.stdout, out
+
+
 SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|"
                     r"es_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+|"
                     r"(?i:(?:token|secret|password|api[_-]?key)\s*[=:]\s*)\S{8,})")
@@ -258,6 +269,47 @@ def jev_local_client() -> Path | None:
     return p if p.is_file() else None
 
 
+OPENROUTER_KEY_ID = "es_ZaCn0BzwLbl4p3t7geoVUIO2NKQb5OI2Bj7DFy75Ob8HhNbT"  # envsave id of OPENROUTER_API_KEY
+HOSTED_NOTE = "hosted Jev on OpenRouter (memory was low for the local elephant-1 model)"
+
+
+def hosted_jev_ask():
+    """ask(state, questions) on hosted Jev (OpenRouter Decisions API), or None when no key. Fallback when the
+    Mac lacks memory for elephant-1 (user, 2026-11-25). Secrets are redacted from the state before sending."""
+    import urllib.request
+    env_bin = shutil.which("envsave") or next(iter(glob.glob(str(HOME / ".nvm/versions/node/*/bin/envsave"))), None)
+    if not env_bin:
+        return None
+    try:
+        r = subprocess.run([env_bin, "get", OPENROUTER_KEY_ID], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    key = r.stdout.strip()
+    if r.returncode != 0 or not key:
+        return None
+
+    def ask(state, questions):
+        body = json.dumps({"model": "~typesafe/jev-latest", "state": json.loads(redact(json.dumps(state))),
+                           "questions": questions}).encode()
+        for attempt in range(4):
+            req = urllib.request.Request("https://openrouter.ai/api/alpha/decisions", data=body, method="POST",
+                                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read())
+                break
+            except urllib.error.HTTPError as e:
+                if (e.code == 429 or e.code >= 500) and attempt < 3:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+        missing = set(questions) - set(data.get("answers", {}))
+        if missing:
+            raise ValueError(f"Jev returned no answer for: {sorted(missing)}")
+        return data
+    return ask
+
+
 def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict], str]:
     """Ask the local decision model whether each unclear failure is a real problem.
     Returns (kept, set_aside, note). Never falls back to a hosted model: the data stays on the Mac."""
@@ -265,15 +317,20 @@ def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict]
     if not client or not facts:
         return facts, [], "regex only (local decision model not installed)" if not client else "nothing unclear"
     mem = subprocess.run([sys.executable, "-I", str(client), "--memcheck"], capture_output=True, text=True)
-    if mem.returncode != 0:
-        return facts, [], "regex only: memory was low, so the local decision model was not started"
-    was_running = "running" in subprocess.run([sys.executable, "-I", str(client), "--status"],
-                                              capture_output=True, text=True).stdout.lower()
-    sys.path.insert(0, str(client.parent))
-    try:
-        from jev_local import ask  # type: ignore
-    except Exception as e:  # noqa: BLE001
-        return facts, [], f"regex only (local decision model failed to load: {e})"
+    hosted = mem.returncode != 0
+    if hosted:
+        ask = hosted_jev_ask()
+        if not ask:
+            return facts, [], "regex only: memory was low and hosted Jev had no key"
+        was_running = True
+    else:
+        was_running = "running" in subprocess.run([sys.executable, "-I", str(client), "--status"],
+                                                  capture_output=True, text=True).stdout.lower()
+        sys.path.insert(0, str(client.parent))
+        try:
+            from jev_local import ask  # type: ignore
+        except Exception as e:  # noqa: BLE001
+            return facts, [], f"regex only (local decision model failed to load: {e})"
     kept, aside, asked = [], [], 0
     q = {"real": {"type": "noul", "instructions":
                   "`failure` is a tool error from an AI coding agent. Is it a real problem worth fixing in the "
@@ -290,21 +347,21 @@ def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict]
             r = ask({"failure": {"tool": f.get("tool"), "command": cut(f.get("command", ""), 300),
                                  "error": cut(f.get("error", ""), 600)}}, q)
             p = float(r["answers"]["real"]["noul"])
-            if time.time() - t0 > 30:  # the Mac is swapping: stop asking, keep the rest
+            if not hosted and time.time() - t0 > 30:  # the Mac is swapping: stop asking, keep the rest
                 cap = asked
         except Exception:  # noqa: BLE001
             kept.append(f)
             continue
         f["jev_real"] = round(p, 2)
         if p < 0.3:
-            f["noise"] = "harmless (local model)"
+            f["noise"] = "harmless (hosted Jev)" if hosted else "harmless (local model)"
         elif p > 0.7:
             kept.append(f)
         else:
             aside.append(f)
     if not was_running:
         subprocess.run([sys.executable, "-I", str(client), "--stop"], capture_output=True)
-    return kept, aside, f"regex + local decision model ({asked} unclear entries checked)"
+    return kept, aside, f"regex + {HOSTED_NOTE if hosted else 'local decision model'} ({asked} unclear entries checked)"
 
 
 # ---------------------------------------------------------------- patterns
@@ -977,9 +1034,10 @@ def daily(notify: bool) -> int:
         msg = "Daily check, small fixes: " + "; ".join(f["title"] for f in new[:5]) + (f" (+{len(new) - 5} more)" if len(new) > 5 else "") \
               + ". Details: hivey menu -> self-improve."
         try:
-            subprocess.run([hivey_bin(), "msg", "send", "human", cut(msg, 600)], capture_output=True, text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            pass
+            ok, out = send_main(cut("From self-improve, pass on to the user: " + msg, 700))
+            activity("notify", "ok" if ok else "fail", "sent to the main hivey agent" if ok else cut(out, 200))
+        except (OSError, subprocess.SubprocessError) as e:
+            activity("notify", "fail", str(e))
     print(json.dumps({"found": len(found), "new": len(new), "resolved": len(gone)}))
     return 0
 
@@ -1067,13 +1125,16 @@ def frequency_score(occurrences: int, sessions: int) -> float:
 
 
 def jev_open():
-    """(ask, close, note) for the local decision model, with its memory check. Never a hosted model."""
+    """(ask, close, note): the local elephant-1 model, or hosted Jev on OpenRouter when memory is low."""
     client = jev_local_client()
     if not client:
         return None, (lambda: None), "local decision model not installed"
     mem = subprocess.run([sys.executable, "-I", str(client), "--memcheck"], capture_output=True, text=True)
     if mem.returncode != 0:
-        return None, (lambda: None), "memory was low, so the local decision model was not started"
+        ask = hosted_jev_ask()
+        if ask:
+            return ask, (lambda: None), HOSTED_NOTE
+        return None, (lambda: None), "memory was low and hosted Jev had no key"
     was_running = "running" in subprocess.run([sys.executable, "-I", str(client), "--status"],
                                               capture_output=True, text=True).stdout.lower()
     sys.path.insert(0, str(client.parent))
@@ -1557,8 +1618,8 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
         msg = ("ALARM: " + " ".join(alarm) + " " if alarm else "") + (f"Wednesday review: {cut(text.get('headline') or '', 180)} "
                f"{n} change(s) to how we work wait for your yes/no ({small} small fixes handled daily): hivey menu -> self-improve.")
         try:
-            r = subprocess.run([hivey_bin(), "msg", "send", "human", msg], capture_output=True, text=True, timeout=60)
-            activity("notify", "ok" if r.returncode == 0 else "fail", "sent to you on Slack #hivey" if r.returncode == 0 else cut(r.stderr, 200))
+            ok, out = send_main("From self-improve, pass on to the user: " + msg)
+            activity("notify", "ok" if ok else "fail", "sent to the main hivey agent" if ok else cut(out, 200))
         except (OSError, subprocess.SubprocessError) as e:
             activity("notify", "fail", str(e))
     print(json.dumps({"review": str(REVIEWS / f'{date}.json'), "patterns": len(patterns),

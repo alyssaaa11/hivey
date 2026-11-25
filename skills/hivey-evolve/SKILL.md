@@ -16,7 +16,7 @@ description: hivey's self-improvement loop. Agents' Claude Code hooks log facts 
 | `hivey evolve status` | Hooks, schedule, facts this week, last review, locks, builder state. |
 | `hivey evolve hooks install` | Adds the learning-log hooks (PostToolUseFailure, PostCompact, SessionEnd) to `~/.claude/settings.json`, after a dated backup. |
 | `hivey evolve schedule install` | The Wednesday run (launchd `com.hivey.evolve`, default Wed 09:10, after the 09:00 reset). |
-| `hivey evolve review [--no-llm]` | Runs a review now. `weekly` does the same and messages the user (`#hivey`). |
+| `hivey evolve review [--no-llm]` | Runs a review now. `weekly` does the same and messages the main hivey agent (`hivey/master`), which passes it on to the user. |
 | `hivey evolve lock status\|accept [path]` | Tamper locks on the safety files; `accept` records a change the user approved. |
 | `hivey evolve decide DATE N yes\|no` | Records the user's answer for an item (the page does this). |
 
