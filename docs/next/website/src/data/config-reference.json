@@ -1051,6 +1051,18 @@
           ]
         },
         {
+          "key": "ui.swarm_sidebar",
+          "type": "boolean",
+          "default": "false",
+          "description": "hivey: swarm-style sidebar. The space list is titled \"swarms\" and fills the sidebar; the agents panel is hidden (agents are the panes)."
+        },
+        {
+          "key": "ui.double_click_zoom",
+          "type": "boolean",
+          "default": "true",
+          "description": "hivey: double-click anywhere inside a pane zooms it to full screen and back, instead of selecting the word under the mouse."
+        },
+        {
           "key": "ui.status_indicators",
           "type": "enum",
           "default": "\"dots\"",
