@@ -1785,6 +1785,13 @@ def page_state(date: str | None) -> dict:
     st = status()
     date = date or st["last_review"]
     rev = read_json(REVIEWS / f"{date}.json", None) if date else None
+    if rev and date == st["last_review"]:
+        # Latest review: alarms are checked live, so an approved lock or a reinstalled hook clears at once
+        # instead of staying until next Wednesday. Older reviews keep their stored alarms as history.
+        try:
+            rev["alarms"] = alarms(lock_status(), rev.get("canary") or {})
+        except Exception:  # noqa: BLE001 - keep the stored alarms if the live check fails
+            pass
     if time.time() - _live_cache["t"] > 20:
         _live_cache["v"] = {"operations": operations(refresh=False), "token_savers": token_savers()}
         _live_cache["t"] = time.time()
