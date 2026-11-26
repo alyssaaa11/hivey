@@ -1066,9 +1066,8 @@ fn federated_client_starts_without_local_and_survives_its_restart() {
             .clone();
         terminal_screen::text(&bytes, 80, 24)
     };
-    // Generous: the remote client starts a second server; ~11 s locally, over 12 s on CI runners.
     assert!(
-        wait_until(Duration::from_secs(30), Duration::from_millis(20), || {
+        wait_until(Duration::from_secs(12), Duration::from_millis(20), || {
             screen_text().contains("REMOTE_INITIAL_FRAME")
         }),
         "remote must be usable before Local exists: {}",
@@ -1161,7 +1160,7 @@ fn federated_client_starts_without_local_and_survives_its_restart() {
     );
     assert_eq!(created["result"]["type"], "workspace_created");
     assert!(
-        wait_until(Duration::from_secs(30), Duration::from_millis(20), || {
+        wait_until(Duration::from_secs(12), Duration::from_millis(20), || {
             screen_text().contains("local-returned")
         }),
         "Local must reconnect with fresh metadata"

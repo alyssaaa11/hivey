@@ -594,6 +594,8 @@ fn explicit_client_command_respects_nested_guard() {
     let output = Command::new(env!("CARGO_BIN_EXE_hivey"))
         .arg("client")
         .env("HERDR_ENV", "1")
+        // hivey drops HERDR_ENV unless HIVEY_ENV is set too (isolate_from_parent_herdr)
+        .env("HIVEY_ENV", "1")
         .env("XDG_CONFIG_HOME", &base)
         .env_remove("HERDR_CONFIG_PATH")
         .output()

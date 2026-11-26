@@ -85,6 +85,8 @@ fn setup(rest: &mut Vec<String>) -> Result<(), String> {
         return Err(format!("unknown argument {extra:?}\n{HELP}"));
     }
     let (dir, agent) = dirs()?;
+    #[cfg(not(unix))]
+    let _ = &dir; // only the unix config symlink below uses it
     std::fs::create_dir_all(&agent).map_err(|err| err.to_string())?;
 
     // The brief: written once; the user's edits are kept unless --force.
