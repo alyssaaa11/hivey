@@ -19,6 +19,7 @@ import subprocess
 import sys
 
 # High-signal secret regexes. Each tuple: (label, pattern).
+# sk- keys must start a token: "task-fine-tune-..." in a URL or "ask-com-..." in a filename is not a key.
 SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
     ("AWS secret/access key assignment",
@@ -27,8 +28,8 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("GitHub OAuth token", re.compile(r"gho_[A-Za-z0-9]{30,}")),
     ("GitHub server token", re.compile(r"ghs_[A-Za-z0-9]{30,}")),
     ("GitHub fine-grained PAT", re.compile(r"github_pat_[A-Za-z0-9_]{30,}")),
-    ("OpenAI key", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
-    ("Anthropic key", re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}")),
+    ("OpenAI key", re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}")),
+    ("Anthropic key", re.compile(r"(?<![A-Za-z0-9_-])sk-ant-[A-Za-z0-9_-]{20,}")),
     ("Slack token", re.compile(r"xox[abprs]-[A-Za-z0-9-]{10,}")),
     ("Google API key", re.compile(r"AIza[0-9A-Za-z_-]{30,}")),
     ("Generic credential assignment",
