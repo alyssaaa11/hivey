@@ -202,7 +202,14 @@ pub(super) fn apply(home: &Path, dry: bool) -> io::Result<Vec<String>> {
 }
 
 fn hook_command(hooks_dir: &Path, name: &str) -> String {
-    format!("python3 \"{}\"", hooks_dir.join(name).display())
+    // Forward slashes on every OS: Claude Code runs hooks through a POSIX shell (Git Bash on
+    // Windows), and `register` recognizes hivey's hooks by `/<name>` in the command.
+    let path = hooks_dir
+        .join(name)
+        .display()
+        .to_string()
+        .replace('\\', "/");
+    format!("python3 \"{path}\"")
 }
 
 /// `settings.json` with hivey's hook entries as wanted: every command that runs one of
@@ -408,7 +415,11 @@ mod tests {
         std::fs::write(hooks.join("secret_scan.py"), "old").expect("old");
         std::fs::write(
             home.join(".claude/settings.json"),
-            USER.replace("/h/", &format!("{}/", home.display())),
+            // forward slashes: a Windows path's '\' would be an invalid escape in the JSON
+            USER.replace(
+                "/h/",
+                &format!("{}/", home.display().to_string().replace('\\', "/")),
+            ),
         )
         .expect("settings");
         let report = apply(&home, false).expect("apply");

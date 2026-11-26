@@ -1036,6 +1036,9 @@ fn federated_client_starts_without_local_and_survives_its_restart() {
     fs::create_dir_all(&bin).unwrap();
     fs::create_dir_all(base.join("home")).unwrap();
     std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_hivey"), bin.join("hivey")).unwrap();
+    // The remote probe looks for `herdr` (`command -v herdr`, then fixed paths such as
+    // /opt/homebrew/bin/herdr). CI machines have none, so the fake remote gets its own.
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_hivey"), bin.join("herdr")).unwrap();
     let quote =
         |path: &std::path::Path| format!("'{}'", path.display().to_string().replace('\'', "'\\''"));
     let ssh_commands = base.join("ssh-commands");

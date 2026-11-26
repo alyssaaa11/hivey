@@ -287,8 +287,7 @@ fn root_and_command_group_help_point_agents_to_plain_text_docs() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         for expected in [
             "Are you an AI? Use these resources ONLY IF your task specifically asks you to:",
-            "https://herdr.dev/agent-guide.md",
-            "https://herdr.dev/llms.txt",
+            "https://github.com/alyssaaa11/hivey/blob/main/docs/hivey-guide.md",
             "hivey --skill",
         ] {
             assert!(
@@ -594,6 +593,8 @@ fn explicit_client_command_respects_nested_guard() {
     let output = Command::new(env!("CARGO_BIN_EXE_hivey"))
         .arg("client")
         .env("HERDR_ENV", "1")
+        // hivey drops HERDR_ENV unless HIVEY_ENV is set too (isolate_from_parent_herdr)
+        .env("HIVEY_ENV", "1")
         .env("XDG_CONFIG_HOME", &base)
         .env_remove("HERDR_CONFIG_PATH")
         .output()

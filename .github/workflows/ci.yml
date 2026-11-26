@@ -11,6 +11,8 @@ permissions:
 
 env:
   RUST_TOOLCHAIN_VERSION: 1.96.1
+  # .config/nextest.toml: run every test and report all failures, not only the first
+  NEXTEST_PROFILE: ci
   # Keep file/line backtraces without generating type and variable debug information.
   CARGO_PROFILE_DEV_DEBUG: "1"
   CARGO_PROFILE_TEST_DEBUG: "1"
@@ -60,7 +62,9 @@ jobs:
           - os: macos-latest
             kind: unix
             nextest_filter: not binary(live_handoff)
-          - os: windows-latest
+          # windows-latest moved to Visual Studio 18 (MSVC 14.52), whose STL rejects Zig 0.16's clang
+          # (STL1000) when building libghostty-vt; windows-2022 builds it, like windows-conpty-package below.
+          - os: windows-2022
             kind: windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15

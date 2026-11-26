@@ -793,7 +793,18 @@ mod tests {
         std::fs::write(day.join("rollout-x.jsonl"), meta).unwrap();
         assert!(has_conversation(&work, AgentKind::Codex));
         assert!(!has_conversation(&work, AgentKind::Grok));
-        let encoded = canonical.to_string_lossy().replace('/', "%2F");
+        // Grok percent-encodes every byte outside A-Z a-z 0-9 - _ . ~ (on Windows also '\\' and ':')
+        let encoded: String = canonical
+            .to_string_lossy()
+            .bytes()
+            .map(|b| {
+                if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+                    (b as char).to_string()
+                } else {
+                    format!("%{b:02X}")
+                }
+            })
+            .collect();
         let grok = home.join(".grok/sessions").join(encoded).join("s1");
         std::fs::create_dir_all(&grok).unwrap();
         assert!(has_conversation(&work, AgentKind::Grok));

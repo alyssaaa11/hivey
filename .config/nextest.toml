@@ -1,0 +1,4 @@
+# CI runs every test and lists all failures at once (selected with NEXTEST_PROFILE=ci in ci.yml);
+# local runs keep the default profile, which stops at the first failure.
+[profile.ci]
+fail-fast = false
