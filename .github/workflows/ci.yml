@@ -60,7 +60,9 @@ jobs:
           - os: macos-latest
             kind: unix
             nextest_filter: not binary(live_handoff)
-          - os: windows-latest
+          # windows-latest moved to Visual Studio 18 (MSVC 14.52), whose STL rejects Zig 0.16's clang
+          # (STL1000) when building libghostty-vt; windows-2022 builds it, like windows-conpty-package below.
+          - os: windows-2022
             kind: windows
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15

@@ -717,6 +717,9 @@ fn auto_detect_respects_nested_guard_before_auto_attach() {
         .env("HERDR_SOCKET_PATH", &api_socket)
         .env_remove("HERDR_CLIENT_SOCKET_PATH")
         .env("HERDR_ENV", "1")
+        // hivey drops HERDR_ENV unless HIVEY_ENV is set too (isolate_from_parent_herdr), so a
+        // nested hivey launch has both; without it this only passed inside a hivey pane.
+        .env("HIVEY_ENV", "1")
         .output()
         .unwrap();
 
