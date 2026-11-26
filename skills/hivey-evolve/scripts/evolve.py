@@ -163,7 +163,7 @@ def send_main(text: str) -> tuple[bool, str]:
     return r.returncode == 0 and "\u2192 hivey/" in r.stdout, out
 
 
-SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|"
+SECRET = re.compile(r"((?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|"
                     r"es_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+|"
                     r"(?i:(?:token|secret|password|api[_-]?key)\s*[=:]\s*)\S{8,})")
 
