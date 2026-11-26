@@ -57,6 +57,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Fetch upstream release tags
+        # docs/versions/manifest.json pins herdr release tags (v0.9.3 and older) that exist only in
+        # upstream herdrdev/herdr, so `versions.mjs check` cannot resolve them in this fork without them.
+        run: git fetch --no-tags https://github.com/herdrdev/herdr 'refs/tags/v*:refs/tags/v*'
+
       - name: Install Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
