@@ -186,6 +186,7 @@ textarea.missed{width:100%;min-height:60px;border-radius:10px;border:1px solid v
       <h3 style="margin-top:0">🔒 Safety first: what has to exist before hivey can build anything itself</h3>
       <p class="muted small" style="margin-top:-6px">Agents that change themselves can quietly weaken their own checks. So the builder stays locked until all four of these exist.</p>
       <div id="safety" class="grid g2"></div>
+      <div id="verdicts" class="small muted" style="margin-top:8px"></div>
       <div id="lockChanges" style="margin-top:10px"></div>
     </div>
   </section>
@@ -423,6 +424,10 @@ function render(){
   $("#spark").innerHTML=vals.map((v,i)=>`<div style="height:${Math.max(4,v/mx*100)}%" title="${v} notes"><span>${["Su","Mo","Tu","We","Th","Fr","Sa"][new Date(days[i]+"T12:00").getDay()]}</span></div>`).join("");
   $("#agentsWeek").innerHTML=(st.agents_week||[]).map(a=>`<span class="chip">${esc(a)}</span>`).join("")||'<span class="muted small">No agent has written notes yet.</span>';
   $("#safety").innerHTML=st.safety_layer.map(s=>`<div class="check"><div class="ic ${s.done?"ok":"lock"}">${s.done?"✓":"🔒"}</div><div><b>${esc(s.name)}</b> <span class="small ${s.done?"":"muted"}">${s.done?"in place":"not yet"}</span><div class="small muted">${esc(s.plain)}</div></div></div>`).join("");
+  {const va=st.verdicts||{}, ch=va.chain||{}, ms=Object.entries(va.months||{});
+   $("#verdicts").innerHTML=!ch.entries?"Verdict log: empty.":(ch.ok?"Verdict log intact":"⚠ Verdict log broken: "+esc(ch.problem||""))+` · ${ch.entries} entries`
+    +ms.map(([m,v])=>` · ${esc(m)}: ${v.fixes_passed} passed, ${v.fixes_blocked} blocked, calibration ${v.calibration_right}/${v.calibration_total}`
+    +(v.passed_then_failed.length?`, <b>passed then failed: ${v.passed_then_failed.map(esc).join(", ")}</b>`:"")).join("");}
   $("#lockChanges").innerHTML=st.locks.changed.map(f=>`<div class="check"><div class="ic bad">!</div><div><b>${esc(f.path)}</b> <span class="small">${f.state==="missing"?"was removed":"was changed"} after it was locked.</span>
      <div class="small muted">If you or your team made this change on purpose, approve it. If not, something changed a safety file.</div>
      <button data-lock="${esc(f.path)}" style="margin-top:6px">I made this change, approve it</button></div></div>`).join("");

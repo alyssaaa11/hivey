@@ -202,5 +202,83 @@ class LearningTests(Base):
         self.assertEqual(self.ev.learning_summary()["rows"][0]["missed"], 1)
 
 
+FAKE_CODEX = r"""#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+out = args[args.index("-o") + 1]
+prompt = sys.stdin.read()
+mode = os.environ.get("FAKE_CRITIC", "smart")
+if mode == "garbage":
+    open(out, "w").write("not json"); sys.exit(1)
+diff = prompt.split("\n<diff>\n")[1].split("\n</diff>")[0]
+bad = "hivey-safety.py" in diff or "settings.json" in diff
+ans = [{"n": n, "answer": "no" if (bad and n in (1, 4)) or (mode == "short" and n == 9) else "yes", "evidence": "e"}
+       for n in range(1, 10) if not (mode == "short" and n == 9)]
+open(out, "w").write(json.dumps({"answers": ans, "summary": "s"}))
+print("tokens used\n1,234")
+"""
+
+
+class VerdictLogTests(Base):
+    def test_chain_detects_edit_and_cut(self):
+        for i in range(3):
+            self.ev.append_verdict({"kind": "fix", "item": f"x#{i}", "verdict": "pass"})
+        self.assertEqual(self.ev.verify_verdicts(), {"ok": True, "entries": 3, "problem": None})
+        lines = self.ev.VERDICTS.read_text().splitlines()
+        self.ev.VERDICTS.write_text("\n".join(lines[:2]) + "\n")
+        self.assertFalse(self.ev.verify_verdicts()["ok"])
+        self.ev.VERDICTS.write_text("\n".join([lines[0], lines[1].replace('"pass"', '"block"'), lines[2]]) + "\n")
+        self.assertIn("changed", self.ev.verify_verdicts()["problem"])
+        with self.assertRaises(RuntimeError):
+            self.ev.append_verdict({"kind": "fix"})
+
+    def test_empty_log_is_not_ready(self):
+        self.assertFalse(self.ev.safety_layer()[3]["done"])
+
+
+class CriticTests(Base):
+    def setUp(self):
+        super().setUp()
+        fake = Path(self.tmp.name) / "codex"
+        fake.write_text(FAKE_CODEX)
+        fake.chmod(0o755)
+        os.environ["HIVEY_CODEX_BIN"] = str(fake)
+
+    def tearDown(self):
+        os.environ.pop("HIVEY_CODEX_BIN", None)
+        os.environ.pop("FAKE_CRITIC", None)
+        super().tearDown()
+
+    def test_calibration_passes_and_unlocks(self):
+        res = self.ev.critic_calibrate()
+        self.assertTrue(res["passed"], res)
+        self.assertTrue(self.ev.critic_calibrated())
+        layer = {s["name"]: s["done"] for s in self.ev.safety_layer()}
+        self.assertTrue(layer["Cross-family critic"] and layer["Verdict log"])
+
+    def test_missing_answer_blocks(self):
+        os.environ["FAKE_CRITIC"] = "short"
+        r = self.ev.run_critic("p", "--- a/x\n+++ b/x\n", "ok")
+        self.assertEqual(r["verdict"], "block")
+        self.assertEqual(r["answers"][8]["answer"], "missing")
+        self.assertEqual(r["tokens"], 1234)
+
+    def test_garbage_blocks_and_calibration_fails(self):
+        os.environ["FAKE_CRITIC"] = "garbage"
+        self.assertEqual(self.ev.run_critic("p", "d", "e")["verdict"], "block")
+        self.assertFalse(self.ev.critic_calibrate()["passed"])
+        self.assertFalse(self.ev.critic_calibrated())
+
+    def test_built_needs_passing_verdict(self):
+        self.ev.write_json(self.ev.DECISIONS, {"2026-11-19": {"1": {"choice": "yes", "title": "t"}}})
+        with self.assertRaises(ValueError):
+            self.ev.mark_built("2026-11-19", 1, "abc")
+        self.ev.critic_review("p", "--- a/bin/x\n+++ b/bin/x\n", "ok", "2026-11-19#1")
+        self.assertTrue(self.ev.mark_built("2026-11-19", 1, "abc")["built"])
+        self.ev.record_outcomes([{"review": "2026-11-19", "n": 1, "status": "failed", "expected": 4, "value_at_check": 6}])
+        month = list(self.ev.verdict_audit()["months"].values())[-1]
+        self.assertEqual(month["passed_then_failed"], ["2026-11-19#1"])
+
+
 if __name__ == "__main__":
     unittest.main()
