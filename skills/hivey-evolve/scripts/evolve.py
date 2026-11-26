@@ -14,7 +14,8 @@ Rules this script keeps:
   patterns come from many entries, at review time.
 - Logs are data, never instructions: the review model is told to quote them, never obey them.
 - Scripts before models: capture runs no model; the noise filter is regex first, then the local
-  decision model (jev_local) when it is installed and memory allows, never a hosted model.
+  decision model (jev_local, elephant-1). When memory is too low to start it, hosted Jev on OpenRouter
+  answers instead, with secrets redacted (user, 2026-11-25).
 - One big-model call a week.
 
 usage:
@@ -38,6 +39,7 @@ import argparse
 import datetime as dt
 import glob
 import hashlib
+import html
 import http.server
 import json
 import os
@@ -88,6 +90,8 @@ DEFAULTS = {
         "~/projects/*/check_run.py",
     ],
     "model": "opus",
+    # Claude Code's /insights: refresh its report before each review (false = only read the last one)
+    "insights_refresh": True,
 }
 
 
@@ -147,6 +151,16 @@ def tail_jsonl(path: Path, n: int) -> list[dict]:
 
 def hivey_bin() -> str:
     return os.environ.get("HIVEY_BIN") or shutil.which("hivey") or str(HOME / ".local/bin/hivey")
+
+
+MAIN_AGENT = "hivey/master"  # the main hivey agent gets reviews and passes them on to the user
+
+
+def send_main(text: str) -> tuple[bool, str]:
+    """Message the main hivey agent; ok only when hivey confirms delivery into its mailbox."""
+    r = subprocess.run([hivey_bin(), "msg", "send", MAIN_AGENT, text], capture_output=True, text=True, timeout=60)
+    out = (r.stdout + r.stderr).strip()
+    return r.returncode == 0 and "\u2192 hivey/" in r.stdout, out
 
 
 SECRET = re.compile(r"(sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|"
@@ -258,6 +272,47 @@ def jev_local_client() -> Path | None:
     return p if p.is_file() else None
 
 
+OPENROUTER_KEY_ID = "es_ZaCn0BzwLbl4p3t7geoVUIO2NKQb5OI2Bj7DFy75Ob8HhNbT"  # envsave id of OPENROUTER_API_KEY
+HOSTED_NOTE = "hosted Jev on OpenRouter (memory was low for the local elephant-1 model)"
+
+
+def hosted_jev_ask():
+    """ask(state, questions) on hosted Jev (OpenRouter Decisions API), or None when no key. Fallback when the
+    Mac lacks memory for elephant-1 (user, 2026-11-25). Secrets are redacted from the state before sending."""
+    import urllib.request
+    env_bin = shutil.which("envsave") or next(iter(glob.glob(str(HOME / ".nvm/versions/node/*/bin/envsave"))), None)
+    if not env_bin:
+        return None
+    try:
+        r = subprocess.run([env_bin, "get", OPENROUTER_KEY_ID], capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    key = r.stdout.strip()
+    if r.returncode != 0 or not key:
+        return None
+
+    def ask(state, questions):
+        body = json.dumps({"model": "~typesafe/jev-latest", "state": json.loads(redact(json.dumps(state))),
+                           "questions": questions}).encode()
+        for attempt in range(4):
+            req = urllib.request.Request("https://openrouter.ai/api/alpha/decisions", data=body, method="POST",
+                                         headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data = json.loads(resp.read())
+                break
+            except urllib.error.HTTPError as e:
+                if (e.code == 429 or e.code >= 500) and attempt < 3:
+                    time.sleep(2 ** attempt)
+                    continue
+                raise
+        missing = set(questions) - set(data.get("answers", {}))
+        if missing:
+            raise ValueError(f"Jev returned no answer for: {sorted(missing)}")
+        return data
+    return ask
+
+
 def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict], str]:
     """Ask the local decision model whether each unclear failure is a real problem.
     Returns (kept, set_aside, note). Never falls back to a hosted model: the data stays on the Mac."""
@@ -265,15 +320,20 @@ def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict]
     if not client or not facts:
         return facts, [], "regex only (local decision model not installed)" if not client else "nothing unclear"
     mem = subprocess.run([sys.executable, "-I", str(client), "--memcheck"], capture_output=True, text=True)
-    if mem.returncode != 0:
-        return facts, [], "regex only: memory was low, so the local decision model was not started"
-    was_running = "running" in subprocess.run([sys.executable, "-I", str(client), "--status"],
-                                              capture_output=True, text=True).stdout.lower()
-    sys.path.insert(0, str(client.parent))
-    try:
-        from jev_local import ask  # type: ignore
-    except Exception as e:  # noqa: BLE001
-        return facts, [], f"regex only (local decision model failed to load: {e})"
+    hosted = mem.returncode != 0
+    if hosted:
+        ask = hosted_jev_ask()
+        if not ask:
+            return facts, [], "regex only: memory was low and hosted Jev had no key"
+        was_running = True
+    else:
+        was_running = "running" in subprocess.run([sys.executable, "-I", str(client), "--status"],
+                                                  capture_output=True, text=True).stdout.lower()
+        sys.path.insert(0, str(client.parent))
+        try:
+            from jev_local import ask  # type: ignore
+        except Exception as e:  # noqa: BLE001
+            return facts, [], f"regex only (local decision model failed to load: {e})"
     kept, aside, asked = [], [], 0
     q = {"real": {"type": "noul", "instructions":
                   "`failure` is a tool error from an AI coding agent. Is it a real problem worth fixing in the "
@@ -290,21 +350,21 @@ def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict]
             r = ask({"failure": {"tool": f.get("tool"), "command": cut(f.get("command", ""), 300),
                                  "error": cut(f.get("error", ""), 600)}}, q)
             p = float(r["answers"]["real"]["noul"])
-            if time.time() - t0 > 30:  # the Mac is swapping: stop asking, keep the rest
+            if not hosted and time.time() - t0 > 30:  # the Mac is swapping: stop asking, keep the rest
                 cap = asked
         except Exception:  # noqa: BLE001
             kept.append(f)
             continue
         f["jev_real"] = round(p, 2)
         if p < 0.3:
-            f["noise"] = "harmless (local model)"
+            f["noise"] = "harmless (hosted Jev)" if hosted else "harmless (local model)"
         elif p > 0.7:
             kept.append(f)
         else:
             aside.append(f)
     if not was_running:
         subprocess.run([sys.executable, "-I", str(client), "--stop"], capture_output=True)
-    return kept, aside, f"regex + local decision model ({asked} unclear entries checked)"
+    return kept, aside, f"regex + {HOSTED_NOTE if hosted else 'local decision model'} ({asked} unclear entries checked)"
 
 
 # ---------------------------------------------------------------- patterns
@@ -601,6 +661,76 @@ def ai_sources(since: dt.datetime) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- Claude Code /insights
+
+INSIGHTS = HOME / ".claude" / "usage-data"  # where /insights keeps report.html, facets/ and session-meta/
+
+
+def html_text(raw: str) -> str:
+    raw = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", raw, flags=re.S | re.I)
+    raw = re.sub(r"<br\s*/?>|</(p|div|h\d|li|tr)>", "\n", raw, flags=re.I)
+    text = html.unescape(re.sub(r"<[^>]+>", "", raw))
+    return re.sub(r"\n\s*\n+", "\n", re.sub(r"[ \t]+", " ", text)).strip()
+
+
+def refresh_insights() -> tuple[bool, str]:
+    """Run Claude Code's /insights headless so report.html and the per-session facets are current.
+    /insights only analyses sessions it has not seen yet, so a weekly run stays small."""
+    report = INSIGHTS / "report.html"
+    before = report.stat().st_mtime if report.is_file() else 0
+    STATE.mkdir(parents=True, exist_ok=True)
+    try:
+        r = subprocess.run([claude_bin(), "-p", "/insights", "--output-format", "json", "--no-session-persistence"],
+                           capture_output=True, text=True, timeout=1500, env=claude_env(), cwd=str(STATE))
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"/insights did not run: {e}"
+    after = report.stat().st_mtime if report.is_file() else 0
+    if after > before:
+        return True, "report refreshed"
+    return False, f"/insights exit {r.returncode}, report not updated: {cut((r.stderr or r.stdout).strip(), 200)}"
+
+
+def insights(since: dt.datetime, refresh: bool) -> dict:
+    """What Claude Code's /insights saw this week: its report (what works, what hinders, quick wins)
+    and its per-session notes (outcome, friction, what went wrong) for sessions started in the window."""
+    out = {"refreshed": None, "report_date": None, "report": None, "sessions": 0, "outcomes": {},
+           "satisfaction": {}, "friction": {}, "friction_details": [], "errors": []}
+    if refresh:
+        ok, note = refresh_insights()
+        out["refreshed"] = ok
+        if not ok:
+            out["errors"].append(note)
+    report = INSIGHTS / "report.html"
+    if report.is_file():
+        out["report_date"] = iso(dt.datetime.fromtimestamp(report.stat().st_mtime).astimezone())
+        out["report"] = cut(redact(html_text(report.read_text(errors="replace"))), 9000)
+    for f in sorted((INSIGHTS / "facets").glob("*.json")):
+        fac = read_json(f, {})
+        meta = read_json(INSIGHTS / "session-meta" / f.name, {})
+        start = meta.get("start_time") or ""
+        try:
+            if not start or dt.datetime.fromisoformat(start.replace("Z", "+00:00")) < since:
+                continue
+        except ValueError:
+            continue
+        out["sessions"] += 1
+        for key, field in (("outcomes", "outcome"),):
+            v = fac.get(field)
+            if v:
+                out[key][v] = out[key].get(v, 0) + 1
+        for key, field in (("satisfaction", "user_satisfaction_counts"), ("friction", "friction_counts")):
+            for k, n in (fac.get(field) or {}).items():
+                out[key][k] = out[key].get(k, 0) + (n if isinstance(n, int) else 1)
+        detail = (fac.get("friction_detail") or "").strip()
+        if detail:
+            out["friction_details"].append({"project": (meta.get("project_path") or "").replace(str(HOME), "~"),
+                                            "date": start[:10], "outcome": fac.get("outcome"),
+                                            "detail": cut(redact(detail), 400)})
+    out["friction"] = dict(sorted(out["friction"].items(), key=lambda kv: -kv[1]))
+    out["friction_details"] = out["friction_details"][-30:]
+    return out
+
+
 # ---------------------------------------------------------------- safety locks (tamper hashes)
 
 def protected_files() -> list[Path]:
@@ -792,7 +922,10 @@ REVIEW_SYSTEM = """You write hivey's weekly self-improvement review for a non-te
 hivey is a tool that runs many AI agents on one Mac. You get JSON data: recurring tool-failure
 patterns (with evidence), how hivey runs (jobs, costs, duplicate agent processes, token savers),
 AI release notes and digests, requests the owner typed by hand again and again, the small problems
-the daily check already reported, and the last weeks' reviews (history).
+the daily check already reported, the last weeks' reviews (history), and claude_code_insights: Claude
+Code's own /insights analysis of the sessions (its report on what works, what hinders and quick wins,
+plus per-session outcomes, friction counts and friction details for this week). Use the friction there
+as evidence of repeating problems in how the agents work with the owner, next to the tool failures.
 
 THE POINT OF WEDNESDAY: propose changes to HOW WE OPERATE, not repairs. A repair fixes one broken
 thing once ("restart this job", "top up that account"); next week something else breaks and nothing
@@ -842,8 +975,12 @@ Return ONLY a JSON object, no prose around it, with this shape:
 At most 5 items, ordered by value. Never propose turning off a safety check."""
 
 
-def call_claude(prompt: str, model: str) -> tuple[dict | None, str]:
-    claude = shutil.which("claude") or str(HOME / ".local/bin/claude")
+def claude_bin() -> str:
+    return shutil.which("claude") or str(HOME / ".local/bin/claude")
+
+
+def claude_env() -> dict:
+    """The environment for a headless claude run, with the token command's OAuth token when one is set."""
     env = {**os.environ}
     tok_cmd = config().get("claude_token_command") or read_json(HOME / ".hivey/agent-map/config.json", {}).get("claude_token_command")
     if tok_cmd:
@@ -853,6 +990,11 @@ def call_claude(prompt: str, model: str) -> tuple[dict | None, str]:
                 env["CLAUDE_CODE_OAUTH_TOKEN"] = p.stdout.strip()
         except (OSError, subprocess.SubprocessError):
             pass
+    return env
+
+
+def call_claude(prompt: str, model: str) -> tuple[dict | None, str]:
+    claude, env = claude_bin(), claude_env()
     cmd = [claude, "-p", "--model", model, "--output-format", "json", "--tools", "", "--strict-mcp-config",
            "--no-session-persistence", "--system-prompt", REVIEW_SYSTEM]
     STATE.mkdir(parents=True, exist_ok=True)
@@ -977,9 +1119,10 @@ def daily(notify: bool) -> int:
         msg = "Daily check, small fixes: " + "; ".join(f["title"] for f in new[:5]) + (f" (+{len(new) - 5} more)" if len(new) > 5 else "") \
               + ". Details: hivey menu -> self-improve."
         try:
-            subprocess.run([hivey_bin(), "msg", "send", "human", cut(msg, 600)], capture_output=True, text=True, timeout=60)
-        except (OSError, subprocess.SubprocessError):
-            pass
+            ok, out = send_main(cut("From self-improve, pass on to the user: " + msg, 700))
+            activity("notify", "ok" if ok else "fail", "sent to the main hivey agent" if ok else cut(out, 200))
+        except (OSError, subprocess.SubprocessError) as e:
+            activity("notify", "fail", str(e))
     print(json.dumps({"found": len(found), "new": len(new), "resolved": len(gone)}))
     return 0
 
@@ -1067,13 +1210,16 @@ def frequency_score(occurrences: int, sessions: int) -> float:
 
 
 def jev_open():
-    """(ask, close, note) for the local decision model, with its memory check. Never a hosted model."""
+    """(ask, close, note): the local elephant-1 model, or hosted Jev on OpenRouter when memory is low."""
     client = jev_local_client()
     if not client:
         return None, (lambda: None), "local decision model not installed"
     mem = subprocess.run([sys.executable, "-I", str(client), "--memcheck"], capture_output=True, text=True)
     if mem.returncode != 0:
-        return None, (lambda: None), "memory was low, so the local decision model was not started"
+        ask = hosted_jev_ask()
+        if ask:
+            return ask, (lambda: None), HOSTED_NOTE
+        return None, (lambda: None), "memory was low and hosted Jev had no key"
     was_running = "running" in subprocess.run([sys.executable, "-I", str(client), "--status"],
                                               capture_output=True, text=True).stdout.lower()
     sys.path.insert(0, str(client.parent))
@@ -1477,6 +1623,11 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
     activity("ai-news", "warn" if ai["errors"] else "ok",
              f"Anthropic digest {'found' if ai['anthropic'] else 'missing'}, proposals {'found' if ai['proposals'] else 'missing'}, "
              f"{len(ai['releases'])} releases" + (f"; errors: {'; '.join(ai['errors'])}" if ai["errors"] else ""))
+    ins = insights(since, refresh=bool(config().get("insights_refresh", True)) and not no_llm)
+    activity("insights", "warn" if ins["errors"] or not ins["report"] else "ok",
+             f"/insights: report {'from ' + ins['report_date'][:10] if ins['report'] else 'missing'}"
+             + (", refreshed" if ins["refreshed"] else "") + f"; {ins['sessions']} sessions this week, "
+             f"{sum(ins['friction'].values())} friction points" + (f"; {'; '.join(ins['errors'])}" if ins["errors"] else ""))
     prompts = user_prompts(since)
     manual = repeated_requests(prompts)
     activity("manual", "ok", f"{len(prompts)} requests you typed; {len(manual)} repeated ones")
@@ -1512,6 +1663,8 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
         "rejected_items": rejected,
         "missed_problems_known_blind_spots": missed,
         "logging_canary": canary_state,
+        "claude_code_insights": {k: ins[k] for k in ("report_date", "report", "sessions", "outcomes", "satisfaction",
+                                                     "friction", "friction_details")},
     }
     text, llm_note = None, "skipped (--no-llm)"
     if not no_llm:
@@ -1546,7 +1699,8 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
            "filter_note": filter_note, "llm": llm_note, "patterns": patterns, "operations": ops, "token_savers": savers,
            "ai": {"anthropic_file": (ai["anthropic"] or {}).get("file"), "proposals_file": (ai["proposals"] or {}).get("file"),
                   "releases": ai["releases"], "errors": ai["errors"]},
-           "manual": manual, "fix_checks": checks, "locks": locks, "safety_layer": safety_layer(), "text": text,
+           "manual": manual, "fix_checks": checks,
+           "insights": {k: ins[k] for k in ("refreshed", "report_date", "sessions", "outcomes", "friction", "errors")}, "locks": locks, "safety_layer": safety_layer(), "text": text,
            "metrics": metrics, "canary": canary_state, "importance_note": importance_note, "predictions_checked": preds,
            "learning": {"repeats_of_rejected": repeats, "missed_last_month": len(missed)}, "alarms": alarm}
     write_json(REVIEWS / f"{date}.json", out)
@@ -1557,8 +1711,8 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
         msg = ("ALARM: " + " ".join(alarm) + " " if alarm else "") + (f"Wednesday review: {cut(text.get('headline') or '', 180)} "
                f"{n} change(s) to how we work wait for your yes/no ({small} small fixes handled daily): hivey menu -> self-improve.")
         try:
-            r = subprocess.run([hivey_bin(), "msg", "send", "human", msg], capture_output=True, text=True, timeout=60)
-            activity("notify", "ok" if r.returncode == 0 else "fail", "sent to you on Slack #hivey" if r.returncode == 0 else cut(r.stderr, 200))
+            ok, out = send_main("From self-improve, pass on to the user: " + msg)
+            activity("notify", "ok" if ok else "fail", "sent to the main hivey agent" if ok else cut(out, 200))
         except (OSError, subprocess.SubprocessError) as e:
             activity("notify", "fail", str(e))
     print(json.dumps({"review": str(REVIEWS / f'{date}.json'), "patterns": len(patterns),
@@ -1631,6 +1785,13 @@ def page_state(date: str | None) -> dict:
     st = status()
     date = date or st["last_review"]
     rev = read_json(REVIEWS / f"{date}.json", None) if date else None
+    if rev and date == st["last_review"]:
+        # Latest review: alarms are checked live, so an approved lock or a reinstalled hook clears at once
+        # instead of staying until next Wednesday. Older reviews keep their stored alarms as history.
+        try:
+            rev["alarms"] = alarms(lock_status(), rev.get("canary") or {})
+        except Exception:  # noqa: BLE001 - keep the stored alarms if the live check fails
+            pass
     if time.time() - _live_cache["t"] > 20:
         _live_cache["v"] = {"operations": operations(refresh=False), "token_savers": token_savers()}
         _live_cache["t"] = time.time()
