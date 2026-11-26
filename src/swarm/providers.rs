@@ -302,7 +302,8 @@ mod tests {
             Some("qwen/qwen3-coder".to_string())
         );
         let muse = resolve_test("muse").expect("muse");
-        assert_eq!(muse.model, "/h/models/muse-glimmer-30b-mlx-6bit");
+        let muse_dir = Path::new("/h").join(MUSE_MODEL_DIR); // '\' separator on Windows
+        assert_eq!(muse.model, muse_dir.display().to_string());
         assert_eq!(muse.base_url, "http://127.0.0.1:8092");
         assert_eq!(muse.max_context, Some(131_072));
         assert!(muse.local.is_some());

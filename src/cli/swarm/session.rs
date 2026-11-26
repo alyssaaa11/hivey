@@ -512,7 +512,12 @@ mod tests {
                 .unwrap_or_default()
         ));
         std::fs::create_dir_all(&dir).expect("temp dir");
-        crate::worktree::canonical_or_original(&dir)
+        if cfg!(windows) {
+            // canonicalizing gives a \\?\ path on Windows, which git cannot create worktrees in
+            dir
+        } else {
+            crate::worktree::canonical_or_original(&dir) // macOS: /var -> /private/var
+        }
     }
 
     fn commit(dir: &Path, file: &str, text: &str) {
