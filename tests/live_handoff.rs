@@ -428,6 +428,9 @@ fn wait_for_pid_marker(path: &Path, timeout: Duration) -> u32 {
 
 #[test]
 fn pid_marker_waits_for_complete_line() {
+    // Its deliberate panics run the shared panic hook, which stops every registered
+    // test server, so it must not overlap another test's live server.
+    let _lock = test_lock();
     let base = unique_test_dir();
     fs::create_dir_all(&base).unwrap();
     let marker = base.join("child.pid");

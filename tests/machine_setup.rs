@@ -259,7 +259,8 @@ fn setup_options(
         .join(app)
         .join("client/endpoints.json")
         .exists();
-    fs::remove_dir_all(root).unwrap();
+    // Cleanup only: a setup child can still be writing here, and that is not what this test checks.
+    let _ = fs::remove_dir_all(&root);
     assert!(
         !saved,
         "failed or cancelled setup saved the machine: {output}"
