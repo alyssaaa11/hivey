@@ -39,6 +39,7 @@ import argparse
 import datetime as dt
 import glob
 import hashlib
+import html
 import http.server
 import json
 import os
@@ -89,6 +90,8 @@ DEFAULTS = {
         "~/projects/*/check_run.py",
     ],
     "model": "opus",
+    # Claude Code's /insights: refresh its report before each review (false = only read the last one)
+    "insights_refresh": True,
 }
 
 
@@ -658,6 +661,76 @@ def ai_sources(since: dt.datetime) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- Claude Code /insights
+
+INSIGHTS = HOME / ".claude" / "usage-data"  # where /insights keeps report.html, facets/ and session-meta/
+
+
+def html_text(raw: str) -> str:
+    raw = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", raw, flags=re.S | re.I)
+    raw = re.sub(r"<br\s*/?>|</(p|div|h\d|li|tr)>", "\n", raw, flags=re.I)
+    text = html.unescape(re.sub(r"<[^>]+>", "", raw))
+    return re.sub(r"\n\s*\n+", "\n", re.sub(r"[ \t]+", " ", text)).strip()
+
+
+def refresh_insights() -> tuple[bool, str]:
+    """Run Claude Code's /insights headless so report.html and the per-session facets are current.
+    /insights only analyses sessions it has not seen yet, so a weekly run stays small."""
+    report = INSIGHTS / "report.html"
+    before = report.stat().st_mtime if report.is_file() else 0
+    STATE.mkdir(parents=True, exist_ok=True)
+    try:
+        r = subprocess.run([claude_bin(), "-p", "/insights", "--output-format", "json", "--no-session-persistence"],
+                           capture_output=True, text=True, timeout=1500, env=claude_env(), cwd=str(STATE))
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, f"/insights did not run: {e}"
+    after = report.stat().st_mtime if report.is_file() else 0
+    if after > before:
+        return True, "report refreshed"
+    return False, f"/insights exit {r.returncode}, report not updated: {cut((r.stderr or r.stdout).strip(), 200)}"
+
+
+def insights(since: dt.datetime, refresh: bool) -> dict:
+    """What Claude Code's /insights saw this week: its report (what works, what hinders, quick wins)
+    and its per-session notes (outcome, friction, what went wrong) for sessions started in the window."""
+    out = {"refreshed": None, "report_date": None, "report": None, "sessions": 0, "outcomes": {},
+           "satisfaction": {}, "friction": {}, "friction_details": [], "errors": []}
+    if refresh:
+        ok, note = refresh_insights()
+        out["refreshed"] = ok
+        if not ok:
+            out["errors"].append(note)
+    report = INSIGHTS / "report.html"
+    if report.is_file():
+        out["report_date"] = iso(dt.datetime.fromtimestamp(report.stat().st_mtime).astimezone())
+        out["report"] = cut(redact(html_text(report.read_text(errors="replace"))), 9000)
+    for f in sorted((INSIGHTS / "facets").glob("*.json")):
+        fac = read_json(f, {})
+        meta = read_json(INSIGHTS / "session-meta" / f.name, {})
+        start = meta.get("start_time") or ""
+        try:
+            if not start or dt.datetime.fromisoformat(start.replace("Z", "+00:00")) < since:
+                continue
+        except ValueError:
+            continue
+        out["sessions"] += 1
+        for key, field in (("outcomes", "outcome"),):
+            v = fac.get(field)
+            if v:
+                out[key][v] = out[key].get(v, 0) + 1
+        for key, field in (("satisfaction", "user_satisfaction_counts"), ("friction", "friction_counts")):
+            for k, n in (fac.get(field) or {}).items():
+                out[key][k] = out[key].get(k, 0) + (n if isinstance(n, int) else 1)
+        detail = (fac.get("friction_detail") or "").strip()
+        if detail:
+            out["friction_details"].append({"project": (meta.get("project_path") or "").replace(str(HOME), "~"),
+                                            "date": start[:10], "outcome": fac.get("outcome"),
+                                            "detail": cut(redact(detail), 400)})
+    out["friction"] = dict(sorted(out["friction"].items(), key=lambda kv: -kv[1]))
+    out["friction_details"] = out["friction_details"][-30:]
+    return out
+
+
 # ---------------------------------------------------------------- safety locks (tamper hashes)
 
 def protected_files() -> list[Path]:
@@ -849,7 +922,10 @@ REVIEW_SYSTEM = """You write hivey's weekly self-improvement review for a non-te
 hivey is a tool that runs many AI agents on one Mac. You get JSON data: recurring tool-failure
 patterns (with evidence), how hivey runs (jobs, costs, duplicate agent processes, token savers),
 AI release notes and digests, requests the owner typed by hand again and again, the small problems
-the daily check already reported, and the last weeks' reviews (history).
+the daily check already reported, the last weeks' reviews (history), and claude_code_insights: Claude
+Code's own /insights analysis of the sessions (its report on what works, what hinders and quick wins,
+plus per-session outcomes, friction counts and friction details for this week). Use the friction there
+as evidence of repeating problems in how the agents work with the owner, next to the tool failures.
 
 THE POINT OF WEDNESDAY: propose changes to HOW WE OPERATE, not repairs. A repair fixes one broken
 thing once ("restart this job", "top up that account"); next week something else breaks and nothing
@@ -899,8 +975,12 @@ Return ONLY a JSON object, no prose around it, with this shape:
 At most 5 items, ordered by value. Never propose turning off a safety check."""
 
 
-def call_claude(prompt: str, model: str) -> tuple[dict | None, str]:
-    claude = shutil.which("claude") or str(HOME / ".local/bin/claude")
+def claude_bin() -> str:
+    return shutil.which("claude") or str(HOME / ".local/bin/claude")
+
+
+def claude_env() -> dict:
+    """The environment for a headless claude run, with the token command's OAuth token when one is set."""
     env = {**os.environ}
     tok_cmd = config().get("claude_token_command") or read_json(HOME / ".hivey/agent-map/config.json", {}).get("claude_token_command")
     if tok_cmd:
@@ -910,6 +990,11 @@ def call_claude(prompt: str, model: str) -> tuple[dict | None, str]:
                 env["CLAUDE_CODE_OAUTH_TOKEN"] = p.stdout.strip()
         except (OSError, subprocess.SubprocessError):
             pass
+    return env
+
+
+def call_claude(prompt: str, model: str) -> tuple[dict | None, str]:
+    claude, env = claude_bin(), claude_env()
     cmd = [claude, "-p", "--model", model, "--output-format", "json", "--tools", "", "--strict-mcp-config",
            "--no-session-persistence", "--system-prompt", REVIEW_SYSTEM]
     STATE.mkdir(parents=True, exist_ok=True)
@@ -1538,6 +1623,11 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
     activity("ai-news", "warn" if ai["errors"] else "ok",
              f"Anthropic digest {'found' if ai['anthropic'] else 'missing'}, proposals {'found' if ai['proposals'] else 'missing'}, "
              f"{len(ai['releases'])} releases" + (f"; errors: {'; '.join(ai['errors'])}" if ai["errors"] else ""))
+    ins = insights(since, refresh=bool(config().get("insights_refresh", True)) and not no_llm)
+    activity("insights", "warn" if ins["errors"] or not ins["report"] else "ok",
+             f"/insights: report {'from ' + ins['report_date'][:10] if ins['report'] else 'missing'}"
+             + (", refreshed" if ins["refreshed"] else "") + f"; {ins['sessions']} sessions this week, "
+             f"{sum(ins['friction'].values())} friction points" + (f"; {'; '.join(ins['errors'])}" if ins["errors"] else ""))
     prompts = user_prompts(since)
     manual = repeated_requests(prompts)
     activity("manual", "ok", f"{len(prompts)} requests you typed; {len(manual)} repeated ones")
@@ -1573,6 +1663,8 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
         "rejected_items": rejected,
         "missed_problems_known_blind_spots": missed,
         "logging_canary": canary_state,
+        "claude_code_insights": {k: ins[k] for k in ("report_date", "report", "sessions", "outcomes", "satisfaction",
+                                                     "friction", "friction_details")},
     }
     text, llm_note = None, "skipped (--no-llm)"
     if not no_llm:
@@ -1607,7 +1699,8 @@ def review(no_llm: bool, model: str | None, notify: bool, days: int) -> int:
            "filter_note": filter_note, "llm": llm_note, "patterns": patterns, "operations": ops, "token_savers": savers,
            "ai": {"anthropic_file": (ai["anthropic"] or {}).get("file"), "proposals_file": (ai["proposals"] or {}).get("file"),
                   "releases": ai["releases"], "errors": ai["errors"]},
-           "manual": manual, "fix_checks": checks, "locks": locks, "safety_layer": safety_layer(), "text": text,
+           "manual": manual, "fix_checks": checks,
+           "insights": {k: ins[k] for k in ("refreshed", "report_date", "sessions", "outcomes", "friction", "errors")}, "locks": locks, "safety_layer": safety_layer(), "text": text,
            "metrics": metrics, "canary": canary_state, "importance_note": importance_note, "predictions_checked": preds,
            "learning": {"repeats_of_rejected": repeats, "missed_last_month": len(missed)}, "alarms": alarm}
     write_json(REVIEWS / f"{date}.json", out)
