@@ -221,6 +221,11 @@ const SKILLS: &[(&str, &[(&str, &str)])] = &[
                 "scripts/page.html",
                 include_str!("../../../skills/hivey-evolve/scripts/page.html"),
             ),
+            // The Touch ID signer for go-lives (the private key never leaves the Secure Enclave).
+            (
+                "scripts/touchid.swift",
+                include_str!("../../../skills/hivey-evolve/scripts/touchid.swift"),
+            ),
             (
                 "references/blockers.md",
                 include_str!("../../../skills/hivey-evolve/references/blockers.md"),

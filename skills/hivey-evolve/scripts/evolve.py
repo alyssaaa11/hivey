@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import fcntl
 import glob
 import hashlib
 import html
@@ -370,8 +371,15 @@ def jev_filter(facts: list[dict], cap: int = 40) -> tuple[list[dict], list[dict]
 
 # ---------------------------------------------------------------- patterns
 
+PY_EXC = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception|Exit|Interrupt|Warning)(?::|$)")
+
+
 def error_line(err: str) -> str:
     lines = [l.strip() for l in (err or "").splitlines() if l.strip() and not re.match(r"^Exit code \d+$", l.strip())]
+    if any(l.lower().startswith("traceback (most recent call last)") for l in lines):
+        finals = [l for l in lines if PY_EXC.match(l)]   # a Python crash: its last exception line names the real error
+        if finals:
+            return redact(finals[-1])   # its message is new label text: keep keys and tokens out (facts are redacted too)
     for l in lines:
         if re.search(r"error|fatal|fail|not found|denied|cannot|can't|no such|refused|timed out|invalid|missing|unknown|traceback", l, re.I):
             return l
@@ -738,7 +746,7 @@ def protected_files() -> list[Path]:
     files = []
     for g in config().get("protected") or []:
         files += [Path(p) for p in glob.glob(os.path.expanduser(g))]
-    files += [SCRIPTS / "evolve.py", SKILL / "references" / "blockers.md"]
+    files += [SCRIPTS / "evolve.py", SKILL / "references" / "blockers.md", SCRIPTS / "touchid.swift", PUBKEY_FILE]
     return sorted({p.resolve() for p in files if p.is_file()})
 
 
@@ -2040,6 +2048,14 @@ def verify_verdicts() -> dict:
 
 
 def append_verdict(entry: dict) -> dict:
+    """Appends one hash-chained entry. Appends are serialized with a lock file, so two at once cannot break the chain."""
+    STATE.mkdir(parents=True, exist_ok=True)
+    with open(STATE / "verdicts.append.lock", "a") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        return _append_verdict(entry)
+
+
+def _append_verdict(entry: dict) -> dict:
     chk = verify_verdicts()
     if not chk["ok"]:
         raise RuntimeError(f"verdict log is broken ({chk['problem']}); not appending")
@@ -2093,12 +2109,257 @@ def run_critic(proposal: str, diff: str, evidence: str) -> dict:
             "tokens": int(tokens.group(1).replace(",", "")) if tokens else None, "error": None}
 
 
-def critic_review(proposal: str, diff: str, evidence: str, item: str | None) -> dict:
+# The critic advises, the user decides (user, 2026-11-27): when the critic's yes is the only way to go live, the builder
+# is pushed to argue with the critic instead of fixing the code. So a blocked item can go live on the user's yes once
+# every "no" is answered by a test or a written reason (go_live), and after LOOP_STOP blocked rounds in a row the item
+# goes to the user instead of another round.
+LOOP_STOP = 3
+
+
+ITEM_RE = re.compile(r"\d{4}-\d\d-\d\d#[1-9]\d*")   # the one spelling of an item, so rounds can't hide under another name
+
+
+def _checked_entries() -> list[dict]:
+    """The verdict log, only when its hash chain checks out: a hand-written or edited line is never trusted."""
+    chk = verify_verdicts()
+    if not chk["ok"]:
+        raise ValueError(f"verdict log is broken ({chk['problem']}); nothing is decided from it")
+    return verdict_entries()
+
+
+def _item_verdicts(item: str) -> list[dict]:
+    return [e for e in _checked_entries() if e.get("item") == item and e.get("kind") in ("fix", "golive")]
+
+
+def blocks_in_a_row(item: str) -> int:
+    """Blocked critic rounds on this item since its last pass or go-live."""
+    n = 0
+    all_e = _checked_entries()
+    hist = [(i, e) for i, e in enumerate(all_e) if e.get("item") == item and e.get("kind") in ("fix", "golive")]
+    for i, e in reversed(hist):
+        if e.get("kind") == "golive" and not golive_valid(e, all_e[:i]):
+            continue   # an unsigned, stale or copied go-live does not reset the count
+        if e.get("kind") != "fix" or e.get("verdict") == "pass":
+            break
+        n += 0 if e.get("error") else 1   # a failed critic call (Codex down) is not a blocked round
+    return n
+
+
+def critic_review(proposal: str, diff: str, evidence: str, item: str | None, user_asked: str | None = None) -> dict:
+    asked = redact((user_asked or "").strip())[:300]
+    if item is not None and not ITEM_RE.fullmatch(item):
+        raise ValueError(f"item must be written <date>#<n>, e.g. 2026-11-19#1 (got {item!r})")
+    if not item:
+        return _critic_review(proposal, diff, evidence, item, asked)
+    STATE.mkdir(parents=True, exist_ok=True)
+    with open(STATE / f"critic-{item.replace('#', '-')}.lock", "a") as lk:
+        try:
+            fcntl.flock(lk, fcntl.LOCK_EX | fcntl.LOCK_NB)   # one round per item at a time, so parallel rounds can't slip past the stop
+        except BlockingIOError:
+            raise ValueError(f"{item}: a critic round is already running; wait for its verdict") from None
+        sig = None
+        if blocks_in_a_row(item) >= LOOP_STOP:
+            if not asked:
+                raise ValueError(f"{item}: the critic blocked {blocks_in_a_row(item)} rounds in a row. Bring it to the user "
+                                 f"(`hivey evolve golive …` on their yes, or drop it) instead of another round; a new round "
+                                 f"only with --user-asked \"<their words>\" and their Touch ID")
+            if not GOLIVE_PUBKEY or not KEY_BLOB.exists():
+                raise ValueError("no go-live key yet: `hivey evolve golive-key` once, then pin its public key in evolve.py")
+            msg = round_message(item, asked, _item_verdicts(item)[-1]["sha"])
+            sig, why = user_sign(msg)
+            if not sig or not verify_sig(GOLIVE_PUBKEY, sig, msg):
+                raise ValueError(f"{item}: another round needs the user's Touch ID at the Mac ({why or 'signature did not verify'})")
+        return _critic_review(proposal, diff, evidence, item, asked, sig)
+
+
+def round_message(item: str, asked: str, after: str) -> bytes:
+    """What the user's finger signs to allow a round past the stop: the item, the verdict it follows, their words."""
+    return json.dumps({"kind": "round", "item": item, "after": after, "user_asked": asked}, sort_keys=True,
+                      separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def _critic_review(proposal: str, diff: str, evidence: str, item: str | None, asked: str, sig: str | None = None) -> dict:
+    after = _item_verdicts(item)[-1]["sha"] if item and sig else None
     res = run_critic(proposal, diff, evidence)
     entry = append_verdict({"kind": "fix", "item": item, "proposal_sha": _sha_text(proposal), "diff_sha": _sha_text(diff),
-                            "critic": "codex", **res})
+                            "critic": "codex", **({"user_asked": asked} if asked else {}),
+                            **({"user_asked_sig": sig, "after": after} if sig else {}), **res})
     activity("critic", "ok" if res["verdict"] == "pass" else "warn",
              f"critic {res['verdict']} for {item or 'a change'}" + (f": {res['error']}" if res["error"] else ""))
+    if item and res["verdict"] != "pass" and not res["error"] and blocks_in_a_row(item) == LOOP_STOP:
+        text = (f"evolve: the critic blocked {item} {LOOP_STOP} rounds in a row (last verdict {entry['sha'][:12]}). "
+                f"Bring it to the user: go live on their yes once each 'no' has a test or a reason, or drop it.")
+        try:
+            ok, out = send_main(text)
+        except (OSError, subprocess.SubprocessError) as e:
+            ok, out = False, str(e)
+        activity("critic", "warn", f"{item}: {LOOP_STOP} blocked rounds in a row, brought to the user"
+                 + ("" if ok else f" (message not delivered: {cut(redact(out), 120)})"))
+    return entry
+
+
+# The go-live signing key (user, 2026-11-27): its private half lives in this Mac's Secure Enclave and signs only after the
+# user's fingerprint matches; the blob is useless anywhere else and without the finger. The public half is pinned in
+# golive-pubkey.txt, one of the tamper-locked files, so swapping keys is a visible lock change. It lives next to the blob and
+# not in this file because this file ships to every machine with `hivey update` (each machine has its own key).
+# Set once with `hivey evolve golive-key`.
+KEY_BLOB = STATE / "golive-key.blob"
+PUBKEY_FILE = STATE / "golive-pubkey.txt"
+
+
+def _read_pubkey() -> str:
+    try:
+        return PUBKEY_FILE.read_text().strip()
+    except OSError:
+        return ""
+
+
+GOLIVE_PUBKEY = _read_pubkey()
+
+
+def _touchid(args: list[str], timeout: int = 180) -> subprocess.CompletedProcess:
+    """Runs scripts/touchid.swift, compiled fresh from the tamper-locked source for every call (a swapped binary is never
+    used) in a fixed environment (no DEVELOPER_DIR / DYLD_* from the caller)."""
+    with tempfile.TemporaryDirectory() as d:
+        b = Path(d) / "touchid"
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(HOME), "TMPDIR": d}
+        c = subprocess.run(["/usr/bin/swiftc", "-O", "-o", str(b), str(SCRIPTS / "touchid.swift")],
+                           capture_output=True, text=True, timeout=300, env=env)
+        if c.returncode:
+            raise OSError("could not build the Touch ID helper: " + cut(c.stderr.strip(), 200))
+        return subprocess.run([str(b), *args], capture_output=True, text=True, timeout=timeout, env=env)
+
+
+def golive_message(e: dict) -> bytes:
+    """Exactly what the user's finger signs: the item, the critic verdict and diff it answers, the answers and their words."""
+    return json.dumps({"kind": "golive", **{k: e.get(k) for k in ("item", "critic_sha", "diff_sha", "answers", "user_yes")}},
+                      sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def user_sign(message: bytes) -> tuple[str | None, str]:
+    """Asks for the user's Touch ID and returns the Secure Enclave signature of message, or (None, why). The helper writes
+    the prompt from the message itself, so what the user reads is what they sign."""
+    with tempfile.NamedTemporaryFile(suffix=".msg") as f:
+        f.write(message)
+        f.flush()
+        try:
+            r = _touchid(["sign", str(KEY_BLOB), f.name])
+        except (OSError, subprocess.SubprocessError) as e:
+            return None, str(e)
+    return (r.stdout.strip(), "") if r.returncode == 0 and r.stdout.strip() else (None, redact(cut(r.stderr.strip(), 200)) or "refused")
+
+
+def verify_sig(pub: str, sig: str, message: bytes) -> bool:
+    """Checks a signature with the system's /usr/bin/openssl (no build step, nothing the agent's files can change); the same
+    check by hand: `openssl dgst -sha256 -verify pub.der -keyform DER -signature sig.der msg`."""
+    import base64
+    import binascii
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            (Path(d) / "pub.der").write_bytes(base64.b64decode(pub, validate=True))
+            (Path(d) / "sig.der").write_bytes(base64.b64decode(sig, validate=True))
+            (Path(d) / "msg").write_bytes(message)
+            r = subprocess.run(["/usr/bin/openssl", "dgst", "-sha256", "-verify", "pub.der", "-keyform", "DER",
+                                "-signature", "sig.der", "msg"], cwd=d, capture_output=True, timeout=30,
+                               env={"PATH": "/usr/bin:/bin"})
+            return r.returncode == 0
+        except (binascii.Error, ValueError, OSError, subprocess.SubprocessError):
+            return False
+
+
+_SIGNED: dict[tuple, bool] = {}
+
+
+def golive_signed(e: dict) -> bool:
+    """True only when the go-live carries a valid signature by the pinned key: an agent can write the entry, not this."""
+    if not (GOLIVE_PUBKEY and e.get("sig")):
+        return False
+    k = (GOLIVE_PUBKEY, str(e["sig"]), golive_message(e))   # one compile per entry per run, not per page refresh
+    if k not in _SIGNED:
+        _SIGNED[k] = verify_sig(GOLIVE_PUBKEY, str(e["sig"]), golive_message(e))
+    return _SIGNED[k]
+
+
+def golive_valid(e: dict, before: list[dict]) -> bool:
+    """A go-live counts only when it is signed, answers the item's latest critic verdict before it (an old signature can't
+    be replayed after a newer block), and is the first go-live with that content (no copies)."""
+    if e.get("kind") != "golive" or not golive_signed(e):
+        return False
+    fixes = [x for x in before if x.get("kind") == "fix" and x.get("item") == e.get("item")]
+    if not fixes or fixes[-1].get("sha") != e.get("critic_sha"):
+        return False
+    return not any(x.get("kind") == "golive" and golive_message(x) == golive_message(e) for x in before)
+
+
+def golive_key() -> dict:
+    """Creates the Secure Enclave go-live key once (no finger needed to create, only to sign). Never overwrites a key."""
+    for f in (KEY_BLOB, PUBKEY_FILE):
+        if f.exists():
+            raise ValueError(f"a go-live key already exists ({f}); it is never replaced")
+    STATE.mkdir(parents=True, exist_ok=True)
+    r = _touchid(["keygen", str(KEY_BLOB)], timeout=60)
+    if r.returncode or not r.stdout.strip():
+        raise ValueError("could not create the key: " + cut(r.stderr.strip(), 200))
+    pub = r.stdout.strip()
+    with open(PUBKEY_FILE, "x") as fh:   # "x": never overwrites
+        fh.write(pub + "\n")
+    activity("build", "ok", f"go-live key created (public key sha256 {hashlib.sha256(pub.encode()).hexdigest()[:16]})")
+    return {"public_key": pub, "fingerprint": hashlib.sha256(pub.encode()).hexdigest()[:16],
+            "next": f"lock it on the user's yes: `hivey evolve lock accept {PUBKEY_FILE}`"}
+
+
+def go_live(date: str, n: int, critic_sha: str, answers: list, user_yes: str) -> dict:
+    """The user's go-live for an approved item the critic blocked. Every "no" (checks 1-9) of the item's latest critic
+    verdict must be answered by a test (one that fails before the fix and passes after) or a written reason, and the
+    user's own words are quoted. Logged in the hash-chained verdict log, so it is audited like a critic verdict."""
+    item = f"{date}#{n}"
+    rec = (read_json(DECISIONS, {}).get(date) or {}).get(str(n))
+    if not rec or rec.get("choice") != "yes":
+        raise ValueError(f"{item} is not an approved item")
+    yes = redact((user_yes or "").strip())[:500]
+    if not yes:
+        raise ValueError("quote the user's yes (--user-yes \"<their words>\")")
+    fixes = [e for e in _checked_entries() if e.get("kind") == "fix" and e.get("item") == item]
+    if not fixes:
+        raise ValueError(f"no critic verdict for {item}: the critic reviews it first, then the user decides")
+    last = fixes[-1]
+    if len(critic_sha or "") < 8 or not last["sha"].startswith(critic_sha):
+        raise ValueError(f"--critic must name {item}'s latest critic verdict ({last['sha'][:12]})")
+    if last.get("verdict") == "pass":
+        raise ValueError(f"{item}'s latest critic verdict passed: use `hivey evolve built`")
+    nos = [a["n"] for a in last.get("answers") or [] if a.get("n") != 10 and a.get("answer") != "yes"]
+    if last.get("error") or any(a.get("answer") == "missing" for a in last.get("answers") or []):
+        raise ValueError(f"critic verdict {last['sha'][:12]} is incomplete (the critic did not answer every check): run it again")
+    if not nos:
+        raise ValueError(f"critic verdict {last['sha'][:12]} has no answers ({last.get('error') or 'no checks'}): run the critic again")
+    rows = {}
+    for a in answers if isinstance(answers, list) else []:
+        if not isinstance(a, dict) or not isinstance(a.get("n"), int):
+            raise ValueError('each answer is {"n": <check>, "test": "<test name>"} or {"n": <check>, "reason": "<why>"}')
+        test, reason = str(a.get("test") or "").strip(), str(a.get("reason") or "").strip()
+        if bool(test) == bool(reason):
+            raise ValueError(f"check {a['n']}: give a test or a reason (exactly one)")
+        if (test and len(test) < 4) or (reason and len(reason) < 30):
+            raise ValueError(f"check {a['n']}: a test needs its real name, a reason at least a full sentence (30+ characters)")
+        rows[a["n"]] = {"n": a["n"], **({"test": redact(test)[:200]} if test else {"reason": redact(reason)[:600]})}
+    missing = [k for k in nos if k not in rows]
+    if missing:
+        raise ValueError(f"checks {missing} of critic verdict {last['sha'][:12]} have no test or reason")
+    if not GOLIVE_PUBKEY or not KEY_BLOB.exists():
+        raise ValueError("no go-live key yet: `hivey evolve golive-key` once, then pin its public key in evolve.py")
+    body = {"kind": "golive", "item": item, "critic_sha": last["sha"], "diff_sha": last.get("diff_sha"),
+            "answers": [rows[k] for k in nos], "user_yes": yes}
+    if any(x.get("kind") == "golive" and golive_message(x) == golive_message(body) for x in _checked_entries()):
+        raise ValueError(f"{item}: this go-live is already in the log")
+    sig, why = user_sign(golive_message(body))
+    if not sig:
+        activity("build", "warn", f"{item}: go-live refused, no Touch ID ({why})")
+        raise ValueError(f"{item}: go-live needs the user's Touch ID at the Mac ({why or 'refused'})")
+    if not verify_sig(GOLIVE_PUBKEY, sig, golive_message(body)):
+        raise ValueError(f"{item}: the Touch ID signature does not match the pinned go-live key")
+    entry = append_verdict({**body, "sig": sig})
+    activity("build", "ok", f"{item}: the user approved going live after critic verdict {last['sha'][:10]} "
+             f"({len(nos)} findings answered by tests or reasons)")
     return entry
 
 
@@ -2142,34 +2403,82 @@ def verdict_audit(months: int = 3) -> dict:
     entries = verdict_entries()
     outcomes = {e["item"]: e for e in entries if e.get("kind") == "outcome"}
     by_month: dict[str, dict] = {}
-    for e in entries:
+    streak: dict[str, tuple[int, str]] = {}   # item -> (blocked rounds in a row, sha of its last entry)
+    # Rounds past the stop are checked from the rule's start marker on (rounds before 2026-11-27 had no stop to respect).
+    start = next((i for i, e in enumerate(entries) if e.get("kind") == "rule" and e.get("rule") == "golive-signed"), 0)
+    rounds_unsigned: list[str] = []
+    for i, e in enumerate(entries):
         m = by_month.setdefault(e["ts"][:7], {"fixes_passed": 0, "fixes_blocked": 0, "calibration_right": 0,
-                                               "calibration_total": 0, "passed_then_failed": []})
+                                               "calibration_total": 0, "passed_then_failed": [],
+                                               "user_golive": [], "golive_then_failed": []})
+        it = e.get("item")
+        if it and e.get("kind") in ("fix", "golive"):
+            n_in_row, prev = streak.get(it, (0, ""))
+            if e.get("kind") == "fix":
+                if i > start and n_in_row >= LOOP_STOP and not (GOLIVE_PUBKEY and e.get("after") == prev and e.get("user_asked_sig") and
+                                                  verify_sig(GOLIVE_PUBKEY, str(e["user_asked_sig"]),
+                                                             round_message(it, str(e.get("user_asked") or ""), prev))):
+                    rounds_unsigned.append(it)   # a round past the stop without the user's signed request
+                n_in_row = 0 if e.get("verdict") == "pass" else n_in_row + (0 if e.get("error") else 1)
+            elif golive_valid(e, entries[:i]):
+                n_in_row = 0
+            streak[it] = (n_in_row, e.get("sha", ""))
         if e.get("kind") == "fix":
             m["fixes_passed" if e.get("verdict") == "pass" else "fixes_blocked"] += 1
             o = outcomes.get(e.get("item") or "")
             if e.get("verdict") == "pass" and o and o.get("status") == "failed":
                 m["passed_then_failed"].append(e.get("item"))
+        elif e.get("kind") == "golive":
+            m["user_golive"].append(e.get("item"))
+            if not golive_valid(e, entries[:i]):   # unsigned, for an older verdict, or a copy
+                m.setdefault("golive_invalid", []).append(e.get("item"))
+            o = outcomes.get(e.get("item") or "")
+            if o and o.get("status") == "failed":
+                m["golive_then_failed"].append(e.get("item"))
         elif e.get("kind") == "calibration":
             m["calibration_total"] += 1
             m["calibration_right"] += 1 if e.get("correct") else 0
     keep = sorted(by_month)[-months:]
-    return {"chain": verify_verdicts(), "months": {k: by_month[k] for k in keep}}
+    pos = {e.get("sha"): i for i, e in enumerate(entries)}
+    unapproved = []   # every built item must point at a critic pass or a valid go-live for it (e.g. not "built" written by hand)
+    for date, items in (read_json(DECISIONS, {}) or {}).items():
+        for n, rec in (items if isinstance(items, dict) else {}).items():
+            if not isinstance(rec, dict) or not rec.get("built"):
+                continue
+            i = pos.get(rec.get("verdict_sha")) if isinstance(rec.get("verdict_sha"), str) else None
+            v = entries[i] if i is not None else {}
+            if v.get("item") != f"{date}#{n}" or not ((v.get("kind") == "fix" and v.get("verdict") == "pass") or
+                                                       golive_valid(v, entries[:i])):
+                unapproved.append(f"{date}#{n}")
+    return {"chain": verify_verdicts(), "months": {k: by_month[k] for k in keep}, "built_unapproved": unapproved,
+            "rounds_unsigned": sorted(set(rounds_unsigned)),
+            "golive_key": hashlib.sha256(GOLIVE_PUBKEY.encode()).hexdigest()[:16] if GOLIVE_PUBKEY else None}
 
 
 def mark_built(date: str, n: int, commit: str) -> dict:
-    """An approved item counts as built only with a passing critic verdict for it in the log."""
+    """An approved item counts as built when its latest entry in the verdict log is a critic pass or the user's go-live
+    (which answers the latest critic verdict). A newer block after either needs a new pass or a new go-live."""
     item = f"{date}#{n}"
-    passes = [e for e in verdict_entries() if e.get("kind") == "fix" and e.get("item") == item and e.get("verdict") == "pass"]
-    if not passes:
-        raise ValueError(f"no passing critic verdict for {item}: run `hivey evolve critic review --item {item} …` first")
+    all_e = _checked_entries()
+    idx = [i for i, e in enumerate(all_e) if e.get("item") == item and e.get("kind") in ("fix", "golive")]
+    last = all_e[idx[-1]] if idx else None
+    if not last or (last["kind"] == "fix" and last.get("verdict") != "pass"):
+        raise ValueError(f"no passing critic verdict or user go-live for {item}: run `hivey evolve critic review --item {item} …`, "
+                         f"or after a block `hivey evolve golive {date} {n} …` on the user's yes")
     d = read_json(DECISIONS, {})
     rec = (d.get(date) or {}).get(str(n))
     if not rec or rec.get("choice") != "yes":
         raise ValueError(f"{item} is not an approved item")
-    rec.update({"built": True, "built_at": iso(), "commit": commit, "verdict_sha": passes[-1]["sha"]})
+    if rec.get("built"):
+        raise ValueError(f"{item} is already marked built ({rec.get('commit')}); it is not overwritten")
+    if last["kind"] == "golive" and not golive_valid(last, all_e[:idx[-1]]):
+        raise ValueError(f"{item}: go-live {last['sha'][:12]} is not valid (no Touch ID signature by the pinned key, "
+                         f"not for the latest critic verdict, or a copy)")
+    by = "critic pass" if last["kind"] == "fix" else "user go-live"
+    rec.update({"built": True, "built_at": iso(), "commit": commit, "verdict_sha": last["sha"], "approved_by": by,
+                "diff_sha": last.get("diff_sha")})
     write_json(DECISIONS, d)
-    activity("build", "ok", f"{item} marked built ({commit}), critic verdict {passes[-1]['sha'][:10]}")
+    activity("build", "ok", f"{item} marked built ({commit}), {by} {last['sha'][:10]}")
     return rec
 
 
@@ -2231,10 +2540,18 @@ def main(argv: list[str]) -> int:
     c.add_argument("--proposal", required=True, help="file with the proposal text")
     c.add_argument("--diff", required=True, help="file with the diff")
     c.add_argument("--evidence", help="file with test output (before/after)")
+    c.add_argument("--user-asked", help="the user's words asking for another round after 3 blocks in a row")
     csub.add_parser("verify")
     c = csub.add_parser("audit")
     c.add_argument("--months", type=int, default=3)
-    p = sub.add_parser("built", help="mark an approved item built (needs a passing critic verdict)")
+    p = sub.add_parser("golive", help="the user's go-live for a blocked item: each 'no' answered by a test or a reason")
+    p.add_argument("date")
+    p.add_argument("n", type=int)
+    p.add_argument("--critic", required=True, help="sha (8+ chars) of the item's latest critic verdict")
+    p.add_argument("--answers", required=True, help='JSON file: [{"n": 5, "test": "name"}, {"n": 7, "reason": "why"}]')
+    p.add_argument("--user-yes", required=True, help="the user's own words approving the go-live")
+    sub.add_parser("golive-key", help="create the Secure Enclave go-live key once (Touch ID signs go-lives)")
+    p = sub.add_parser("built", help="mark an approved item built (needs a critic pass or the user's go-live)")
     p.add_argument("date")
     p.add_argument("n", type=int)
     p.add_argument("commit")
@@ -2306,7 +2623,7 @@ def main(argv: list[str]) -> int:
             return 0 if res["passed"] else 1
         if a.critic_cmd == "review":
             rd = lambda f: Path(f).read_text() if f else ""
-            e = critic_review(rd(a.proposal), rd(a.diff), rd(a.evidence), a.item)
+            e = critic_review(rd(a.proposal), rd(a.diff), rd(a.evidence), a.item, a.user_asked)
             print(json.dumps({k: e.get(k) for k in ("verdict", "answers", "summary", "error", "sha")}, indent=1))
             return 0 if e["verdict"] == "pass" else 1
         if a.critic_cmd == "verify":
@@ -2317,6 +2634,12 @@ def main(argv: list[str]) -> int:
             print(json.dumps(verdict_audit(a.months), indent=1))
             return 0
         ap.parse_args(["critic", "--help"])
+    if a.cmd == "golive":
+        print(json.dumps(go_live(a.date, a.n, a.critic, json.loads(Path(a.answers).read_text()), a.user_yes), indent=1))
+        return 0
+    if a.cmd == "golive-key":
+        print(json.dumps(golive_key(), indent=1))
+        return 0
     if a.cmd == "built":
         print(json.dumps(mark_built(a.date, a.n, a.commit), indent=1))
         return 0
@@ -2331,4 +2654,8 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except (ValueError, OSError, RuntimeError) as e:   # refusals, broken log (loop stop, go-live checks) and bad files: one line, not a traceback
+        print(f"hivey evolve: {e}", file=sys.stderr)
+        sys.exit(1)
