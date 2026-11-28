@@ -102,7 +102,15 @@ def paths_in(text: str) -> list[str]:
 
 def log_path(command: str) -> str | None:
     m = re.search(r">>?\s*(\S+\.log)", command)
+    # ~/bin/git-job.sh takes its log as an argument: "commit|pull <repo> <log>" or "run <log> <command>"
+    m = m or re.search(r"git-job\.sh\s+(?:(?:commit|pull)\s+\S+|run)\s+(\S+\.log)", command)
     return os.path.expanduser(m.group(1)) if m else None
+
+
+def honest_state(state: str, info: dict) -> str:
+    """A job is only 'ok' when its latest run's log shows no error (evolve item 2026-11-25 #1): an exit code
+    of 0 with an error in the log is reported as 'error in log', so it counts as failing, never as ok."""
+    return "error in log" if state == "ok" and info.get("last_error") else state
 
 
 def _is_err(line: str) -> bool:
@@ -114,6 +122,21 @@ def _is_err(line: str) -> bool:
 
 # an error line that names a cause (an HTTP status, a fatal git error, a Python exception...), preferred
 # over headings like "Failed updates:" as the one-line reason a job failed
+# Secret-shaped text (same patterns as hivey-evolve's SECRET) is masked in any log line the map stores, so a key that a
+# job prints into its log never reaches the map's JSON or page (evolve item 2026-11-25 #1).
+SECRET_RE = re.compile(r"((?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,}|gh[pousr]_[A-Za-z0-9]{20,}|"
+                       r"es_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]+|"
+                       r"(?i:authorization[\"']?\s*[=:]\s*)(?:\"(?:\\.|[^\"\\\n])+\"|'(?:\\.|[^'\\\n])+'|(?:(?i:bearer|basic|token)\s+)?\S+)|(?i:\b(?:bearer|basic)\s+)[A-Za-z0-9._~+/=-]{6,}|"
+                       r"(?i:(?:token|secret|password|api[_\s-]?key)[\"']?\s*[=:]\s*)(?:\"(?:\\.|[^\"\\\n])+\"|'(?:\\.|[^'\\\n])+'|\S+))")
+# hivey-evolve's SECRET pattern, plus quoted keys and values (JSON "password": "...") and values of any length after
+# token/secret/password/api key (SECRET needs 8+ characters), an Authorization header and Bearer/Basic credentials,
+# which it lets through. A quoted value is masked up to its closing quote, past escaped quotes (\") inside it
+
+
+def redact(line: str) -> str:
+    return SECRET_RE.sub("[redacted]", line or "")
+
+
 CAUSE_RE = re.compile(r"\b[45]\d\d\b|fatal|\w(Error|Exception)\b|denied|forbid|timed? ?out|not found|no such|"
                       r"unauthori[sz]ed|refused|could not|cannot|can't", re.I)
 
@@ -134,6 +157,20 @@ def last_exit(name: str) -> int | None:
         return None
 
 
+OK_RE = re.compile(r"\b(success(ful(ly)?)?|succeeded|completed?|done|wrote|all ok)\b", re.I)
+FINISHED_RE = re.compile(r"\bfinished\b", re.I)
+
+
+def cut_line(text: str) -> str:
+    """Our fixed stand-in for a log line whose start the 6000-byte read cut off: none of its text, only its kind."""
+    text = re.sub(r"\x1b\[[0-9;]*[A-Za-z]|\r", "", text)
+    head = "(start of this line cut off by the agent map's 6000-byte read; full line in the log)"
+    if _is_err(text):
+        return head + " it shows an error"
+    kinds = (["a success line"] if OK_RE.search(text) else []) + (["a run finished line"] if FINISHED_RE.search(text) else [])
+    return head + (" it is " + " and ".join(kinds) if kinds else "")
+
+
 def log_info(path: str | None, exit_code: int | None = None) -> dict:
     if not path or not os.path.isfile(path):
         return {}
@@ -141,21 +178,41 @@ def log_info(path: str | None, exit_code: int | None = None) -> dict:
     info = {"log": short(path), "log_modified": dt.datetime.fromtimestamp(st.st_mtime).isoformat(timespec="minutes")}
     try:
         with open(path, "rb") as f:
-            f.seek(max(0, st.st_size - 6000))
-            tail = f.read().decode("utf-8", "replace").splitlines()[-40:]
-        tail = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]|\r", "", l)[:300] for l in tail]
+            start = max(0, st.st_size - 6000)
+            f.seek(max(0, start - 1))  # one byte early, to see whether the read starts on a line boundary
+            tail = f.read().decode("utf-8", "replace").splitlines(keepends=True)
+            # a read from mid-file can start mid-line, maybe mid-key, where redact() can't see the key's prefix: that
+            # partial line is replaced by a fixed sentence of ours that keeps what it was (error, success, run end),
+            # so no cut text is stored and an error in it still counts. If the byte before is a line end, the first
+            # item is only that line end, and the complete line after it is kept as it is.
+            cut = tail.pop(0) if start and tail else None
+            tail = [(l.splitlines() or [""])[0] for l in tail]  # same lines as plain splitlines()
+            if cut is not None and cut.strip():
+                tail.insert(0, cut_line(cut))
+            tail = tail[-40:]
+        raw = [re.sub(r"\x1b\[[0-9;]*[A-Za-z]|\r", "", l) for l in tail]
+        # every check below reads the line as the job wrote it (masking first could hide "failed" in "API key: failed"),
+        # but only the masked copy is stored, so tail, errors and last_error never hold a secret
+        tail = [redact(l)[:300] for l in raw]
+        isr = [_is_err(l) for l in raw]
         # logs are appended run after run: an error from an earlier run that a later run's success line
         # follows is history, not a current problem (a Baserow timeout stayed flagged after good runs)
-        ok = re.compile(r"\b(success(ful(ly)?)?|succeeded|finished|completed?|done|wrote|all ok)\b", re.I)
-        last_ok = max((i for i, l in enumerate(tail) if ok.search(l) and not _is_err(l)), default=-1)
+        ok = OK_RE
+        last_ok = max((i for i, l in enumerate(raw) if ok.search(l) and not isr[i]), default=-1)
+        # "finished" ends every run, failed or not (claude-docs-weekly prints "API Error: 400 …" then "finished"),
+        # so it is a run boundary, not a success: errors before the next-to-last "finished" are history, errors
+        # in the latest run count (evolve item 2026-11-25 #1)
+        fins = [i for i, l in enumerate(raw) if FINISHED_RE.search(l) and not isr[i]]
+        last_ok = max(last_ok, fins[-2] if len(fins) > 1 else -1)
         # a run that exited non-zero failed even if it printed "All done!" at the end (the nightly
         # upgrade does): its error lines count wherever they are in the tail
-        errs = [l.strip() for l in tail[(0 if exit_code else last_ok + 1):] if _is_err(l)]
+        pairs = [(raw[i].strip(), tail[i].strip()) for i in range((0 if exit_code else last_ok + 1), len(raw)) if isr[i]]
         if exit_code == 0:  # the latest run exited 0, so any traceback still in the tail is from an earlier run
-            errs = [l for l in errs if not CRASH_RE.match(l) and not TRACE_BODY_RE.match(l)]
-        if errs:
-            causes = [e for e in errs if CAUSE_RE.search(e) and not e.rstrip().endswith(":")]
-            info["last_error"] = (causes or errs)[-1][:200]
+            pairs = [(r, m) for r, m in pairs if not CRASH_RE.match(r) and not TRACE_BODY_RE.match(r)]
+        if pairs:  # (raw line for the checks, masked line to store)
+            causes = [m for r, m in pairs if CAUSE_RE.search(r) and not r.rstrip().endswith(":")]
+            errs = [m for r, m in pairs]
+            info["last_error"] = redact((causes or errs)[-1])[:200]
             info["errors"] = list(dict.fromkeys(e[:200] for e in errs))[-5:]
         info["tail"] = tail
     except OSError:
@@ -197,10 +254,11 @@ def cron_jobs() -> list[dict]:
         state = st.get("state", "?")
         if rc and state == "ok":  # ran on time but failed: show the exit code, not "ran ok"
             state = f"exit {rc}"
+        info = log_info(log_path(cmd), rc)
         jobs.append({
             "id": f"cron:{name}", "name": name, "kind": "cron (cron-catchup)", "schedule": sched,
-            "command": cmd, "agent": job_agent(cmd), "status": state,
-            "last_run": st.get("last_run"), **log_info(log_path(cmd), rc),
+            "command": cmd, "agent": job_agent(cmd), "status": honest_state(state, info),
+            "last_run": st.get("last_run"), **info,
         })
     for line in sh(["crontab", "-l"]).splitlines():
         s = line.strip()
@@ -275,11 +333,12 @@ def launchd_jobs() -> list[dict]:
         period_h = calendar_period_hours(d.get("StartCalendarInterval"))
         pid, code = status.get(label, ("-", "?"))
         state = "running" if pid != "-" else ("not loaded" if label not in status else ("ok" if code == "0" else f"exit {code}"))
+        info = log_info(d.get("StandardOutPath") or d.get("StandardErrorPath"),
+                        int(code) if re.fullmatch(r"-?\d+", code) else None)
         jobs.append({
             "id": f"launchd:{label}", "name": re.sub(r"^com\.(jcsancho|hivey)\.", "", label), "kind": "launchd",
             "schedule": sched, "command": cmd, "agent": job_agent(cmd, d.get("WorkingDirectory")),
-            "status": state, **log_info(d.get("StandardOutPath") or d.get("StandardErrorPath"),
-                                        int(code) if re.fullmatch(r"-?\d+", code) else None),
+            "status": honest_state(state, info), **info,
         })
         mod = jobs[-1].get("log_modified")
         if period_h and mod and dt.datetime.now() - dt.datetime.fromisoformat(mod) > dt.timedelta(hours=period_h):
